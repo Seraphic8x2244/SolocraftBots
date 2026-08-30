@@ -162,11 +162,59 @@ local function SCB_TooltipOnLeave()
 end
 
 local function SCB_CreateSectionTitle(parent, text, x, y)
-    local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     title:SetText(text)
     title:SetTextColor(1, 0.82, 0, 1)
     return title
+end
+
+SCB.sections = SCB.sections or {}
+SCB.sectionOrder = { "summon", "commands", "assignments" }
+local SCB_LayoutSections
+
+local function SCB_EnsureSectionDB()
+    SoloCraftBotsDB.sections = SoloCraftBotsDB.sections or {}
+end
+
+local function SCB_SectionToggleOnClick()
+    if not this or not this.scbSectionKey then
+        return
+    end
+    SCB_EnsureSectionDB()
+    SoloCraftBotsDB.sections[this.scbSectionKey] = not SoloCraftBotsDB.sections[this.scbSectionKey]
+    if SCB_LayoutSections then
+        SCB_LayoutSections()
+    end
+end
+
+local function SCB_CreateCollapsibleSection(parent, key, titleText, contentHeight)
+    local section = CreateFrame("Frame", nil, parent)
+    section:SetWidth(parent:GetWidth())
+    section:SetHeight(26 + contentHeight)
+    section.scbKey = key
+    section.scbExpandedHeight = 26 + contentHeight
+    section.scbCollapsedHeight = 26
+
+    local toggle = SCB_CreateTextButton(section, nil, 18, 18, "-")
+    toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
+    toggle.scbSectionKey = key
+    toggle.scbTooltip = "Collapse/expand " .. titleText
+    toggle:SetScript("OnClick", SCB_SectionToggleOnClick)
+    toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
+    toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
+    section.scbToggle = toggle
+
+    section.scbTitle = SCB_CreateSectionTitle(section, titleText, 36, -4)
+
+    local content = CreateFrame("Frame", nil, section)
+    content:SetWidth(parent:GetWidth())
+    content:SetHeight(contentHeight)
+    content:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -26)
+    section.scbContent = content
+
+    SCB.sections[key] = section
+    return section, content
 end
 
 local function SCB_GetPlayerFaction()
@@ -276,6 +324,19 @@ local function SCB_FindClass(classKey)
         if SCB.classes[i].key == classKey then
             return SCB.classes[i]
         end
+    end
+    return nil
+end
+
+local function SCB_GetPlayerClassInfo()
+    if not UnitClass then
+        return nil
+    end
+    local localized, classToken = UnitClass("player")
+    local key = classToken or localized
+    if key then
+        key = string.lower(key)
+        return SCB_FindClass(key)
     end
     return nil
 end
@@ -1250,10 +1311,10 @@ local function SCB_CloseOnClick()
 end
 
 local function SCB_CreateSummonUI(frame)
-    SCB_CreateSectionTitle(frame, "Summon", 16, -42)
+    local section, content = SCB_CreateCollapsibleSection(frame, "summon", "Summon Bots", 196)
 
-    local far = SCB_CreateArtButton(frame, "SoloCraftBotsDistanceFar", 22, SCB.assetRoot .. "distance.tga")
-    far:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, -38)
+    local far = SCB_CreateArtButton(section, "SoloCraftBotsDistanceFar", 22, SCB.assetRoot .. "distance.tga")
+    far:SetPoint("TOPRIGHT", section, "TOPRIGHT", -44, -2)
     far.scbDistanceMode = "far"
     far.scbTooltip = "Spawn Far\n.partybot distance on\nRemains clickable even when highlighted"
     far:SetScript("OnClick", SCB_DistanceOnClick)
@@ -1261,7 +1322,7 @@ local function SCB_CreateSummonUI(frame)
     far:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB.distanceFarButton = far
 
-    local near = SCB_CreateArtButton(frame, "SoloCraftBotsDistanceNear", 22, SCB.assetRoot .. "distanceoff.tga")
+    local near = SCB_CreateArtButton(section, "SoloCraftBotsDistanceNear", 22, SCB.assetRoot .. "distanceoff.tga")
     near:SetPoint("LEFT", far, "RIGHT", 3, 0)
     near.scbDistanceMode = "near"
     near.scbTooltip = "Spawn Near\n.partybot distance off\nRemains clickable even when highlighted"
@@ -1272,9 +1333,9 @@ local function SCB_CreateSummonUI(frame)
 
     local visibleClasses = SCB_GetVisibleClasses()
     local gridLeft = 16
-    local gridTop = -66
+    local gridTop = -4
     local cellWidth = 72
-    local cellHeight = 100
+    local cellHeight = 94
     local classSize = 42
     local roleSize = 18
     local roleGap = 3
@@ -1289,10 +1350,10 @@ local function SCB_CreateSummonUI(frame)
         cellX = gridLeft + (col * cellWidth)
         cellY = gridTop - (row * cellHeight)
 
-        classFrame = CreateFrame("Frame", nil, frame)
+        classFrame = CreateFrame("Frame", nil, content)
         classFrame:SetWidth(classSize)
         classFrame:SetHeight(classSize)
-        classFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", cellX + ((cellWidth - classSize) / 2), cellY)
+        classFrame:SetPoint("TOPLEFT", content, "TOPLEFT", cellX + ((cellWidth - classSize) / 2), cellY)
         classFrame:EnableMouse(true)
         classFrame.scbTooltip = classInfo.name
         classFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1319,8 +1380,8 @@ local function SCB_CreateSummonUI(frame)
             roleY = cellY - classSize - 5 - (roleRow * (roleSize + roleGap))
 
             roleTexture = SCB_RoleTexture(roleInfo)
-            roleButton = SCB_CreateArtButton(frame, nil, roleSize, roleTexture)
-            roleButton:SetPoint("TOPLEFT", frame, "TOPLEFT", roleX, roleY)
+            roleButton = SCB_CreateArtButton(content, nil, roleSize, roleTexture)
+            roleButton:SetPoint("TOPLEFT", content, "TOPLEFT", roleX, roleY)
             roleButton.scbClass = classInfo.key
             roleButton.scbRole = roleInfo.role
             roleButton.scbExtra = roleInfo.extra
@@ -1333,16 +1394,16 @@ local function SCB_CreateSummonUI(frame)
 end
 
 local function SCB_CreateCommandUI(frame)
-    SCB_CreateSectionTitle(frame, "Commands", 16, -258)
+    local section, content = SCB_CreateCollapsibleSection(frame, "commands", "Command Bots", 276)
 
-    local buttonSize = 31
+    local buttonSize = 32
     local gap = 3
     local rowGap = 1
-    local groupGap = 10
+    local groupGap = 20
     local maxColumns = 7
     local maxRowWidth = (maxColumns * buttonSize) + ((maxColumns - 1) * gap)
     local left = math.floor((frame:GetWidth() - maxRowWidth) / 2)
-    local top = -278
+    local top = -2
 
     local rows = {
         { recipient = "all", commands = { "heel", "move", "stay", "forceheel", "pause", "unpause" } },
@@ -1368,8 +1429,8 @@ local function SCB_CreateCommandUI(frame)
         end
         recipient = recipientByKey[row.recipient]
 
-        button = SCB_CreateArtButton(frame, nil, buttonSize, SCB.assetRoot .. recipient.icon)
-        button:SetPoint("TOPLEFT", frame, "TOPLEFT", left, y)
+        button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. recipient.icon)
+        button:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
         button.scbTooltip = recipient.label
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
@@ -1378,8 +1439,8 @@ local function SCB_CreateCommandUI(frame)
             commandKey = row.commands[i]
             commandInfo = SCB.commands[commandKey]
             route = commandInfo.routes[row.recipient]
-            button = SCB_CreateArtButton(frame, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
-            button:SetPoint("TOPLEFT", frame, "TOPLEFT", left + (i * (buttonSize + gap)), y)
+            button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
+            button:SetPoint("TOPLEFT", content, "TOPLEFT", left + (i * (buttonSize + gap)), y)
             button.scbCommandKey = commandKey
             button.scbRecipientKey = row.recipient
             button.scbRecipientLabel = recipient.label
@@ -1401,15 +1462,15 @@ local function SCB_CreateCommandUI(frame)
 
     -- Object and AoE have fixed natural scope and therefore do not need a
     -- recipient icon. Keep them separate from the recipient rows.
-    y = y - 10
+    y = y - groupGap
     local standalone = { "object", "aoe" }
     local standaloneWidth = (2 * buttonSize) + gap
     local standaloneLeft = math.floor((frame:GetWidth() - standaloneWidth) / 2)
     for i = 1, table.getn(standalone) do
         commandKey = standalone[i]
         commandInfo = SCB.commands[commandKey]
-        button = SCB_CreateArtButton(frame, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
-        button:SetPoint("TOPLEFT", frame, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
+        button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
+        button:SetPoint("TOPLEFT", content, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
         button.scbCommandKey = commandKey
         button.scbRecipientKey = "all"
         button.scbRecipientLabel = "All"
@@ -1418,18 +1479,15 @@ local function SCB_CreateCommandUI(frame)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
     end
-
-    SCB.commandBottomY = y - buttonSize
 end
 
 local function SCB_CreateRaidmarkUI(frame)
-    local titleY = (SCB.commandBottomY or -465) - 24
-    local title = SCB_CreateSectionTitle(frame, "Raidmarks", 16, titleY)
+    local section, content = SCB_CreateCollapsibleSection(frame, "assignments", "Assignments", 34)
     local toggleSize = 22
     local toggleGap = 3
 
-    local focus = SCB_CreateArtButton(frame, nil, toggleSize, SCB.assetRoot .. "focus.tga")
-    focus:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, titleY + 4)
+    local focus = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "focus.tga")
+    focus:SetPoint("TOPRIGHT", section, "TOPRIGHT", -44, -2)
     focus.scbMarkMode = "focus"
     focus.scbTooltip = "Focus marks"
     focus:SetScript("OnClick", SCB_RaidmarkModeOnClick)
@@ -1437,7 +1495,7 @@ local function SCB_CreateRaidmarkUI(frame)
     focus:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB.focusModeButton = focus
 
-    local cc = SCB_CreateArtButton(frame, nil, toggleSize, SCB.assetRoot .. "cc.tga")
+    local cc = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "cc.tga")
     cc:SetPoint("LEFT", focus, "RIGHT", toggleGap, 0)
     cc.scbMarkMode = "cc"
     cc.scbTooltip = "CC marks"
@@ -1453,21 +1511,19 @@ local function SCB_CreateRaidmarkUI(frame)
     local gap = 2
     local totalWidth = (8 * markSize) + (7 * gap)
     local left = math.floor((frame:GetWidth() - totalWidth) / 2)
-    local y = titleY - 25
+    local y = -4
     local i, mark, button
 
     for i = 1, table.getn(SCB.raidMarks) do
         mark = SCB.raidMarks[i]
-        button = SCB_CreateArtButton(frame, nil, markSize, SCB.assetRoot .. mark.key .. ".tga")
-        button:SetPoint("TOPLEFT", frame, "TOPLEFT", left + ((i - 1) * (markSize + gap)), y)
+        button = SCB_CreateArtButton(content, nil, markSize, SCB.assetRoot .. mark.key .. ".tga")
+        button:SetPoint("TOPLEFT", content, "TOPLEFT", left + ((i - 1) * (markSize + gap)), y)
         button.scbMark = mark.key
         button.scbTooltip = mark.name .. " (uses selected Focus/CC mode)"
         button:SetScript("OnClick", SCB_RaidMarkOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
     end
-
-    SCB.raidmarkBottomY = y - markSize
 end
 
 local function SCB_CreatePresetUI(frame)
@@ -1481,7 +1537,7 @@ local function SCB_CreatePresetUI(frame)
 
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", frame)
     panel:SetWidth(190)
-    panel:SetHeight(226)
+    panel:SetHeight(250)
     panel:SetPoint("TOPRIGHT", frame, "TOPLEFT", -2, -39)
     panel:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -1548,22 +1604,30 @@ local function SCB_CreatePresetUI(frame)
     menu:Hide()
     SCB.presetMenu = menu
 
-    local playerNum = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerNum:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -66)
-    playerNum:SetText("1")
+    local playerClass = SCB_GetPlayerClassInfo()
+    local playerIcon = CreateFrame("Frame", nil, panel)
+    playerIcon:SetWidth(26)
+    playerIcon:SetHeight(26)
+    playerIcon:SetPoint("TOPLEFT", panel, "TOPLEFT", 47, -62)
+    playerIcon:EnableMouse(true)
+    playerIcon.scbTooltip = playerClass and playerClass.name or "Player"
+    playerIcon:SetScript("OnEnter", SCB_TooltipOnEnter)
+    playerIcon:SetScript("OnLeave", SCB_TooltipOnLeave)
+    local playerTexture = playerIcon:CreateTexture(nil, "ARTWORK")
+    playerTexture:SetAllPoints(playerIcon)
+    if playerClass then
+        playerTexture:SetTexture(SCB.assetRoot .. playerClass.icon)
+    end
+
     local playerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerText:SetPoint("LEFT", playerNum, "RIGHT", 13, 0)
+    playerText:SetPoint("LEFT", playerIcon, "RIGHT", 8, 0)
     playerText:SetText("Player")
     playerText:SetTextColor(1, 1, 1, 1)
 
-    local i, num, classButton, roleButton
+    local i, classButton, roleButton
     for i = 1, 4 do
-        num = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        num:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -89 - ((i - 1) * 30))
-        num:SetText(i + 1)
-
         classButton = SCB_CreateArtButton(panel, nil, 26, SCB.assetRoot .. "warrior.tga", true)
-        classButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 47, -83 - ((i - 1) * 30))
+        classButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 47, -92 - ((i - 1) * 30))
         classButton.scbSlotIndex = i
         classButton:SetScript("OnClick", SCB_PresetClassOnClick)
         classButton:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1601,11 +1665,46 @@ local function SCB_CreatePresetUI(frame)
     end
 end
 
+SCB_LayoutSections = function()
+    if not SCB.frame then
+        return
+    end
+    SCB_EnsureSectionDB()
+
+    local y = -38
+    local sectionGap = 4
+    local i, key, section, collapsed
+
+    for i = 1, table.getn(SCB.sectionOrder) do
+        key = SCB.sectionOrder[i]
+        section = SCB.sections[key]
+        if section then
+            collapsed = SoloCraftBotsDB.sections[key] == true
+            section:ClearAllPoints()
+            section:SetPoint("TOPLEFT", SCB.frame, "TOPLEFT", 0, y)
+
+            if collapsed then
+                section:SetHeight(section.scbCollapsedHeight)
+                section.scbContent:Hide()
+                section.scbToggle.label:SetText("+")
+            else
+                section:SetHeight(section.scbExpandedHeight)
+                section.scbContent:Show()
+                section.scbToggle.label:SetText("-")
+            end
+
+            y = y - section:GetHeight() - sectionGap
+        end
+    end
+
+    SCB.frame:SetHeight((-y) + 8)
+end
+
 local function SCB_CreateUI()
     local frame = CreateFrame("Frame", "SoloCraftBotsFrame", UIParent)
     SCB.frame = frame
     frame:SetWidth(320)
-    frame:SetHeight(620)
+    frame:SetHeight(640)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -1644,6 +1743,7 @@ local function SCB_CreateUI()
     SCB_CreateCommandUI(frame)
     SCB_CreateRaidmarkUI(frame)
     SCB_CreatePresetUI(frame)
+    SCB_LayoutSections()
 
     local escapeProxy = CreateFrame("Frame", "SoloCraftBotsEscapeFrame", UIParent)
     escapeProxy:SetWidth(1)
@@ -1696,12 +1796,14 @@ eventFrame:SetScript("OnEvent", function()
         SoloCraftBotsDB = SoloCraftBotsDB or {}
         SCB_EnsureSessionDB()
         SCB_EnsurePresetDB()
+        SCB_EnsureSectionDB()
     elseif event == "PLAYER_LOGIN" then
         -- Do not rely on ADDON_LOADED having matched a hard-coded folder name.
         -- This also makes first-run SavedVariables initialization explicit.
         SoloCraftBotsDB = SoloCraftBotsDB or {}
         SCB_EnsureSessionDB()
         SCB_EnsurePresetDB()
+        SCB_EnsureSectionDB()
         if not SCB.frame then
             SCB_CreateUI()
         end
