@@ -5,6 +5,11 @@
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
+-- SavedVariables are loaded before addon Lua files. Initialize the table
+-- defensively here as well as during login so startup does not depend on the
+-- addon folder name matching an ADDON_LOADED string literal.
+SoloCraftBotsDB = SoloCraftBotsDB or {}
+
 SCB.version = (GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")) or "unknown"
 SCB.prefix = "|cff88ccff[SCB]|r "
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
@@ -1692,6 +1697,11 @@ eventFrame:SetScript("OnEvent", function()
         SCB_EnsureSessionDB()
         SCB_EnsurePresetDB()
     elseif event == "PLAYER_LOGIN" then
+        -- Do not rely on ADDON_LOADED having matched a hard-coded folder name.
+        -- This also makes first-run SavedVariables initialization explicit.
+        SoloCraftBotsDB = SoloCraftBotsDB or {}
+        SCB_EnsureSessionDB()
+        SCB_EnsurePresetDB()
         if not SCB.frame then
             SCB_CreateUI()
         end
