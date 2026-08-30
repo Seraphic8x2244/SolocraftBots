@@ -1,11 +1,11 @@
 -- SoloCraft Bots
 -- Clean-sheet SoloCraft PartyBot controller for WoW 1.12.1.
--- v0.1.0-test14
+-- Version is sourced from SoloCraftBots.toc.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
-SCB.version = "0.1.0-test14"
+SCB.version = (GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")) or "unknown"
 SCB.prefix = "|cff88ccff[SCB]|r "
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
 SCB.commandButtons = {}
@@ -14,10 +14,9 @@ SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
 SCB.pendingBotAdds = 0
 SCB.pendingBotAddsExpires = 0
-SCB.presetBatchQueue = {}
-SCB.presetBatchIndex = 1
-SCB.presetBatchElapsed = 0
-SCB.presetBatchRunning = false
+SCB.presetSpawnQueue = {}
+SCB.presetSpawnElapsed = 0
+SCB.presetSpawnInterval = 0.10
 SCB.initialSessionValidationPending = false
 SCB.lastRoster = nil
 
@@ -436,8 +435,11 @@ local function SCB_BuildSpawnCommand(classKey, role, extra)
 end
 
 local function SCB_SendSpawnCommand(command)
+    if not command or command == "" then
+        return
+    end
     SCB_RegisterSpawnIntent()
-    SCB_SendCommand(command)
+    SendChatMessage(".partybot " .. command, "SAY")
 end
 
 local function SCB_SpawnOnClick()
@@ -1082,59 +1084,34 @@ StaticPopupDialogs["SOLOCRAFTBOTS_PRESET_NAME"] = {
     exclusive = 1,
 }
 
-local function SCB_StopPresetBatch()
-    if SCB.presetBatchFrame then
-        SCB.presetBatchFrame:SetScript("OnUpdate", nil)
-    end
-    SCB.presetBatchQueue = {}
-    SCB.presetBatchIndex = 1
-    SCB.presetBatchElapsed = 0
-    SCB.presetBatchRunning = false
-end
-
-local function SCB_PresetBatchOnUpdate()
-    if not SCB.presetBatchRunning then
-        this:SetScript("OnUpdate", nil)
+local function SCB_PresetSpawnQueueOnUpdate()
+    if table.getn(SCB.presetSpawnQueue) == 0 then
+        SCB.presetSpawnElapsed = 0
         return
     end
 
-    if SCB.presetBatchIndex > table.getn(SCB.presetBatchQueue) then
-        SCB_StopPresetBatch()
+    SCB.presetSpawnElapsed = SCB.presetSpawnElapsed + (arg1 or 0)
+    if SCB.presetSpawnElapsed < SCB.presetSpawnInterval then
         return
     end
 
-    SCB.presetBatchElapsed = SCB.presetBatchElapsed + (arg1 or 0)
-    if SCB.presetBatchElapsed < 0.45 then
-        return
-    end
-
-    SCB.presetBatchElapsed = 0
-    SCB_SendSpawnCommand(SCB.presetBatchQueue[SCB.presetBatchIndex])
-    SCB.presetBatchIndex = SCB.presetBatchIndex + 1
+    SCB.presetSpawnElapsed = SCB.presetSpawnElapsed - SCB.presetSpawnInterval
+    SCB_SendSpawnCommand(SCB.presetSpawnQueue[1])
+    table.remove(SCB.presetSpawnQueue, 1)
 end
 
 local function SCB_QueuePresetSpawn(commands)
     local i
-    if not commands or table.getn(commands) == 0 or not SCB.presetBatchFrame then
+
+    if not commands or table.getn(commands) == 0 then
         return
     end
 
-    if not SCB.presetBatchRunning then
-        SCB.presetBatchQueue = {}
-        SCB.presetBatchIndex = 1
-        SCB.presetBatchElapsed = 0
-    end
-
+    -- Preset spawning deliberately mirrors FillRaidBots' simple FIFO model:
+    -- every add command is queued and sent through SAY at a fixed 0.1s cadence.
+    -- No raid conversion, roster-dependent channel switching, or per-batch state.
     for i = 1, table.getn(commands) do
-        table.insert(SCB.presetBatchQueue, commands[i])
-    end
-
-    if not SCB.presetBatchRunning then
-        SCB.presetBatchRunning = true
-        SCB_SendSpawnCommand(SCB.presetBatchQueue[1])
-        SCB.presetBatchIndex = 2
-        SCB.presetBatchElapsed = 0
-        SCB.presetBatchFrame:SetScript("OnUpdate", SCB_PresetBatchOnUpdate)
+        table.insert(SCB.presetSpawnQueue, commands[i])
     end
 end
 
@@ -1155,19 +1132,68 @@ local function SCB_PresetSummonOnClick()
     SCB_QueuePresetSpawn(commands)
 end
 
+local function SCB_SetPresetPanelShown(show)
+    if not SCB.presetPanel then
+        return
+    end
+    if show then
+        SCB.presetPanel:Show()
+        SCB.presetPanel:Raise()
+    else
+        SCB.presetPanel:Hide()
+        SCB_HidePresetMenu()
+    end
+end
+
 local function SCB_PresetToggleOnClick()
     if not SCB.presetPanel then
         return
     end
-    if SCB.presetPanel:IsShown() then
-        SCB.presetPanel:Hide()
-        SCB_HidePresetMenu()
-        this.label:SetText("Presets >")
-    else
-        SCB.presetPanel:Show()
-        SCB.presetPanel:Raise()
-        this.label:SetText("< Presets")
+    SCB_SetPresetPanelShown(not SCB.presetPanel:IsShown())
+end
+
+-- -------------------------------------------------------------------------
+-- Escape / top-level visibility
+-- -------------------------------------------------------------------------
+
+local function SCB_SetEscapeProxyShown(show)
+    if not SCB.escapeProxy then
+        return
     end
+    if show then
+        SCB.escapeProxy:Show()
+    elseif SCB.escapeProxy:IsShown() then
+        SCB.ignoreEscapeProxyHide = true
+        SCB.escapeProxy:Hide()
+        SCB.ignoreEscapeProxyHide = false
+    end
+end
+
+local function SCB_EscapeProxyOnHide()
+    if SCB.ignoreEscapeProxyHide then
+        return
+    end
+    if not SCB.frame or not SCB.frame:IsShown() then
+        return
+    end
+
+    -- First Escape closes the preset side panel; the next closes SCB.
+    if SCB.presetPanel and SCB.presetPanel:IsShown() then
+        SCB_SetPresetPanelShown(false)
+        this:Show()
+        return
+    end
+
+    SCB.frame:Hide()
+end
+
+local function SCB_MainFrameOnShow()
+    SCB_SetEscapeProxyShown(true)
+end
+
+local function SCB_MainFrameOnHide()
+    SCB_SetPresetPanelShown(false)
+    SCB_SetEscapeProxyShown(false)
 end
 
 -- -------------------------------------------------------------------------
@@ -1304,22 +1330,22 @@ end
 local function SCB_CreateCommandUI(frame)
     SCB_CreateSectionTitle(frame, "Commands", 16, -258)
 
-    local buttonSize = 26
+    local buttonSize = 31
     local gap = 3
     local rowGap = 1
-    local groupGap = 5
+    local groupGap = 10
     local maxColumns = 7
     local maxRowWidth = (maxColumns * buttonSize) + ((maxColumns - 1) * gap)
     local left = math.floor((frame:GetWidth() - maxRowWidth) / 2)
     local top = -278
 
     local rows = {
-        { recipient = "all", commands = { "heel", "forceheel", "move", "stay", "pause", "unpause" } },
-        { recipient = "target", commands = { "heel", "forceheel", "move", "stay", "pause", "unpause" } },
-        { gapBefore = true, recipient = "tank", commands = { "heel", "forceheel", "move", "stay", "pull" } },
-        { recipient = "healer", commands = { "heel", "forceheel", "move", "stay" } },
-        { recipient = "melee", commands = { "heel", "forceheel", "move", "stay" } },
-        { recipient = "ranged", commands = { "heel", "forceheel", "move", "stay", "spread", "hug" } },
+        { recipient = "all", commands = { "heel", "move", "stay", "forceheel", "pause", "unpause" } },
+        { recipient = "target", commands = { "heel", "move", "stay", "forceheel", "pause", "unpause" } },
+        { gapBefore = true, recipient = "tank", commands = { "heel", "move", "stay", "forceheel", "pull" } },
+        { recipient = "healer", commands = { "heel", "move", "stay", "forceheel" } },
+        { recipient = "melee", commands = { "heel", "move", "stay", "forceheel" } },
+        { recipient = "ranged", commands = { "heel", "move", "stay", "forceheel", "spread", "hug" } },
     }
 
     local recipientByKey = {}
@@ -1370,7 +1396,7 @@ local function SCB_CreateCommandUI(frame)
 
     -- Object and AoE have fixed natural scope and therefore do not need a
     -- recipient icon. Keep them separate from the recipient rows.
-    y = y - 5
+    y = y - 10
     local standalone = { "object", "aoe" }
     local standaloneWidth = (2 * buttonSize) + gap
     local standaloneLeft = math.floor((frame:GetWidth() - standaloneWidth) / 2)
@@ -1440,8 +1466,8 @@ local function SCB_CreateRaidmarkUI(frame)
 end
 
 local function SCB_CreatePresetUI(frame)
-    local toggle = SCB_CreateTextButton(frame, "SoloCraftBotsPresetToggle", 64, 22, "Presets >")
-    toggle:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, -12)
+    local toggle = SCB_CreateTextButton(frame, "SoloCraftBotsPresetToggle", 64, 20, "Presets")
+    toggle:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -10)
     toggle:SetScript("OnClick", SCB_PresetToggleOnClick)
     toggle.scbTooltip = "Open/close group presets"
     toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1451,7 +1477,7 @@ local function SCB_CreatePresetUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", frame)
     panel:SetWidth(190)
     panel:SetHeight(226)
-    panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, -39)
+    panel:SetPoint("TOPRIGHT", frame, "TOPLEFT", -2, -39)
     panel:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -1574,7 +1600,7 @@ local function SCB_CreateUI()
     local frame = CreateFrame("Frame", "SoloCraftBotsFrame", UIParent)
     SCB.frame = frame
     frame:SetWidth(320)
-    frame:SetHeight(565)
+    frame:SetHeight(620)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -1590,15 +1616,12 @@ local function SCB_CreateUI()
     frame:SetBackdropColor(0.05, 0.05, 0.05, 0.96)
     frame:SetScript("OnDragStart", SCB_FrameDragStart)
     frame:SetScript("OnDragStop", SCB_FrameDragStop)
+    frame:SetScript("OnShow", SCB_MainFrameOnShow)
+    frame:SetScript("OnHide", SCB_MainFrameOnHide)
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", frame, "TOP", 0, -13)
     title:SetText("SoloCraft Bots")
-
-    local version = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    version:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -15)
-    version:SetText(SCB.version)
-    version:SetTextColor(0.6, 0.6, 0.6, 1)
 
     local close = CreateFrame("Button", "SoloCraftBotsCloseButton", frame, "UIPanelButtonTemplate")
     close:SetWidth(22)
@@ -1607,12 +1630,27 @@ local function SCB_CreateUI()
     close:SetText("X")
     close:SetScript("OnClick", SCB_CloseOnClick)
 
+    local version = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    version:SetPoint("RIGHT", close, "LEFT", -5, 0)
+    version:SetText(SCB.version)
+    version:SetTextColor(0.6, 0.6, 0.6, 1)
+
     SCB_CreateSummonUI(frame)
     SCB_CreateCommandUI(frame)
     SCB_CreateRaidmarkUI(frame)
     SCB_CreatePresetUI(frame)
 
-    SCB.presetBatchFrame = CreateFrame("Frame", "SoloCraftBotsPresetBatchFrame", UIParent)
+    local escapeProxy = CreateFrame("Frame", "SoloCraftBotsEscapeFrame", UIParent)
+    escapeProxy:SetWidth(1)
+    escapeProxy:SetHeight(1)
+    escapeProxy:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -100, 100)
+    escapeProxy:SetScript("OnHide", SCB_EscapeProxyOnHide)
+    escapeProxy:Hide()
+    SCB.escapeProxy = escapeProxy
+    table.insert(UISpecialFrames, "SoloCraftBotsEscapeFrame")
+
+    SCB.presetSpawnQueueFrame = CreateFrame("Frame", "SoloCraftBotsPresetSpawnQueueFrame", UIParent)
+    SCB.presetSpawnQueueFrame:SetScript("OnUpdate", SCB_PresetSpawnQueueOnUpdate)
 
     SCB_RestorePosition()
     SCB_RefreshDistanceButtons()
@@ -1629,7 +1667,6 @@ function SoloCraftBots_Toggle()
     end
     if SCB.frame:IsShown() then
         SCB.frame:Hide()
-        SCB_HidePresetMenu()
     else
         SCB.frame:Show()
         SCB.frame:Raise()
