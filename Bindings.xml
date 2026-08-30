@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="SOLOCRAFTBOTS_TOGGLE" header="SOLOCRAFTBOTS">
+        SoloCraftBots_Toggle();
+    </Binding>
+</Bindings>
