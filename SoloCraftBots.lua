@@ -1915,7 +1915,8 @@ end
 local function SCB_PresetPlayerRoleOnClick()
     local slotIndex = this.scbSlotIndex
     local playerKey = this.scbPlayerKey
-    local present, current, currentIndex, newIndex, roleInfo
+    local present, playerInfo, classInfo, currentRole, currentIndex, newIndex, roleInfo
+    local _, classToken
 
     if SCB.draggedPresetPlayer then
         SCB_FinishPresetPlayerDrag(slotIndex)
@@ -1926,18 +1927,43 @@ local function SCB_PresetPlayerRoleOnClick()
     end
 
     present = SCB_GetPresentHumanMap()
-    current, currentIndex = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles[playerKey] or SCB_DefaultPlayerRole(present[playerKey]))
-    if arg1 == "RightButton" then
-        newIndex = currentIndex - 1
-        if newIndex < 1 then newIndex = table.getn(SCB_PLAYER_ROLES) end
-    else
-        newIndex = currentIndex + 1
-        if newIndex > table.getn(SCB_PLAYER_ROLES) then newIndex = 1 end
+    playerInfo = present[playerKey]
+    if not playerInfo then
+        return
     end
 
-    roleInfo = SCB_PLAYER_ROLES[newIndex]
+    -- Reuse the same class role list as bot slots. The player's actual class
+    -- determines which roles can be selected; there is no separate player-role
+    -- ruleset to drift out of sync.
+    classToken = playerInfo.classToken
+    if not classToken and playerInfo.unit and UnitClass then
+        _, classToken = UnitClass(playerInfo.unit)
+    end
+    classInfo = SCB_FindClass(classToken and string.lower(classToken) or nil)
+    if not classInfo or not classInfo.roles or table.getn(classInfo.roles) == 0 then
+        return
+    end
+
+    currentRole = SCB.presetEditorPlayerRoles[playerKey] or SCB_DefaultPlayerRole(playerInfo)
+    currentIndex = 1
+    for newIndex = 1, table.getn(classInfo.roles) do
+        if classInfo.roles[newIndex].role == currentRole then
+            currentIndex = newIndex
+            break
+        end
+    end
+
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 1 then newIndex = table.getn(classInfo.roles) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(classInfo.roles) then newIndex = 1 end
+    end
+
+    roleInfo = classInfo.roles[newIndex]
     SCB.presetEditorPlayerRoles[playerKey] = roleInfo.role
-    SCB_SetArtButtonTexture(this, SCB.assetRoot .. roleInfo.icon, SCB.assetRoot .. string.gsub(roleInfo.icon, "%.tga$", "_h.tga"))
+    SCB_SetArtButtonTexture(this, SCB_RoleTexture(roleInfo), SCB_RoleHighlightTexture(roleInfo))
     this.scbTooltip = roleInfo.label .. "\nLeft-click next player role; right-click previous"
     if SCB_RefreshPresetCounters then
         SCB_RefreshPresetCounters()
