@@ -17,6 +17,12 @@ SCB.commandButtons = {}
 SCB.presetSlotButtons = {}
 SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
+SCB.presetEditorPlayers = {}
+SCB.presetPlayerFrames = {}
+SCB.presetPlayerPoolButtons = {}
+SCB.presetSlotRows = {}
+SCB.presetDropTargets = {}
+SCB.draggedPresetPlayer = nil
 SCB.pendingBotAdds = 0
 SCB.pendingBotAddsExpires = 0
 SCB.presetSpawnQueue = {}
@@ -87,7 +93,7 @@ local function SCB_CreateTextButton(parent, name, width, height, text, allowRigh
     return button
 end
 
-local function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick)
+local function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, highlightTexturePath)
     local button = CreateFrame("Button", name, parent)
     button:SetWidth(size)
     button:SetHeight(size)
@@ -105,33 +111,54 @@ local function SCB_CreateArtButton(parent, name, size, texturePath, allowRightCl
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints(button)
-    highlight:SetTexture(texturePath)
-    highlight:SetBlendMode("ADD")
-    highlight:SetAlpha(0.28)
+    if highlightTexturePath then
+        highlight:SetTexture(highlightTexturePath)
+        highlight:SetBlendMode("BLEND")
+        highlight:SetAlpha(1)
+    else
+        highlight:SetTexture(texturePath)
+        highlight:SetBlendMode("ADD")
+        highlight:SetAlpha(0.22)
+    end
     button.highlight = highlight
-
-    local selected = button:CreateTexture(nil, "OVERLAY")
-    selected:SetTexture(texturePath)
-    selected:SetBlendMode("ADD")
-    selected:SetAlpha(0.42)
-    selected:SetWidth(size + 5)
-    selected:SetHeight(size + 5)
-    selected:SetPoint("CENTER", button, "CENTER", 0, 0)
-    selected:Hide()
-    button.selectedGlow = selected
+    button.scbNormalTexture = texturePath
+    button.scbHighlightTexture = highlightTexturePath
 
     return button
 end
 
-local function SCB_SetArtButtonSelected(button, selected)
-    if not button or not button.selectedGlow then
+local function SCB_SetArtButtonTexture(button, texturePath, highlightTexturePath)
+    if not button or not button.icon then
         return
     end
-    if selected then
-        button.selectedGlow:Show()
-    else
-        button.selectedGlow:Hide()
+    button.scbNormalTexture = texturePath
+    button.scbHighlightTexture = highlightTexturePath
+    button.icon:SetTexture(texturePath)
+    if button.highlight then
+        button.highlight:SetTexture(highlightTexturePath or texturePath)
+        if highlightTexturePath then
+            button.highlight:SetBlendMode("BLEND")
+            button.highlight:SetAlpha(1)
+        else
+            button.highlight:SetBlendMode("ADD")
+            button.highlight:SetAlpha(0.22)
+        end
     end
+end
+
+local function SCB_AddForceMoveOverlay(button)
+    if not button or button.scbForceMoveBang then
+        return
+    end
+    local bang = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bang:SetPoint("TOPRIGHT", button, "TOPRIGHT", -3, -2)
+    bang:SetText("!")
+    bang:SetTextColor(1, 0.05, 0.05, 1)
+    if bang.SetShadowColor then
+        bang:SetShadowColor(0, 0, 0, 1)
+        bang:SetShadowOffset(1, -1)
+    end
+    button.scbForceMoveBang = bang
 end
 
 local function SCB_SetArtButtonAvailable(button, available)
@@ -170,7 +197,7 @@ local function SCB_CreateSectionTitle(parent, text, x, y)
 end
 
 SCB.sections = SCB.sections or {}
-SCB.sectionOrder = { "summon", "commands", "assignments" }
+SCB.sectionOrder = { "commands", "assignments", "summon" }
 local SCB_LayoutSections
 
 local function SCB_EnsureSectionDB()
@@ -372,6 +399,13 @@ local function SCB_RoleTexture(roleInfo)
     return SCB.assetRoot .. roleInfo.icon
 end
 
+local function SCB_RoleHighlightTexture(roleInfo)
+    if not roleInfo or roleInfo.texture or not roleInfo.icon then
+        return nil
+    end
+    return SCB.assetRoot .. string.gsub(roleInfo.icon, "%.tga$", "_h.tga")
+end
+
 -- -------------------------------------------------------------------------
 -- Session state / bot identity
 -- -------------------------------------------------------------------------
@@ -419,13 +453,18 @@ local function SCB_ResetSessionState()
 end
 
 local function SCB_RefreshDistanceButtons()
-    if not SCB.distanceFarButton or not SCB.distanceNearButton then
+    if not SCB.distanceButton then
         return
     end
     SCB_EnsureSessionDB()
     local state = SoloCraftBotsDB.session.state.distance
-    SCB_SetArtButtonSelected(SCB.distanceFarButton, state == "far")
-    SCB_SetArtButtonSelected(SCB.distanceNearButton, state == "near")
+    if state == "far" then
+        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance.tga", nil)
+        SCB.distanceButton.scbTooltip = "Spawn Far\n.partybot distance on\nClick to switch to Spawn Near"
+    else
+        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance_off.tga", nil)
+        SCB.distanceButton.scbTooltip = "Spawn Near\n.partybot distance off\nClick to switch to Spawn Far"
+    end
 end
 
 local function SCB_ValidateSavedSession()
@@ -517,12 +556,12 @@ end
 
 local function SCB_DistanceOnClick()
     SCB_EnsureSessionDB()
-    if this.scbDistanceMode == "far" then
-        SCB_SendCommand("distance on")
-        SoloCraftBotsDB.session.state.distance = "far"
-    else
+    if SoloCraftBotsDB.session.state.distance == "far" then
         SCB_SendCommand("distance off")
         SoloCraftBotsDB.session.state.distance = "near"
+    else
+        SCB_SendCommand("distance on")
+        SoloCraftBotsDB.session.state.distance = "far"
     end
     SCB_RefreshDistanceButtons()
 end
@@ -532,35 +571,33 @@ end
 -- -------------------------------------------------------------------------
 
 SCB.recipients = {
-    { key = "all", label = "All", icon = "all.tga" },
-    { key = "target", label = "Target", icon = "target.tga" },
-    { key = "tank", label = "Tanks", icon = "tank.tga" },
-    { key = "healer", label = "Healers", icon = "healer.tga" },
-    { key = "melee", label = "Melee", icon = "melee.tga" },
-    { key = "ranged", label = "Ranged", icon = "ranged.tga" },
+    { key = "all", label = "All", icon = "all.tga", highlightIcon = "all_h.tga" },
+    { key = "target", label = "Target", icon = "one.tga", highlightIcon = "one_h.tga" },
+    { key = "tank", label = "Tanks", icon = "tank.tga", highlightIcon = "tank_h.tga" },
+    { key = "healer", label = "Healers", icon = "healer.tga", highlightIcon = "healer_h.tga" },
+    { key = "melee", label = "Melee", icon = "melee.tga", highlightIcon = "melee_h.tga" },
+    { key = "ranged", label = "Ranged", icon = "ranged.tga", highlightIcon = "ranged_h.tga" },
 }
 
 SCB.commandOrder = {
-    "heel", "forceheel", "move", "stay", "attack", "passive",
-    "spread", "object", "hug", "pause", "unpause", "pull", "aoe",
+    "play", "forcemove", "move", "come", "stay", "pause",
+    "pull", "spread", "hug", "object", "aoe", "attackstart", "attackstop",
 }
 
 SCB.commands = {
-    heel = {
-        label = "Heel",
-        icon = "come.tga",
+    play = {
+        label = "Play",
+        icon = "unpause.tga",
+        highlightIcon = "unpause_h.tga",
         routes = {
-            all = { "cometome" },
-            target = { "come" },
-            tank = { "cometank" },
-            healer = { "comeheal" },
-            melee = { "comemelee" },
-            ranged = { "comerange" },
+            all = { "unpause all" },
+            target = { "unpause" },
         },
     },
-    forceheel = {
-        label = "Force Heel",
-        icon = "forcecome.tga",
+    forcemove = {
+        label = "Force Move",
+        icon = "move.tga",
+        highlightIcon = "move_h.tga",
         routes = {
             all = { "moveall", "cometome" },
             target = { "move", "come" },
@@ -573,6 +610,7 @@ SCB.commands = {
     move = {
         label = "Move",
         icon = "move.tga",
+        highlightIcon = "move_h.tga",
         routes = {
             all = { "moveall" },
             target = { "move" },
@@ -582,9 +620,23 @@ SCB.commands = {
             ranged = { "moverange" },
         },
     },
+    come = {
+        label = "Come",
+        icon = "come.tga",
+        highlightIcon = "come_h.tga",
+        routes = {
+            all = { "cometome" },
+            target = { "come" },
+            tank = { "cometank" },
+            healer = { "comeheal" },
+            melee = { "comemelee" },
+            ranged = { "comerange" },
+        },
+    },
     stay = {
         label = "Stay",
         icon = "stay.tga",
+        highlightIcon = "stay_h.tga",
         routes = {
             all = { "stayall" },
             target = { "stay" },
@@ -594,56 +646,56 @@ SCB.commands = {
             ranged = { "stayrange" },
         },
     },
-    attack = {
-        label = "Attack",
-        icon = "attack.tga",
-        routes = { all = { "attackstart" } },
-    },
-    passive = {
-        label = "Passive",
-        icon = "stopattack2.tga",
-        routes = { all = { "attackstop" } },
-    },
-    spread = {
-        label = "Spread",
-        icon = "spread.tga",
-        routes = { ranged = { "spread" } },
-    },
-    object = {
-        label = "Object",
-        icon = "gobject.tga",
-        routes = { all = { "usegobject" } },
-    },
-    hug = {
-        label = "Hug",
-        icon = "spreadoff.tga",
-        routes = { ranged = { "spreadoff" } },
-    },
     pause = {
         label = "Pause",
         icon = "pause.tga",
+        highlightIcon = "pause_h.tga",
         routes = {
             all = { "pause all" },
             target = { "pause" },
         },
     },
-    unpause = {
-        label = "Unpause",
-        icon = "unpause.tga",
-        routes = {
-            all = { "unpause all" },
-            target = { "unpause" },
-        },
-    },
     pull = {
         label = "Pull",
         icon = "pull.tga",
+        highlightIcon = "pull_h.tga",
         routes = { tank = { "pull" } },
+    },
+    spread = {
+        label = "Spread",
+        icon = "spread.tga",
+        highlightIcon = "spread_h.tga",
+        routes = { ranged = { "spread" } },
+    },
+    hug = {
+        label = "Hug",
+        icon = "unspread.tga",
+        highlightIcon = "unspread_h.tga",
+        routes = { ranged = { "spreadoff" } },
+    },
+    object = {
+        label = "Object",
+        icon = "object.tga",
+        highlightIcon = "object_h.tga",
+        routes = { all = { "usegobject" } },
     },
     aoe = {
         label = "AoE",
         icon = "aoe.tga",
+        highlightIcon = "aoe_h.tga",
         routes = { all = { "aoe" } },
+    },
+    attackstart = {
+        label = "Attack Start",
+        icon = "attackstart.tga",
+        highlightIcon = "attackstart_h.tga",
+        routes = { all = { "attackstart" } },
+    },
+    attackstop = {
+        label = "Attack Stop",
+        icon = "attackstop.tga",
+        highlightIcon = "attackstop_h.tga",
+        routes = { all = { "attackstop" } },
     },
 }
 
@@ -682,19 +734,27 @@ SCB.raidMarks = {
     { key = "star", name = "Star" },
 }
 
-local function SCB_RefreshRaidmarkModeButtons()
-    if not SCB.focusModeButton or not SCB.ccModeButton then
+local function SCB_RefreshRaidmarkModeButton()
+    if not SCB.assignmentModeButton then
         return
     end
-    SCB_SetArtButtonSelected(SCB.focusModeButton, SCB.raidMarkMode == "focus")
-    SCB_SetArtButtonSelected(SCB.ccModeButton, SCB.raidMarkMode == "cc")
+    if SCB.raidMarkMode == "cc" then
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "cc_h.tga", nil)
+        SCB.assignmentModeButton.scbTooltip = "CC assignments\nClick to switch to Focus assignments"
+    else
+        SCB.raidMarkMode = "focus"
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "focus_h.tga", nil)
+        SCB.assignmentModeButton.scbTooltip = "Focus assignments\nClick to switch to CC assignments"
+    end
 end
 
 local function SCB_RaidmarkModeOnClick()
-    if this.scbMarkMode == "focus" or this.scbMarkMode == "cc" then
-        SCB.raidMarkMode = this.scbMarkMode
-        SCB_RefreshRaidmarkModeButtons()
+    if SCB.raidMarkMode == "focus" then
+        SCB.raidMarkMode = "cc"
+    else
+        SCB.raidMarkMode = "focus"
     end
+    SCB_RefreshRaidmarkModeButton()
 end
 
 local function SCB_RaidMarkOnClick()
@@ -727,10 +787,19 @@ end
 
 local function SCB_DefaultPresetSlots()
     return {
+        -- Every raid position owns a bot assignment. Human players temporarily
+        -- overlay one of these positions and sacrifice that bot while present.
+        { class = "warrior", role = "tank" },
         { class = "warrior", role = "tank" },
         { class = "priest", role = "healer" },
         { class = "rogue", role = "meleedps" },
-        { class = "mage", role = "rangedps" }, -- Frost: no extra arg
+        { class = "mage", role = "rangedps" },
+
+        { class = "warrior", role = "tank" },
+        { class = "priest", role = "healer" },
+        { class = "rogue", role = "meleedps" },
+        { class = "mage", role = "rangedps" },
+        { class = "hunter", role = "rangedps" },
     }
 end
 
@@ -738,7 +807,24 @@ local function SCB_NormalizePresetSlots(slots)
     local defaults = SCB_DefaultPresetSlots()
     local normalized = {}
     local i, slot
-    for i = 1, 4 do
+
+    -- 0.2.3 and earlier stored only the nine bot positions because the player
+    -- was hard-coded into Group 1 / Slot 1. Migrate that shape losslessly by
+    -- inserting a new underlying bot assignment at slot 1.
+    if slots and table.getn(slots) == 9 then
+        normalized[1] = SCB_CopySlot(defaults[1])
+        for i = 1, 9 do
+            slot = slots[i]
+            if slot and slot.class and slot.role then
+                normalized[i + 1] = SCB_CopySlot(slot)
+            else
+                normalized[i + 1] = SCB_CopySlot(defaults[i + 1])
+            end
+        end
+        return normalized
+    end
+
+    for i = 1, 10 do
         slot = slots and slots[i] or nil
         if slot and slot.class and slot.role then
             normalized[i] = SCB_CopySlot(slot)
@@ -749,12 +835,132 @@ local function SCB_NormalizePresetSlots(slots)
     return normalized
 end
 
+local function SCB_PresetSlotLabel(index)
+    if index <= 5 then
+        return "Group 1 / Slot " .. index
+    end
+    return "Group 2 / Slot " .. (index - 5)
+end
+
+local function SCB_CopyPlayerSlots(playerSlots)
+    local copy = {}
+    local key, slot
+    if playerSlots then
+        for key, slot in pairs(playerSlots) do
+            if type(key) == "string" and type(slot) == "number" and slot >= 1 and slot <= 10 then
+                copy[key] = slot
+            end
+        end
+    end
+    if not copy["$self"] then
+        copy["$self"] = 1
+    end
+    return copy
+end
+
+local function SCB_PresetPlayerDisplayName(key)
+    if key == "$self" then
+        return (UnitName and UnitName("player")) or "YOU"
+    end
+    return key
+end
+
+local function SCB_IsKnownBotName(name)
+    if not name then
+        return false
+    end
+    SCB_EnsureSessionDB()
+    if SoloCraftBotsDB.session.knownBots[name] then
+        return true
+    end
+    return string.find(name, "%*", 1) ~= nil
+end
+
+local function SCB_GetHumanRoster()
+    local roster = {}
+    local seen = {}
+    local function AddUnit(unit, key)
+        local name, _, classToken
+        if not UnitExists or not UnitExists(unit) then
+            return
+        end
+        name = UnitName(unit)
+        if not name or seen[name] or (key ~= "$self" and SCB_IsKnownBotName(name)) then
+            return
+        end
+        seen[name] = true
+        if UnitClass then
+            _, classToken = UnitClass(unit)
+        end
+        table.insert(roster, {
+            key = key or name,
+            name = name,
+            unit = unit,
+            classToken = classToken,
+        })
+    end
+
+    AddUnit("player", "$self")
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        local i
+        for i = 1, GetNumRaidMembers() do
+            AddUnit("raid" .. i, nil)
+        end
+    elseif GetNumPartyMembers then
+        local i
+        for i = 1, GetNumPartyMembers() do
+            AddUnit("party" .. i, nil)
+        end
+    end
+    return roster
+end
+
+local function SCB_GetPresentHumanMap()
+    local map = {}
+    local roster = SCB_GetHumanRoster()
+    local i
+    for i = 1, table.getn(roster) do
+        map[roster[i].key] = roster[i]
+    end
+    return map
+end
+
+local function SCB_PlayerAtPresetSlot(slotIndex)
+    local key, assigned
+    for key, assigned in pairs(SCB.presetEditorPlayers or {}) do
+        if assigned == slotIndex then
+            return key
+        end
+    end
+    return nil
+end
+
+local SCB_SetPresetDirty
+
+local function SCB_AssignPresetPlayer(key, slotIndex)
+    if not key or not slotIndex or slotIndex < 1 or slotIndex > 10 then
+        return
+    end
+    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+    local otherKey = SCB_PlayerAtPresetSlot(slotIndex)
+    local oldSlot = SCB.presetEditorPlayers[key]
+    if otherKey and otherKey ~= key then
+        if oldSlot then
+            SCB.presetEditorPlayers[otherKey] = oldSlot
+        else
+            SCB.presetEditorPlayers[otherKey] = nil
+        end
+    end
+    SCB.presetEditorPlayers[key] = slotIndex
+    SCB_SetPresetDirty(true)
+end
+
 local function SCB_EnsurePresetDB()
     -- Create one starter preset only when presets have never existed. If the
     -- player deliberately deletes every preset, keep the list empty.
     if SoloCraftBotsDB.presets == nil then
         SoloCraftBotsDB.presets = {
-            { name = "Preset 1", slots = SCB_DefaultPresetSlots() },
+            { name = "Preset 1", slots = SCB_DefaultPresetSlots(), playerSlots = { ["$self"] = 1 } },
         }
         SoloCraftBotsDB.currentPreset = 1
         return
@@ -770,7 +976,7 @@ local function SCB_EnsurePresetDB()
     end
 end
 
-local function SCB_SetPresetDirty(dirty)
+SCB_SetPresetDirty = function(dirty)
     SCB.presetDirty = dirty == true
     if not SCB.presetSaveButton then
         return
@@ -820,7 +1026,7 @@ local function SCB_RefreshPresetSlots()
     local i, slot, classInfo, roleInfo
     local classButton, roleButton
 
-    for i = 1, 4 do
+    for i = 1, 10 do
         slot = SCB.presetEditorSlots[i]
         classButton = SCB.presetSlotButtons[i] and SCB.presetSlotButtons[i].classButton
         roleButton = SCB.presetSlotButtons[i] and SCB.presetSlotButtons[i].roleButton
@@ -829,12 +1035,215 @@ local function SCB_RefreshPresetSlots()
             classInfo = SCB_FindClass(slot.class)
             roleInfo = SCB_FindRoleEntry(classInfo, slot.role, slot.extra)
 
-            classButton.icon:SetTexture(SCB.assetRoot .. classInfo.icon)
-            classButton.scbTooltip = "Bot " .. (i + 1) .. ": " .. classInfo.name .. "\nLeft-click next class; right-click previous"
+            SCB_SetArtButtonTexture(classButton, SCB.assetRoot .. classInfo.icon, nil)
+            classButton.scbTooltip = SCB_PresetSlotLabel(i) .. ": " .. classInfo.name .. "\nLeft-click next class; right-click previous"
 
-            roleButton.icon:SetTexture(SCB_RoleTexture(roleInfo))
+            SCB_SetArtButtonTexture(roleButton, SCB_RoleTexture(roleInfo), SCB_RoleHighlightTexture(roleInfo))
             roleButton.scbTooltip = roleInfo.label .. "\nLeft-click next role/spec; right-click previous"
         end
+    end
+end
+
+
+local function SCB_ClassColor(classToken)
+    local fallbackClassColors = {
+        WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
+        PALADIN = { r = 0.96, g = 0.55, b = 0.73 },
+        HUNTER = { r = 0.67, g = 0.83, b = 0.45 },
+        ROGUE = { r = 1.00, g = 0.96, b = 0.41 },
+        PRIEST = { r = 1.00, g = 1.00, b = 1.00 },
+        SHAMAN = { r = 0.14, g = 0.35, b = 1.00 },
+        MAGE = { r = 0.41, g = 0.80, b = 0.94 },
+        WARLOCK = { r = 0.58, g = 0.51, b = 0.79 },
+        DRUID = { r = 1.00, g = 0.49, b = 0.04 },
+    }
+    if classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] then
+        return RAID_CLASS_COLORS[classToken]
+    end
+    return classToken and fallbackClassColors[classToken] or nil
+end
+
+local function SCB_FrameContainsCursor(frame)
+    local x, y, scale
+    if not frame or not frame:IsShown() then
+        return false
+    end
+    if MouseIsOver then
+        return MouseIsOver(frame)
+    end
+    if not GetCursorPosition or not UIParent or not UIParent.GetEffectiveScale then
+        return false
+    end
+    x, y = GetCursorPosition()
+    scale = UIParent:GetEffectiveScale()
+    if not scale or scale == 0 then
+        scale = 1
+    end
+    x = x / scale
+    y = y / scale
+    return frame:GetLeft() and frame:GetRight() and frame:GetTop() and frame:GetBottom()
+        and x >= frame:GetLeft() and x <= frame:GetRight()
+        and y >= frame:GetBottom() and y <= frame:GetTop()
+end
+
+local function SCB_PresetPlayerDragStart()
+    SCB.draggedPresetPlayer = this.scbPlayerKey
+end
+
+local function SCB_PresetPlayerDragStop()
+    local key = SCB.draggedPresetPlayer or this.scbPlayerKey
+    local i
+    SCB.draggedPresetPlayer = nil
+    if not key then
+        return
+    end
+    for i = 1, 10 do
+        if SCB_FrameContainsCursor(SCB.presetDropTargets[i]) then
+            SCB_AssignPresetPlayer(key, i)
+            SCB_RefreshPresetSlots()
+            if SCB_RefreshPresetPlayers then
+                SCB_RefreshPresetPlayers()
+            end
+            return
+        end
+    end
+end
+
+local function SCB_PresetPlayerOnClick()
+    if arg1 == "RightButton" and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
+        SCB.presetEditorPlayers[this.scbPlayerKey] = nil
+        SCB_SetPresetDirty(true)
+        if SCB_RefreshPresetPlayers then
+            SCB_RefreshPresetPlayers()
+        end
+    end
+end
+
+local function SCB_SetPlayerButtonIdentity(button, info)
+    local color, classInfo
+    if not button or not info then
+        return
+    end
+    button.scbPlayerKey = info.key
+    button.scbTooltip = info.name .. "\nDrag onto a preset slot"
+    if info.key ~= "$self" then
+        button.scbTooltip = button.scbTooltip .. "\nRight-click to unassign"
+    end
+    if button.label then
+        button.label:SetText(info.name)
+        color = SCB_ClassColor(info.classToken)
+        if color then
+            button.label:SetTextColor(color.r, color.g, color.b, 1)
+        else
+            button.label:SetTextColor(1, 1, 1, 1)
+        end
+    end
+    if button.icon then
+        classInfo = info.classToken and SCB_FindClass(string.lower(info.classToken)) or nil
+        if classInfo then
+            button.icon:SetTexture(SCB.assetRoot .. classInfo.icon)
+            button.icon:Show()
+        else
+            button.icon:Hide()
+        end
+    end
+end
+
+local function SCB_CreatePresetPlayerButton(parent, width, height)
+    local button = SCB_CreateTextButton(parent, nil, width, height, "", true)
+    button:RegisterForDrag("LeftButton")
+    button:SetScript("OnDragStart", SCB_PresetPlayerDragStart)
+    button:SetScript("OnDragStop", SCB_PresetPlayerDragStop)
+    button:SetScript("OnClick", SCB_PresetPlayerOnClick)
+    button:SetScript("OnEnter", SCB_TooltipOnEnter)
+    button:SetScript("OnLeave", SCB_TooltipOnLeave)
+    button.label:ClearAllPoints()
+    button.label:SetPoint("LEFT", button, "LEFT", 25, 0)
+    button.label:SetPoint("RIGHT", button, "RIGHT", -4, 0)
+    button.label:SetJustifyH("LEFT")
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetWidth(18)
+    icon:SetHeight(18)
+    icon:SetPoint("LEFT", button, "LEFT", 4, 0)
+    button.icon = icon
+    return button
+end
+
+function SCB_RefreshPresetPlayers()
+    if not SCB.presetPanel then
+        return
+    end
+    local roster = SCB_GetHumanRoster()
+    local present = {}
+    local assignedPresent = {}
+    local i, info, slotIndex, row, button
+
+    for i = 1, table.getn(roster) do
+        present[roster[i].key] = roster[i]
+    end
+
+    -- Hide previous overlays and return all bot rows to full strength first.
+    for i = 1, 10 do
+        row = SCB.presetSlotRows[i]
+        if row then
+            if row.playerOverlay then
+                row.playerOverlay:Hide()
+            end
+            if row.classButton then row.classButton:SetAlpha(1) end
+            if row.roleButton then row.roleButton:SetAlpha(1) end
+        end
+    end
+
+    for info, slotIndex in pairs(SCB.presetEditorPlayers or {}) do
+        if present[info] and slotIndex >= 1 and slotIndex <= 10 then
+            assignedPresent[info] = true
+            row = SCB.presetSlotRows[slotIndex]
+            if row then
+                if not row.playerOverlay then
+                    row.playerOverlay = SCB_CreatePresetPlayerButton(row, 94, 26)
+                    row.playerOverlay:SetPoint("LEFT", row, "LEFT", 0, 0)
+                    row.playerOverlay:SetFrameLevel(row:GetFrameLevel() + 4)
+                end
+                SCB_SetPlayerButtonIdentity(row.playerOverlay, present[info])
+                row.playerOverlay:Show()
+                if row.classButton then row.classButton:SetAlpha(0.22) end
+                if row.roleButton then row.roleButton:SetAlpha(0.22) end
+            end
+        end
+    end
+
+    -- Unassigned live players remain available in the small player pool.
+    local poolIndex = 0
+    for i = 1, table.getn(roster) do
+        info = roster[i]
+        if not assignedPresent[info.key] then
+            poolIndex = poolIndex + 1
+            button = SCB.presetPlayerPoolButtons[poolIndex]
+            if not button then
+                button = SCB_CreatePresetPlayerButton(SCB.presetPlayerPool, 108, 22)
+                SCB.presetPlayerPoolButtons[poolIndex] = button
+            end
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
+            SCB_SetPlayerButtonIdentity(button, info)
+            button:Show()
+        end
+    end
+    for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do
+        SCB.presetPlayerPoolButtons[i]:Hide()
+    end
+
+    if poolIndex > 0 then
+        local poolRows = math.floor((poolIndex - 1) / 2) + 1
+        SCB.presetPlayerPool:Show()
+        if SCB.presetPlayerPoolLabel then SCB.presetPlayerPoolLabel:Show() end
+        SCB.presetPlayerPool:SetHeight(16 + (poolRows * 24))
+        SCB.presetPanel:SetHeight(286 + (poolRows * 24))
+    else
+        SCB.presetPlayerPool:Hide()
+        if SCB.presetPlayerPoolLabel then SCB.presetPlayerPoolLabel:Hide() end
+        SCB.presetPlayerPool:SetHeight(1)
+        SCB.presetPanel:SetHeight(272)
     end
 end
 
@@ -847,8 +1256,10 @@ local function SCB_LoadPreset(index)
 
     SoloCraftBotsDB.currentPreset = index
     SCB.presetEditorSlots = SCB_NormalizePresetSlots(preset.slots)
+    SCB.presetEditorPlayers = SCB_CopyPlayerSlots(preset.playerSlots)
     SCB_UpdatePresetSelectorText()
     SCB_RefreshPresetSlots()
+    SCB_RefreshPresetPlayers()
     SCB_SetPresetDirty(false)
 end
 
@@ -860,6 +1271,7 @@ local function SCB_SaveCurrentPreset()
         return
     end
     preset.slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots)
+    preset.playerSlots = SCB_CopyPlayerSlots(SCB.presetEditorPlayers)
     SCB_SetPresetDirty(false)
 end
 
@@ -970,7 +1382,7 @@ local function SCB_RebuildPresetMenu()
     for i = 1, maxVisible do
         button = SCB.presetMenuButtons[i]
         if not button then
-            button = SCB_CreateTextButton(SCB.presetMenu, nil, 126, 20, "")
+            button = SCB_CreateTextButton(SCB.presetMenu, nil, 96, 20, "")
             button:SetPoint("TOPLEFT", SCB.presetMenu, "TOPLEFT", 4, -4 - ((i - 1) * 20))
             button:SetScript("OnClick", SCB_PresetMenuChoiceOnClick)
             SCB.presetMenuButtons[i] = button
@@ -1034,8 +1446,10 @@ local function SCB_PresetRemoveOnClick()
     if count == 0 then
         SoloCraftBotsDB.currentPreset = nil
         SCB.presetEditorSlots = SCB_NormalizePresetSlots(nil)
+        SCB.presetEditorPlayers = { ["$self"] = 1 }
         SCB_UpdatePresetSelectorText()
         SCB_RefreshPresetSlots()
+        SCB_RefreshPresetPlayers()
         SCB_SetPresetDirty(false)
         SCB_HidePresetMenu()
         return
@@ -1108,6 +1522,7 @@ local function SCB_AcceptPresetName(dialog)
         table.insert(SoloCraftBotsDB.presets, {
             name = name,
             slots = SCB_NormalizePresetSlots(sourceSlots),
+            playerSlots = SCB_CopyPlayerSlots(SCB.presetEditorPlayers),
         })
         SCB_LoadPreset(table.getn(SoloCraftBotsDB.presets))
     end
@@ -1150,9 +1565,48 @@ StaticPopupDialogs["SOLOCRAFTBOTS_PRESET_NAME"] = {
     exclusive = 1,
 }
 
+local SCB_PRESET_RAID_BARRIER = "__SCB_RAID_BARRIER__"
+local SCB_PRESET_CONVERT_NOW = "__SCB_CONVERT_NOW__"
+local SCB_PRESET_WAIT_RAID = "__SCB_WAIT_RAID__"
+
 local function SCB_PresetSpawnQueueOnUpdate()
+    local nextItem
+
     if table.getn(SCB.presetSpawnQueue) == 0 then
         SCB.presetSpawnElapsed = 0
+        return
+    end
+
+    nextItem = SCB.presetSpawnQueue[1]
+
+    -- Normally Group 1 fills the five-player party before conversion. If live
+    -- human placement means Group 1 needs more bot positions than the party can
+    -- physically hold, convert as soon as a party exists and continue in raid.
+    if nextItem == SCB_PRESET_CONVERT_NOW then
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+        elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
+            ConvertToRaid()
+            SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
+            SCB.presetSpawnElapsed = 0
+        end
+        return
+    elseif nextItem == SCB_PRESET_RAID_BARRIER then
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+        elseif GetNumPartyMembers and GetNumPartyMembers() >= 4 and ConvertToRaid then
+            ConvertToRaid()
+            SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
+            SCB.presetSpawnElapsed = 0
+        end
+        return
+    elseif nextItem == SCB_PRESET_WAIT_RAID then
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+        end
         return
     end
 
@@ -1162,7 +1616,7 @@ local function SCB_PresetSpawnQueueOnUpdate()
     end
 
     SCB.presetSpawnElapsed = SCB.presetSpawnElapsed - SCB.presetSpawnInterval
-    SCB_SendSpawnCommand(SCB.presetSpawnQueue[1])
+    SCB_SendSpawnCommand(nextItem)
     table.remove(SCB.presetSpawnQueue, 1)
 end
 
@@ -1173,9 +1627,8 @@ local function SCB_QueuePresetSpawn(commands)
         return
     end
 
-    -- Preset spawning deliberately mirrors FillRaidBots' simple FIFO model:
-    -- every add command is queued and sent through SAY at a fixed 0.1s cadence.
-    -- No raid conversion, roster-dependent channel switching, or per-batch state.
+    -- Add commands stay on the persistent FIFO and are always sent through SAY.
+    -- Special queue barriers pause a 10-player preset for party-to-raid conversion.
     for i = 1, table.getn(commands) do
         table.insert(SCB.presetSpawnQueue, commands[i])
     end
@@ -1184,17 +1637,78 @@ end
 local function SCB_PresetSummonOnClick()
     local commands = {}
     local slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots)
-    local i, slot
+    local present = SCB_GetPresentHumanMap()
+    local occupied = {}
+    local key, slotIndex, i, slot
+    local group1Commands = {}
+    local group2Commands = {}
+    local existingParty = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local availableBeforeRaid = 4 - existingParty
 
-    -- Keep the editor canonical before sending so every selected preset uses
-    -- exactly the four visible bot slots, regardless of preset index/history.
     SCB.presetEditorSlots = slots
     SCB_RefreshPresetSlots()
+    SCB_RefreshPresetPlayers()
 
-    for i = 1, 4 do
-        slot = slots[i]
-        table.insert(commands, SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
+    -- Only live assigned humans sacrifice their underlying bot. Saved player
+    -- assignments that are currently absent leave the bot slot active.
+    for key, slotIndex in pairs(SCB.presetEditorPlayers or {}) do
+        if present[key] and slotIndex >= 1 and slotIndex <= 10 then
+            occupied[slotIndex] = true
+        end
     end
+
+    -- A live human without a preset slot would make a 10-player composition
+    -- ambiguous: SCB would have to guess which bot to sacrifice. Require the
+    -- user to make that choice instead.
+    local humanKey
+    for humanKey in pairs(present) do
+        if not SCB.presetEditorPlayers[humanKey] then
+            SCB_Print("Assign " .. SCB_PresetPlayerDisplayName(humanKey) .. " to a preset slot before Summon.")
+            return
+        end
+    end
+
+    for i = 1, 5 do
+        if not occupied[i] then
+            slot = slots[i]
+            table.insert(group1Commands, SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
+        end
+    end
+    for i = 6, 10 do
+        if not occupied[i] then
+            slot = slots[i]
+            table.insert(group2Commands, SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
+        end
+    end
+
+    if availableBeforeRaid < 0 then
+        availableBeforeRaid = 0
+    end
+
+    -- Preserve strict Group 1 spawn order while respecting the five-player
+    -- party ceiling. If Group 1 still has bots left when the party will fill,
+    -- pause, convert, then finish Group 1 before proceeding to Group 2.
+    for i = 1, table.getn(group1Commands) do
+        if i == availableBeforeRaid + 1 then
+            table.insert(commands, SCB_PRESET_CONVERT_NOW)
+        end
+        table.insert(commands, group1Commands[i])
+    end
+
+    if table.getn(group1Commands) <= availableBeforeRaid then
+        table.insert(commands, SCB_PRESET_RAID_BARRIER)
+    elseif availableBeforeRaid == 0 and (not GetNumRaidMembers or GetNumRaidMembers() == 0) then
+        -- With a full existing party the conversion barrier must precede the
+        -- first Group 1 bot rather than waiting for another spawn command.
+        if commands[1] ~= SCB_PRESET_CONVERT_NOW then
+            table.insert(commands, 1, SCB_PRESET_CONVERT_NOW)
+        end
+    end
+
+    for i = 1, table.getn(group2Commands) do
+        table.insert(commands, group2Commands[i])
+    end
+
     SCB_QueuePresetSpawn(commands)
 end
 
@@ -1313,23 +1827,14 @@ end
 local function SCB_CreateSummonUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "summon", "Summon Bots", 196)
 
-    local far = SCB_CreateArtButton(section, "SoloCraftBotsDistanceFar", 22, SCB.assetRoot .. "distance.tga")
-    far:SetPoint("TOPRIGHT", section, "TOPRIGHT", -44, -2)
-    far.scbDistanceMode = "far"
-    far.scbTooltip = "Spawn Far\n.partybot distance on\nRemains clickable even when highlighted"
-    far:SetScript("OnClick", SCB_DistanceOnClick)
-    far:SetScript("OnEnter", SCB_TooltipOnEnter)
-    far:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.distanceFarButton = far
-
-    local near = SCB_CreateArtButton(section, "SoloCraftBotsDistanceNear", 22, SCB.assetRoot .. "distanceoff.tga")
-    near:SetPoint("LEFT", far, "RIGHT", 3, 0)
-    near.scbDistanceMode = "near"
-    near.scbTooltip = "Spawn Near\n.partybot distance off\nRemains clickable even when highlighted"
-    near:SetScript("OnClick", SCB_DistanceOnClick)
-    near:SetScript("OnEnter", SCB_TooltipOnEnter)
-    near:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.distanceNearButton = near
+    -- One state button: silver binoculars = Spawn Near (distance off, default),
+    -- gold binoculars = Spawn Far (distance on).
+    local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "distance_off.tga")
+    distance:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
+    distance:SetScript("OnClick", SCB_DistanceOnClick)
+    distance:SetScript("OnEnter", SCB_TooltipOnEnter)
+    distance:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.distanceButton = distance
 
     local visibleClasses = SCB_GetVisibleClasses()
     local gridLeft = 16
@@ -1340,7 +1845,7 @@ local function SCB_CreateSummonUI(frame)
     local roleSize = 18
     local roleGap = 3
     local i, j, classInfo, roleInfo, row, col
-    local cellX, cellY, classFrame, classTexture, roleButton, roleTexture
+    local cellX, cellY, classFrame, classTexture, roleButton, roleTexture, roleHighlightTexture
     local roleCount, roleRow, roleCol, rolesThisRow, rowStartX, roleX, roleY
 
     for i = 1, table.getn(visibleClasses) do
@@ -1380,7 +1885,8 @@ local function SCB_CreateSummonUI(frame)
             roleY = cellY - classSize - 5 - (roleRow * (roleSize + roleGap))
 
             roleTexture = SCB_RoleTexture(roleInfo)
-            roleButton = SCB_CreateArtButton(content, nil, roleSize, roleTexture)
+            roleHighlightTexture = SCB_RoleHighlightTexture(roleInfo)
+            roleButton = SCB_CreateArtButton(content, nil, roleSize, roleTexture, nil, roleHighlightTexture)
             roleButton:SetPoint("TOPLEFT", content, "TOPLEFT", roleX, roleY)
             roleButton.scbClass = classInfo.key
             roleButton.scbRole = roleInfo.role
@@ -1400,22 +1906,24 @@ local function SCB_CreateCommandUI(frame)
     local gap = 3
     local rowGap = 1
     local groupGap = 20
-    local maxColumns = 7
+    -- ALL and TARGET start immediately after the recipient icon. Role rows
+    -- reserve the Play column because those recipients have no Play command.
+    local maxColumns = 8
     local maxRowWidth = (maxColumns * buttonSize) + ((maxColumns - 1) * gap)
     local left = math.floor((frame:GetWidth() - maxRowWidth) / 2)
     local top = -2
 
     local rows = {
-        { recipient = "all", commands = { "heel", "move", "stay", "forceheel", "pause", "unpause" } },
-        { recipient = "target", commands = { "heel", "move", "stay", "forceheel", "pause", "unpause" } },
-        { gapBefore = true, recipient = "tank", commands = { "heel", "move", "stay", "forceheel", "pull" } },
-        { recipient = "healer", commands = { "heel", "move", "stay", "forceheel" } },
-        { recipient = "melee", commands = { "heel", "move", "stay", "forceheel" } },
-        { recipient = "ranged", commands = { "heel", "move", "stay", "forceheel", "spread", "hug" } },
+        { recipient = "all", indent = 0, commands = { "play", "forcemove", "move", "come", "stay", "pause" } },
+        { recipient = "target", indent = 0, commands = { "play", "forcemove", "move", "come", "stay", "pause" } },
+        { gapBefore = true, recipient = "tank", indent = 1, commands = { "forcemove", "move", "come", "stay", "pull" } },
+        { recipient = "healer", indent = 1, commands = { "forcemove", "move", "come", "stay" } },
+        { recipient = "melee", indent = 1, commands = { "forcemove", "move", "come", "stay" } },
+        { recipient = "ranged", indent = 1, commands = { "forcemove", "move", "come", "stay", "spread", "hug" } },
     }
 
     local recipientByKey = {}
-    local i, r, row, recipient, commandKey, commandInfo, route, button
+    local i, r, row, recipient, commandKey, commandInfo, button
     local y = top
 
     for i = 1, table.getn(SCB.recipients) do
@@ -1429,7 +1937,12 @@ local function SCB_CreateCommandUI(frame)
         end
         recipient = recipientByKey[row.recipient]
 
-        button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. recipient.icon)
+        button = SCB_CreateArtButton(
+            content, nil, buttonSize,
+            SCB.assetRoot .. recipient.icon,
+            nil,
+            SCB.assetRoot .. recipient.highlightIcon
+        )
         button:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
         button.scbTooltip = recipient.label
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1438,43 +1951,51 @@ local function SCB_CreateCommandUI(frame)
         for i = 1, table.getn(row.commands) do
             commandKey = row.commands[i]
             commandInfo = SCB.commands[commandKey]
-            route = commandInfo.routes[row.recipient]
-            button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
-            button:SetPoint("TOPLEFT", content, "TOPLEFT", left + (i * (buttonSize + gap)), y)
+            button = SCB_CreateArtButton(
+                content, nil, buttonSize,
+                SCB.assetRoot .. commandInfo.icon,
+                nil,
+                SCB.assetRoot .. commandInfo.highlightIcon
+            )
+            button:SetPoint(
+                "TOPLEFT", content, "TOPLEFT",
+                left + ((i + (row.indent or 0)) * (buttonSize + gap)), y
+            )
             button.scbCommandKey = commandKey
             button.scbRecipientKey = row.recipient
             button.scbRecipientLabel = recipient.label
             button.scbTooltip = recipient.label .. " - " .. commandInfo.label
-            if commandKey == "forceheel" then
-                button.scbTooltip = button.scbTooltip .. "\nSends Move, then Heel"
-            end
-            if not route then
-                button.scbTooltip = button.scbTooltip .. "\nUnavailable for this recipient"
+            if commandKey == "forcemove" then
+                button.scbTooltip = button.scbTooltip .. "\nSends Move, then Come"
+                SCB_AddForceMoveOverlay(button)
             end
             button:SetScript("OnClick", SCB_DirectCommandOnClick)
             button:SetScript("OnEnter", SCB_TooltipOnEnter)
             button:SetScript("OnLeave", SCB_TooltipOnLeave)
-            SCB_SetArtButtonAvailable(button, route ~= nil)
         end
 
         y = y - buttonSize - rowGap
     end
 
-    -- Object and AoE have fixed natural scope and therefore do not need a
-    -- recipient icon. Keep them separate from the recipient rows.
+    -- All-only / unique actions sit outside the recipient matrix.
     y = y - groupGap
-    local standalone = { "object", "aoe" }
-    local standaloneWidth = (2 * buttonSize) + gap
+    local standalone = { "aoe", "object", "attackstart", "attackstop" }
+    local standaloneWidth = (4 * buttonSize) + (3 * gap)
     local standaloneLeft = math.floor((frame:GetWidth() - standaloneWidth) / 2)
     for i = 1, table.getn(standalone) do
         commandKey = standalone[i]
         commandInfo = SCB.commands[commandKey]
-        button = SCB_CreateArtButton(content, nil, buttonSize, SCB.assetRoot .. commandInfo.icon)
+        button = SCB_CreateArtButton(
+            content, nil, buttonSize,
+            SCB.assetRoot .. commandInfo.icon,
+            nil,
+            SCB.assetRoot .. commandInfo.highlightIcon
+        )
         button:SetPoint("TOPLEFT", content, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
         button.scbCommandKey = commandKey
         button.scbRecipientKey = "all"
         button.scbRecipientLabel = "All"
-        button.scbTooltip = commandInfo.label
+        button.scbTooltip = commandInfo.label .. " (All)"
         button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
@@ -1484,28 +2005,18 @@ end
 local function SCB_CreateRaidmarkUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "assignments", "Assignments", 34)
     local toggleSize = 22
-    local toggleGap = 3
 
-    local focus = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "focus.tga")
-    focus:SetPoint("TOPRIGHT", section, "TOPRIGHT", -44, -2)
-    focus.scbMarkMode = "focus"
-    focus.scbTooltip = "Focus marks"
-    focus:SetScript("OnClick", SCB_RaidmarkModeOnClick)
-    focus:SetScript("OnEnter", SCB_TooltipOnEnter)
-    focus:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.focusModeButton = focus
-
-    local cc = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "cc.tga")
-    cc:SetPoint("LEFT", focus, "RIGHT", toggleGap, 0)
-    cc.scbMarkMode = "cc"
-    cc.scbTooltip = "CC marks"
-    cc:SetScript("OnClick", SCB_RaidmarkModeOnClick)
-    cc:SetScript("OnEnter", SCB_TooltipOnEnter)
-    cc:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.ccModeButton = cc
+    -- One always-highlighted state button. Focus is the default; clicking it
+    -- swaps between Focus and CC assignment modes.
+    local mode = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "focus_h.tga")
+    mode:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
+    mode:SetScript("OnClick", SCB_RaidmarkModeOnClick)
+    mode:SetScript("OnEnter", SCB_TooltipOnEnter)
+    mode:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.assignmentModeButton = mode
 
     SCB.raidMarkMode = "focus"
-    SCB_RefreshRaidmarkModeButtons()
+    SCB_RefreshRaidmarkModeButton()
 
     local markSize = 24
     local gap = 2
@@ -1519,7 +2030,7 @@ local function SCB_CreateRaidmarkUI(frame)
         button = SCB_CreateArtButton(content, nil, markSize, SCB.assetRoot .. mark.key .. ".tga")
         button:SetPoint("TOPLEFT", content, "TOPLEFT", left + ((i - 1) * (markSize + gap)), y)
         button.scbMark = mark.key
-        button.scbTooltip = mark.name .. " (uses selected Focus/CC mode)"
+        button.scbTooltip = mark.name .. " (uses current Focus/CC assignment mode)"
         button:SetScript("OnClick", SCB_RaidMarkOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
@@ -1536,8 +2047,8 @@ local function SCB_CreatePresetUI(frame)
     SCB.presetToggle = toggle
 
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", frame)
-    panel:SetWidth(190)
-    panel:SetHeight(250)
+    panel:SetWidth(254)
+    panel:SetHeight(272)
     panel:SetPoint("TOPRIGHT", frame, "TOPLEFT", -2, -39)
     panel:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -1578,8 +2089,24 @@ local function SCB_CreatePresetUI(frame)
     save:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB.presetSaveButton = save
 
-    local selector = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSelector", 98, 22, "Preset", true)
+    local selector = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSelector", 104, 22, "Preset", true)
     selector:SetPoint("LEFT", save, "RIGHT", 2, 0)
+    selector.label:ClearAllPoints()
+    selector.label:SetPoint("LEFT", selector, "LEFT", 7, 0)
+    selector.label:SetPoint("RIGHT", selector, "RIGHT", -22, 0)
+    selector.label:SetJustifyH("LEFT")
+
+    -- Use Blizzard's familiar dropdown arrow artwork so this still remains our
+    -- compact selector while reading immediately as a dropdown control.
+    local selectorArrow = CreateFrame("Button", nil, selector)
+    selectorArrow:SetWidth(18)
+    selectorArrow:SetHeight(18)
+    selectorArrow:SetPoint("RIGHT", selector, "RIGHT", -2, 0)
+    selectorArrow:EnableMouse(false)
+    local selectorArrowTexture = selectorArrow:CreateTexture(nil, "ARTWORK")
+    selectorArrowTexture:SetAllPoints(selectorArrow)
+    selectorArrowTexture:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    selector.arrow = selectorArrow
     selector.scbTooltip = "Left-click: choose preset\nRight-click: rename current preset"
     selector:SetScript("OnClick", SCB_PresetSelectorOnClick)
     selector:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1587,7 +2114,7 @@ local function SCB_CreatePresetUI(frame)
     SCB.presetSelector = selector
 
     local menu = CreateFrame("Frame", "SoloCraftBotsPresetMenu", panel)
-    menu:SetWidth(134)
+    menu:SetWidth(104)
     menu:SetHeight(28)
     menu:SetPoint("TOPRIGHT", selector, "BOTTOMRIGHT", 0, -1)
     menu:SetBackdrop({
@@ -1604,51 +2131,106 @@ local function SCB_CreatePresetUI(frame)
     menu:Hide()
     SCB.presetMenu = menu
 
-    local playerClass = SCB_GetPlayerClassInfo()
-    local playerIcon = CreateFrame("Frame", nil, panel)
-    playerIcon:SetWidth(26)
-    playerIcon:SetHeight(26)
-    playerIcon:SetPoint("TOPLEFT", panel, "TOPLEFT", 47, -62)
-    playerIcon:EnableMouse(true)
-    playerIcon.scbTooltip = playerClass and playerClass.name or "Player"
-    playerIcon:SetScript("OnEnter", SCB_TooltipOnEnter)
-    playerIcon:SetScript("OnLeave", SCB_TooltipOnLeave)
-    local playerTexture = playerIcon:CreateTexture(nil, "ARTWORK")
-    playerTexture:SetAllPoints(playerIcon)
-    if playerClass then
-        playerTexture:SetTexture(SCB.assetRoot .. playerClass.icon)
-    end
+    -- Ten-player presets are authored as two explicit five-player groups.
+    -- All ten positions retain bot assignments; live human players are dragged
+    -- onto positions as overlays and temporarily sacrifice the bot underneath.
+    local groupTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    groupTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -65)
+    groupTitle:SetText("Group 1")
+    groupTitle:SetTextColor(1, 0.82, 0, 1)
 
-    local playerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerText:SetPoint("LEFT", playerIcon, "RIGHT", 8, 0)
-    playerText:SetText("Player")
-    playerText:SetTextColor(1, 1, 1, 1)
+    local groupFrame = CreateFrame("Frame", nil, panel)
+    groupFrame:SetWidth(112)
+    groupFrame:SetHeight(158)
+    groupFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -74)
+    groupFrame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    groupFrame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+    groupFrame:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
 
-    local i, classButton, roleButton
-    for i = 1, 4 do
-        classButton = SCB_CreateArtButton(panel, nil, 26, SCB.assetRoot .. "warrior.tga", true)
-        classButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 47, -92 - ((i - 1) * 30))
+    local group2Title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    group2Title:SetPoint("TOPLEFT", panel, "TOPLEFT", 140, -65)
+    group2Title:SetText("Group 2")
+    group2Title:SetTextColor(1, 0.82, 0, 1)
+
+    local group2Frame = CreateFrame("Frame", nil, panel)
+    group2Frame:SetWidth(112)
+    group2Frame:SetHeight(158)
+    group2Frame:SetPoint("TOPLEFT", panel, "TOPLEFT", 132, -74)
+    group2Frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    group2Frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+    group2Frame:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+
+    local i, localIndex, parentFrame, row, classButton, roleButton
+    for i = 1, 10 do
+        if i <= 5 then
+            parentFrame = groupFrame
+            localIndex = i
+        else
+            parentFrame = group2Frame
+            localIndex = i - 5
+        end
+
+        row = CreateFrame("Frame", nil, parentFrame)
+        row:SetWidth(94)
+        row:SetHeight(26)
+        row:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 9, -8 - ((localIndex - 1) * 29))
+        row.scbSlotIndex = i
+
+        classButton = SCB_CreateArtButton(row, nil, 26, SCB.assetRoot .. "warrior.tga", true)
+        classButton:SetPoint("LEFT", row, "LEFT", 0, 0)
         classButton.scbSlotIndex = i
         classButton:SetScript("OnClick", SCB_PresetClassOnClick)
         classButton:SetScript("OnEnter", SCB_TooltipOnEnter)
         classButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-        roleButton = SCB_CreateArtButton(panel, nil, 22, SCB.assetRoot .. "tank.tga", true)
+        roleButton = SCB_CreateArtButton(row, nil, 22, SCB.assetRoot .. "tank.tga", true, SCB.assetRoot .. "tank_h.tga")
         roleButton:SetPoint("LEFT", classButton, "RIGHT", 8, 0)
         roleButton.scbSlotIndex = i
         roleButton:SetScript("OnClick", SCB_PresetRoleOnClick)
         roleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
         roleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
+        row.classButton = classButton
+        row.roleButton = roleButton
+        SCB.presetSlotRows[i] = row
+        SCB.presetDropTargets[i] = row
         SCB.presetSlotButtons[i] = {
             classButton = classButton,
             roleButton = roleButton,
         }
     end
 
+    local playerPool = CreateFrame("Frame", nil, panel)
+    playerPool:SetWidth(224)
+    playerPool:SetHeight(1)
+    playerPool:SetPoint("TOPLEFT", panel, "TOPLEFT", 15, -238)
+    playerPool:Hide()
+    SCB.presetPlayerPool = playerPool
+
+    local playerPoolLabel = playerPool:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 2, 0)
+    playerPoolLabel:SetText("Players")
+    playerPoolLabel:SetTextColor(0.72, 0.72, 0.72, 1)
+    playerPoolLabel:Hide()
+    SCB.presetPlayerPoolLabel = playerPoolLabel
+
     local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 88, 24, "Summon")
     summon:SetPoint("BOTTOM", panel, "BOTTOM", 0, 13)
-    summon.scbTooltip = "Summon the four bot slots shown above\nUses the current editor state, saved or unsaved"
+    summon.scbTooltip = "Summon this 10-player preset in group order\nUses the current editor state, saved or unsaved"
     summon:SetScript("OnClick", SCB_PresetSummonOnClick)
     summon:SetScript("OnEnter", SCB_TooltipOnEnter)
     summon:SetScript("OnLeave", SCB_TooltipOnLeave)
@@ -1659,8 +2241,10 @@ local function SCB_CreatePresetUI(frame)
         SCB_LoadPreset(SoloCraftBotsDB.currentPreset)
     else
         SCB.presetEditorSlots = SCB_NormalizePresetSlots(nil)
+        SCB.presetEditorPlayers = { ["$self"] = 1 }
         SCB_UpdatePresetSelectorText()
         SCB_RefreshPresetSlots()
+        SCB_RefreshPresetPlayers()
         SCB_SetPresetDirty(false)
     end
 end
@@ -1739,9 +2323,9 @@ local function SCB_CreateUI()
     version:SetText(SCB.version)
     version:SetTextColor(0.6, 0.6, 0.6, 1)
 
-    SCB_CreateSummonUI(frame)
     SCB_CreateCommandUI(frame)
     SCB_CreateRaidmarkUI(frame)
+    SCB_CreateSummonUI(frame)
     SCB_CreatePresetUI(frame)
     SCB_LayoutSections()
 
@@ -1815,6 +2399,9 @@ eventFrame:SetScript("OnEvent", function()
         end
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
         SCB_HandleRosterChange()
+        if SCB.presetPanel then
+            SCB_RefreshPresetPlayers()
+        end
     elseif event == "PLAYER_LOGOUT" then
         SCB_SavePosition()
     end
