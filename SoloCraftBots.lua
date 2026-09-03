@@ -38,6 +38,7 @@ SCB.pendingBotAddsExpires = 0
 SCB.presetSpawnQueue = {}
 SCB.presetSpawnElapsed = 0
 SCB.presetSpawnInterval = 0.10
+SCB.presetGroupWaitRemaining = 0
 SCB.initialSessionValidationPending = false
 SCB.lastRoster = nil
 
@@ -159,7 +160,7 @@ local function SCB_SetArtButtonAvailable(button, available)
         button:SetAlpha(1)
     else
         button.icon:SetVertexColor(0.45, 0.45, 0.45, 1)
-        button:SetAlpha(0.52)
+        button:SetAlpha(1)
     end
 end
 
@@ -180,9 +181,7 @@ local function SCB_CreateSectionTitle(parent, text, x, y)
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     title:SetText(text)
-    title:SetTextColor(1, 0.82, 0, 1)
-    local titleFont, titleSize, titleFlags = title:GetFont()
-    if titleFont and titleSize then title:SetFont(titleFont, titleSize * 1.20, titleFlags) end
+    title:SetTextColor(0.82, 0.82, 0.82, 1)
     return title
 end
 
@@ -218,6 +217,94 @@ local SCB_LayoutSections
 
 local function SCB_EnsureSectionDB()
     SoloCraftBotsDB.sections = SoloCraftBotsDB.sections or {}
+end
+
+SCB.commandLayoutDefaults = SCB.commandLayoutDefaults or {
+    horizontalSpacing = -3,
+    verticalSpacing = -1,
+    groupVerticalSpacing = 8,
+}
+SCB.presetLayoutDefaults = SCB.presetLayoutDefaults or {
+    groupWidth = 85,
+    groupHeight = 154,
+    roleSize = 20,
+    classSize = 25,
+    buffSize = 20,
+    borderHorizontal = 4,
+    borderVertical = 6,
+    iconHorizontal = 0,
+    iconVertical = 2,
+}
+
+function SCB_EnsureOptionsDB()
+    local options, key
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    options = SoloCraftBotsDB.options
+    if options.showSafetyMessages == nil then options.showSafetyMessages = true end
+    if options.showTutorialHelpers == nil then options.showTutorialHelpers = true end
+
+    -- Debug layout values are the raw internal baseline.  Seed command values
+    -- from the old spacing settings so existing test profiles keep their exact
+    -- geometry when this layout editor first appears.
+    options.commandLayoutDebug = options.commandLayoutDebug or {}
+    if options.commandLayoutDebug.horizontalSpacing == nil then
+        options.commandLayoutDebug.horizontalSpacing = options.commandHorizontalSpacing
+        if options.commandLayoutDebug.horizontalSpacing == nil then options.commandLayoutDebug.horizontalSpacing = SCB.commandLayoutDefaults.horizontalSpacing end
+    end
+    if options.commandLayoutDebug.verticalSpacing == nil then
+        options.commandLayoutDebug.verticalSpacing = options.commandVerticalSpacing
+        if options.commandLayoutDebug.verticalSpacing == nil then options.commandLayoutDebug.verticalSpacing = SCB.commandLayoutDefaults.verticalSpacing end
+    end
+    if options.commandLayoutDebug.groupVerticalSpacing == nil then
+        options.commandLayoutDebug.groupVerticalSpacing = options.commandGroupVerticalSpacing
+        if options.commandLayoutDebug.groupVerticalSpacing == nil then options.commandLayoutDebug.groupVerticalSpacing = SCB.commandLayoutDefaults.groupVerticalSpacing end
+    end
+    options.commandLayoutUser = options.commandLayoutUser or {}
+    for key in pairs(SCB.commandLayoutDefaults) do
+        if options.commandLayoutUser[key] == nil then options.commandLayoutUser[key] = 0 end
+    end
+
+    options.presetLayoutDebug = options.presetLayoutDebug or {}
+    options.presetLayoutUser = options.presetLayoutUser or {}
+    for key in pairs(SCB.presetLayoutDefaults) do
+        if options.presetLayoutDebug[key] == nil then options.presetLayoutDebug[key] = SCB.presetLayoutDefaults[key] end
+        if options.presetLayoutUser[key] == nil then options.presetLayoutUser[key] = 0 end
+    end
+
+    -- 0.4.25 promotes the visually-tuned debug geometry to the shipped
+    -- baseline. Only untouched 0.4.24 baseline values are migrated; any raw
+    -- value already changed in Debug mode is respected.
+    if not options.layoutBaselineVersion or options.layoutBaselineVersion < 425 then
+        if options.commandLayoutDebug.horizontalSpacing == 3 then options.commandLayoutDebug.horizontalSpacing = -3 end
+        if options.commandLayoutDebug.verticalSpacing == 0 then options.commandLayoutDebug.verticalSpacing = -1 end
+        if options.commandLayoutDebug.groupVerticalSpacing == 6 then options.commandLayoutDebug.groupVerticalSpacing = 8 end
+        if options.presetLayoutDebug.groupWidth == 92 then options.presetLayoutDebug.groupWidth = 85 end
+        if options.presetLayoutDebug.groupHeight == 158 then options.presetLayoutDebug.groupHeight = 154 end
+        if options.presetLayoutDebug.roleSize == 24 then options.presetLayoutDebug.roleSize = 20 end
+        if options.presetLayoutDebug.classSize == 24 then options.presetLayoutDebug.classSize = 25 end
+        if options.presetLayoutDebug.buffSize == 24 then options.presetLayoutDebug.buffSize = 20 end
+        if options.presetLayoutDebug.borderHorizontal == 4 then options.presetLayoutDebug.borderHorizontal = 4 end
+        if options.presetLayoutDebug.borderVertical == 8 then options.presetLayoutDebug.borderVertical = 6 end
+        if options.presetLayoutDebug.iconHorizontal == 0 then options.presetLayoutDebug.iconHorizontal = 0 end
+        if options.presetLayoutDebug.iconVertical == 3 then options.presetLayoutDebug.iconVertical = 2 end
+        options.layoutBaselineVersion = 425
+    end
+end
+
+function SCB_GetLayoutValue(sectionKey, valueKey)
+    local options, baseline, user
+    SCB_EnsureOptionsDB()
+    options = SoloCraftBotsDB.options
+    if sectionKey == "command" then
+        baseline = options.commandLayoutDebug[valueKey] or 0
+        user = options.commandLayoutUser[valueKey] or 0
+    else
+        baseline = options.presetLayoutDebug[valueKey] or 0
+        user = options.presetLayoutUser[valueKey] or 0
+    end
+    -- Debug mode deliberately shows the raw baseline without personal offsets.
+    if SCB.optionsDebugMode and SCB.optionsDebugMode[sectionKey] then return baseline end
+    return baseline + user
 end
 
 local function SCB_SectionToggleOnClick()
@@ -278,6 +365,95 @@ local function SCB_GetPlayerFaction()
         end
     end
     return nil
+end
+
+local SCB_PALADIN_BLESSINGS = {
+    { key = "BoK", label = SCB_L("BLESSING_KINGS"), texture = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings" },
+    { key = "BoM", label = SCB_L("BLESSING_MIGHT"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofKings" },
+    { key = "BoS", label = SCB_L("BLESSING_SALVATION"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofSalvation" },
+    { key = "BoW", label = SCB_L("BLESSING_WISDOM"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom" },
+    { key = "BoL", label = SCB_L("BLESSING_LIGHT"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofLight" },
+}
+
+local function SCB_FindPaladinBlessing(key)
+    local i
+    for i = 1, table.getn(SCB_PALADIN_BLESSINGS) do
+        if SCB_PALADIN_BLESSINGS[i].key == key then
+            return SCB_PALADIN_BLESSINGS[i], i
+        end
+    end
+    return SCB_PALADIN_BLESSINGS[1], 1
+end
+
+local SCB_SHAMAN_TOTEMS = {
+    air = {
+        { key = "windfury", label = "Windfury", texture = "Interface\\Icons\\Spell_Nature_Windfury" },
+        { key = "graceofair", label = "Grace of Air", texture = "Interface\\Icons\\Spell_Nature_InvisibilityTotem" },
+        { key = "tranquilair", label = "Tranquil Air", texture = "Interface\\Icons\\Spell_Nature_Brilliance" },
+        { key = "natureresistance", label = "Nature Resistance", texture = "Interface\\Icons\\Spell_Nature_NatureResistanceTotem" },
+    },
+    earth = {
+        { key = "strengthofearth", label = "Strength of Earth", texture = "Interface\\Icons\\Spell_Nature_EarthBindTotem" },
+        { key = "stoneskin", label = "Stoneskin", texture = "Interface\\Icons\\Spell_Nature_StoneSkinTotem" },
+        { key = "earthbind", label = "Earthbind", texture = "Interface\\Icons\\Spell_Nature_StrengthOfEarthTotem02" },
+        { key = "tremor", label = "Tremor", texture = "Interface\\Icons\\Spell_Nature_TremorTotem" },
+    },
+    fire = {
+        { key = "searing", label = "Searing", texture = "Interface\\Icons\\Spell_Fire_SearingTotem" },
+        { key = "magma", label = "Magma", texture = "Interface\\Icons\\Spell_Fire_SelfDestruct" },
+        { key = "firenova", label = "Fire Nova", texture = "Interface\\Icons\\Spell_Fire_SealOfFire" },
+        { key = "flametongue", label = "Flametongue", texture = "Interface\\Icons\\Spell_Nature_GuardianWard" },
+        { key = "frostresistance", label = "Frost Resistance", texture = "Interface\\Icons\\Spell_FrostResistanceTotem_01" },
+    },
+    water = {
+        { key = "manaspring", label = "Mana Spring", texture = "Interface\\Icons\\Spell_Nature_ManaRegenTotem" },
+        { key = "healingstream", label = "Healing Stream", texture = "Interface\\Icons\\INV_Spear_04" },
+        { key = "poisoncleansing", label = "Poison Cleansing", texture = "Interface\\Icons\\Spell_Nature_PoisonCleansingTotem" },
+        { key = "diseasecleansing", label = "Disease Cleansing", texture = "Interface\\Icons\\Spell_Nature_DiseaseCleansingTotem" },
+        { key = "fireresistance", label = "Fire Resistance", texture = "Interface\\Icons\\Spell_FireResistanceTotem_01" },
+        { key = "manatide", label = "Mana Tide", texture = "Interface\\Icons\\Spell_Frost_SummonWaterElemental" },
+    },
+}
+
+local SCB_SHAMAN_TOTEM_ORDER = { "air", "earth", "fire", "water" }
+local SCB_DEFAULT_SHAMAN_TOTEMS = "windfury strengthofearth searing poisoncleansing"
+
+local function SCB_ParseShamanTotems(extra)
+    local result = {}
+    local i, key, value
+    if extra and extra ~= "" then
+        i = 1
+        for value in string.gfind(extra, "%S+") do
+            key = SCB_SHAMAN_TOTEM_ORDER[i]
+            if not key then break end
+            result[key] = value
+            i = i + 1
+        end
+    end
+
+    local defaults = { air = "windfury", earth = "strengthofearth", fire = "searing", water = "poisoncleansing" }
+    for i = 1, table.getn(SCB_SHAMAN_TOTEM_ORDER) do
+        key = SCB_SHAMAN_TOTEM_ORDER[i]
+        if not result[key] then result[key] = defaults[key] end
+    end
+    return result
+end
+
+local function SCB_FindShamanTotem(groupKey, totemKey)
+    local list = SCB_SHAMAN_TOTEMS[groupKey]
+    local i
+    if not list then return nil, 1 end
+    for i = 1, table.getn(list) do
+        if list[i].key == totemKey then return list[i], i end
+    end
+    return list[1], 1
+end
+
+local function SCB_BuildShamanTotemExtra(totems)
+    return (totems.air or "windfury") .. " "
+        .. (totems.earth or "strengthofearth") .. " "
+        .. (totems.fire or "searing") .. " "
+        .. (totems.water or "poisoncleansing")
 end
 
 SCB.classes = {
@@ -453,6 +629,127 @@ local function SCB_GetRosterNames()
     return names
 end
 
+local function SCB_IsBotName(name)
+    return name and string.sub(name, -1) == "*"
+end
+
+local function SCB_CollectGroupMembers()
+    local members = {}
+    local playerName = UnitName and UnitName("player") or nil
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local i, unit, name
+
+    if raidCount > 0 then
+        for i = 1, raidCount do
+            unit = "raid" .. i
+            name = UnitName(unit)
+            if name then
+                local _, _, subgroup = GetRaidRosterInfo(i)
+                table.insert(members, {
+                    unit = unit,
+                    name = name,
+                    subgroup = subgroup,
+                    isSelf = playerName and name == playerName or false,
+                    isBot = SCB_IsBotName(name),
+                    dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit) and true or false,
+                })
+            end
+        end
+    else
+        if playerName then
+            table.insert(members, {
+                unit = "player",
+                name = playerName,
+                subgroup = 1,
+                isSelf = true,
+                isBot = false,
+                dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and true or false,
+            })
+        end
+        for i = 1, partyCount do
+            unit = "party" .. i
+            name = UnitName(unit)
+            if name then
+                table.insert(members, {
+                    unit = unit,
+                    name = name,
+                    subgroup = 1,
+                    isSelf = false,
+                    isBot = SCB_IsBotName(name),
+                    dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit) and true or false,
+                })
+            end
+        end
+    end
+    return members
+end
+
+local function SCB_GroupHasBots()
+    local members = SCB_CollectGroupMembers()
+    local i
+    for i = 1, table.getn(members) do
+        if members[i].isBot then return true end
+    end
+    return false
+end
+
+local function SCB_FindFirstGroupBotName()
+    local members = SCB_CollectGroupMembers()
+    local i
+    for i = 1, table.getn(members) do
+        if members[i].isBot then return members[i].name end
+    end
+    return nil
+end
+
+local function SCB_CountGroupBots()
+    local members = SCB_CollectGroupMembers()
+    local count = 0
+    local i
+    for i = 1, table.getn(members) do
+        if members[i].isBot then count = count + 1 end
+    end
+    return count
+end
+
+function SCB_CountOtherHumans()
+    local members = SCB_CollectGroupMembers()
+    local count = 0
+    local i
+    for i = 1, table.getn(members) do
+        if not members[i].isBot and not members[i].isSelf then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function SCB_GroupHasName(name)
+    local members = SCB_CollectGroupMembers()
+    local i
+    if not name then return false end
+    for i = 1, table.getn(members) do
+        if members[i].name == name then return true end
+    end
+    return false
+end
+
+-- Preset spawning accepts either a genuinely bot-clean group, or the one
+-- deliberate survivor state created by safe bot removal: player + one bot,
+-- with no other humans. Anything else stays behind the empty gate.
+function SCB_GetPresetStartBotState()
+    local botCount = SCB_CountGroupBots()
+    local otherHumans = SCB_CountOtherHumans()
+    if botCount == 0 then
+        return "empty", nil
+    end
+    if botCount == 1 and otherHumans == 0 then
+        return "survivor", SCB_FindFirstGroupBotName()
+    end
+    return "blocked", nil
+end
+
 local function SCB_EnsureSessionDB()
     SoloCraftBotsDB.session = SoloCraftBotsDB.session or {}
     SoloCraftBotsDB.session.knownBots = SoloCraftBotsDB.session.knownBots or {}
@@ -549,6 +846,15 @@ end
 
 local function SCB_BuildSpawnCommand(classKey, role, extra)
     local command = "add " .. classKey .. " " .. role
+    if classKey == "paladin" then
+        if not UnitLevel or UnitLevel("player") ~= 60 then
+            extra = nil
+        elseif not extra or extra == "" then
+            extra = "BoK"
+        end
+    elseif classKey == "shaman" and (not extra or extra == "") then
+        extra = SCB_DEFAULT_SHAMAN_TOTEMS
+    end
     if extra and extra ~= "" then
         command = command .. " " .. extra
     end
@@ -563,11 +869,53 @@ local function SCB_SendSpawnCommand(command)
     SendChatMessage(".partybot " .. command, "SAY")
 end
 
+local function SCB_RefreshMainPaladinBlessingButton()
+    local button = SCB.mainPaladinBlessingButton
+    local blessing
+    local available
+    if not button then return end
+
+    blessing = SCB_FindPaladinBlessing(SCB.mainPaladinBlessing or "BoK")
+    SCB.mainPaladinBlessing = blessing.key
+    SCB_SetArtButtonTexture(button, blessing.texture, nil)
+    available = UnitLevel and UnitLevel("player") == 60
+    SCB_SetArtButtonAvailable(button, available)
+    if available then
+        button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING")
+        button.scbTooltip = string.gsub(button.scbTooltip, "%%s", blessing.label)
+    else
+        button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_LEVEL")
+    end
+end
+
+local function SCB_MainPaladinBlessingOnClick()
+    local blessing, currentIndex, newIndex
+    if not UnitLevel or UnitLevel("player") ~= 60 then
+        SCB_RefreshMainPaladinBlessingButton()
+        return
+    end
+    blessing, currentIndex = SCB_FindPaladinBlessing(SCB.mainPaladinBlessing or "BoK")
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 1 then newIndex = table.getn(SCB_PALADIN_BLESSINGS) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(SCB_PALADIN_BLESSINGS) then newIndex = 1 end
+    end
+    SCB.mainPaladinBlessing = SCB_PALADIN_BLESSINGS[newIndex].key
+    SCB_RefreshMainPaladinBlessingButton()
+end
+
 local function SCB_SpawnOnClick()
+    local extra
     if not this.scbClass or not this.scbRole then
         return
     end
-    SCB_SendSpawnCommand(SCB_BuildSpawnCommand(this.scbClass, this.scbRole, this.scbExtra))
+    extra = this.scbExtra
+    if this.scbClass == "paladin" then
+        extra = SCB.mainPaladinBlessing or "BoK"
+    end
+    SCB_SendSpawnCommand(SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra))
 end
 
 local function SCB_DistanceOnClick()
@@ -580,6 +928,191 @@ local function SCB_DistanceOnClick()
         SoloCraftBotsDB.session.state.distance = "far"
     end
     SCB_RefreshDistanceButtons()
+end
+
+-- -------------------------------------------------------------------------
+-- Safe bot removal
+-- -------------------------------------------------------------------------
+
+SCB.raidZoneLocaleKeys = {
+    "GROUP_ZG", "GROUP_AQ20", "GROUP_MC", "GROUP_ONYXIA",
+    "GROUP_BWL", "GROUP_AQ40", "GROUP_NAXX",
+}
+
+function SCB_IsKnownRaidZone(zoneName)
+    local i, key
+    if not zoneName or zoneName == "" then return false end
+    for i = 1, table.getn(SCB.raidZoneLocaleKeys) do
+        key = SCB.raidZoneLocaleKeys[i]
+        if zoneName == SCB_L(key) then return true end
+    end
+    return false
+end
+
+function SCB_GetSavedRaidDecision()
+    local zoneName, count, i, savedName, savedID, reset, sawNamedMatch
+    zoneName = (GetRealZoneText and GetRealZoneText()) or ""
+
+    if not GetRealZoneText or not GetNumSavedInstances or not GetSavedInstanceInfo then
+        return false, "api", zoneName, nil, nil, 0
+    end
+    if not SCB_IsKnownRaidZone(zoneName) then
+        return false, "notraid", zoneName, nil, nil, 0
+    end
+
+    count = GetNumSavedInstances() or 0
+    for i = 1, count do
+        savedName, savedID, reset = GetSavedInstanceInfo(i)
+        if savedName == zoneName then
+            sawNamedMatch = true
+            if savedID and savedID ~= 0 and reset and reset > 0 then
+                return true, "matched", zoneName, savedID, reset, count
+            end
+        end
+    end
+
+    if sawNamedMatch then
+        return false, "invalid", zoneName, nil, nil, count
+    end
+    return false, "nomatch", zoneName, nil, nil, count
+end
+
+function SCB_CurrentRaidHasSavedID()
+    local matched = SCB_GetSavedRaidDecision()
+    return matched
+end
+
+function SCB_SurvivorSafetyRequired()
+    local matched, reason, zoneName, savedID, reset, count = SCB_GetSavedRaidDecision()
+    local zoneText = (zoneName and zoneName ~= "") and zoneName or "?"
+
+    -- Keep the debug laboratory explicit about why survivor safety was or was
+    -- not applied. This is diagnostic only; the policy itself remains
+    -- conservative for dungeons, unknown zones, and failed/invalid ID reads.
+    if SCB_DebugLog then
+        if matched then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
+        elseif reason == "api" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_API"), zoneText))
+        elseif reason == "notraid" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NOT_RAID"), zoneText))
+        elseif reason == "invalid" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_INVALID"), zoneText, count or 0))
+        else
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NO_MATCH"), zoneText, count or 0))
+        end
+    end
+
+    return not matched
+end
+
+function SCB_FindGroupOneSurvivor(members)
+    local i, fallback
+    for i = 1, table.getn(members or {}) do
+        if members[i].isBot then
+            if not fallback then fallback = members[i].name end
+            if members[i].subgroup == 1 then
+                return members[i].name
+            end
+        end
+    end
+    return fallback
+end
+
+function SCB_SafetyMessageOnUpdate()
+    local frame = this
+    frame.scbElapsed = (frame.scbElapsed or 0) + arg1
+    if frame.scbElapsed >= 2.4 then
+        frame:SetScript("OnUpdate", nil)
+        frame:Hide()
+        return
+    end
+    local pulse = 0.82 + (0.18 * math.abs(math.sin(frame.scbElapsed * math.pi * 2)))
+    local fade = 1
+    if frame.scbElapsed > 1.8 then
+        fade = 1 - ((frame.scbElapsed - 1.8) / 0.6)
+    end
+    frame:SetAlpha(pulse * fade)
+end
+
+function SCB_ShowSafetyMessage()
+    SCB_EnsureOptionsDB()
+    if not SoloCraftBotsDB.options.showSafetyMessages then return end
+    if not SCB.safetyMessageFrame then return end
+    SCB.safetyMessageFrame.scbElapsed = 0
+    SCB.safetyMessageFrame:SetAlpha(1)
+    SCB.safetyMessageFrame:Show()
+    SCB.safetyMessageFrame:SetScript("OnUpdate", SCB_SafetyMessageOnUpdate)
+end
+
+local function SCB_KickBots(deadOnly)
+    local members = SCB_CollectGroupMembers()
+    local bots, candidates = {}, {}
+    local otherHumans = 0
+    local i, member, survivorName, removed, safetyApplied
+
+    if not UninviteByName then
+        SCB_Print("Native group removal is unavailable on this client.")
+        return
+    end
+
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.isBot then
+            table.insert(bots, member)
+            if not deadOnly or member.dead then
+                table.insert(candidates, member)
+            end
+        elseif not member.isSelf then
+            otherHumans = otherHumans + 1
+        end
+    end
+
+    if table.getn(bots) == 0 then
+        SCB_Print("No bots to kick.")
+        return
+    end
+    if deadOnly and table.getn(candidates) == 0 then
+        SCB_Print("No dead bots to kick.")
+        return
+    end
+
+    -- When survivor safety is required, deliberately preserve a Group 1 bot.
+    -- In a party every bot is Group 1; in a raid this prevents a random bot in
+    -- a later subgroup from becoming the survivor.
+    if otherHumans == 0 and SCB_SurvivorSafetyRequired() then
+        survivorName = SCB_FindGroupOneSurvivor(members)
+    end
+
+    removed = 0
+    safetyApplied = false
+    for i = 1, table.getn(candidates) do
+        if survivorName and candidates[i].name == survivorName then
+            safetyApplied = true
+        else
+            UninviteByName(candidates[i].name)
+            removed = removed + 1
+        end
+    end
+
+    if safetyApplied then
+        SCB_Print(SCB_L("SURVIVOR_CHAT"))
+        SCB_ShowSafetyMessage()
+    elseif removed > 0 then
+        if deadOnly then
+            SCB_Print("Kicked " .. removed .. " dead bot" .. (removed == 1 and "." or "s."))
+        else
+            SCB_Print("Kicked " .. removed .. " bot" .. (removed == 1 and "." or "s."))
+        end
+    end
+end
+
+local function SCB_KickDeadOnClick()
+    SCB_KickBots(true)
+end
+
+local function SCB_KickAllOnClick()
+    SCB_KickBots(false)
 end
 
 -- -------------------------------------------------------------------------
@@ -596,7 +1129,7 @@ SCB.recipients = {
 }
 
 SCB.commandOrder = {
-    "play", "move", "come", "stay", "pause",
+    "play", "move", "stay", "pause",
     "pull", "spread", "hug", "object", "aoe", "attackstart", "attackstop",
 }
 
@@ -728,28 +1261,19 @@ local function SCB_InvalidTargetFlashOnUpdate()
     if this.scbInvalidElapsed >= 0.28 then
         this:SetScript("OnUpdate", nil)
         this.scbInvalidElapsed = nil
-        if this.scbInvalidFlash then
-            this.scbInvalidFlash:Hide()
-        end
+        if this.icon then this.icon:SetVertexColor(1, 1, 1) end
         return
     end
-    if this.scbInvalidFlash then
-        local alpha = 1 - (this.scbInvalidElapsed / 0.28)
-        this.scbInvalidFlash:SetAlpha(alpha)
+    if this.icon then
+        local fade = this.scbInvalidElapsed / 0.28
+        this.icon:SetVertexColor(1, 0.20 + (0.80 * fade), 0.20 + (0.80 * fade))
     end
 end
 
 local function SCB_FlashInvalidTarget(button)
-    if not button then return end
-    if not button.scbInvalidFlash then
-        local flash = button:CreateTexture(nil, "OVERLAY")
-        flash:SetAllPoints(button)
-        flash:SetTexture(1, 0.08, 0.08, 0.45)
-        button.scbInvalidFlash = flash
-    end
+    if not button or not button.icon then return end
     button.scbInvalidElapsed = 0
-    button.scbInvalidFlash:SetAlpha(1)
-    button.scbInvalidFlash:Show()
+    button.icon:SetVertexColor(1, 0.20, 0.20)
     button:SetScript("OnUpdate", SCB_InvalidTargetFlashOnUpdate)
 end
 
@@ -994,6 +1518,23 @@ local function SCB_CopyPlayerSlots(playerSlots, size)
     return copy
 end
 
+function SCB_CopyPlayerGroups(playerGroups, size, legacySlots)
+    local copy = {}
+    local key, value, groupCount
+    size = size or 10
+    groupCount = math.max(1, math.ceil(size / 5))
+    if playerGroups then
+        for key, value in pairs(playerGroups) do
+            if type(key) == "string" and type(value) == "number" then
+                if legacySlots then value = math.floor((value - 1) / 5) + 1 end
+                if value >= 1 and value <= groupCount then copy[key] = value end
+            end
+        end
+    end
+    if not copy["$self"] then copy["$self"] = 1 end
+    return copy
+end
+
 local function SCB_CopyPlayerRoles(playerRoles)
     local copy = {}
     local key, role
@@ -1157,6 +1698,58 @@ local function SCB_DefaultPlayerRole(info)
     return SCB_DefaultPlayerRoleForClass(classInfo)
 end
 
+function SCB_GetCharacterDefaultRole()
+    local classInfo = SCB_GetPlayerClassInfo()
+    local stored = SoloCraftBotsCharDB and SoloCraftBotsCharDB.defaultPlayerRole or nil
+    local i
+    if classInfo and classInfo.roles then
+        for i = 1, table.getn(classInfo.roles) do
+            if classInfo.roles[i].role == stored then return stored end
+        end
+    end
+    stored = SCB_DefaultPlayerRoleForClass(classInfo)
+    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
+    SoloCraftBotsCharDB.defaultPlayerRole = stored
+    return stored
+end
+
+function SCB_RefreshCharacterPresetIdentity()
+    local classInfo = SCB_GetPlayerClassInfo()
+    local role, roleInfo
+    if SCB.presetSelfClassIcon and classInfo then
+        SCB.presetSelfClassIcon:SetTexture(SCB.assetRoot .. classInfo.icon)
+        SCB.presetSelfClassFrame.scbTooltip = classInfo.name
+    end
+    role = SCB_GetCharacterDefaultRole()
+    roleInfo = SCB_PlayerRoleInfo(role)
+    if SCB.presetSelfRoleButton and roleInfo then
+        SCB_SetArtButtonTexture(SCB.presetSelfRoleButton, SCB_RoleTexture(roleInfo), SCB_RoleHighlightTexture(roleInfo))
+        SCB.presetSelfRoleButton.scbTooltip = SCB_L("TIP_CHARACTER_ROLE", "Default role for new presets") .. "\n" .. roleInfo.label
+    end
+end
+
+function SCB_CharacterPresetRoleOnClick()
+    local classInfo = SCB_GetPlayerClassInfo()
+    local currentRole = SCB_GetCharacterDefaultRole()
+    local currentIndex, newIndex, i, roleInfo
+    if not classInfo or not classInfo.roles or table.getn(classInfo.roles) == 0 then return end
+    currentIndex = 1
+    for i = 1, table.getn(classInfo.roles) do
+        if classInfo.roles[i].role == currentRole then currentIndex = i; break end
+    end
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 1 then newIndex = table.getn(classInfo.roles) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(classInfo.roles) then newIndex = 1 end
+    end
+    roleInfo = classInfo.roles[newIndex]
+    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
+    SoloCraftBotsCharDB.defaultPlayerRole = roleInfo.role
+    SCB_RefreshCharacterPresetIdentity()
+end
+
 local function SCB_EnsurePresetDB()
     local groups, legacyPresets, legacyCurrent, tenGroup, i, preset
 
@@ -1183,7 +1776,7 @@ local function SCB_EnsurePresetDB()
                 name = "Preset 1",
                 slots = SCB_DefaultPresetSlots(10),
                 playerSlots = { ["$self"] = 1 },
-                playerRoles = {},
+                playerRoles = { ["$self"] = SCB_GetCharacterDefaultRole() },
             })
             tenGroup.currentPreset = 1
             SoloCraftBotsDB.currentPresetGroup = 2
@@ -1271,6 +1864,17 @@ local function SCB_StartPresetButtonPulse(button, mode)
     if not button then return end
     button.scbPulseMode = mode
     button.scbPulseElapsed = 0
+
+    -- Apply the first frame immediately.  In particular, saved feedback
+    -- should visibly turn green on the click instead of waiting for OnUpdate.
+    if mode == "greensave" and button.label then
+        button.label:SetTextColor(0.35, 1.00, 0.40, 1)
+        button:SetBackdropBorderColor(0.25, 0.80, 0.25, 1)
+    elseif mode == "redloop" and button.label then
+        button.label:SetTextColor(1.00, 0.18, 0.18, 1)
+        button:SetBackdropBorderColor(0.95, 0.15, 0.15, 1)
+    end
+
     button:SetScript("OnUpdate", SCB_PresetButtonPulseOnUpdate)
 end
 
@@ -1322,7 +1926,7 @@ end
 local function SCB_RefreshPresetSlots()
     local size = SCB_CurrentPresetSize()
     local present = SCB_GetPresentHumanMap()
-    local i, slot, classInfo, roleInfo, row, playerKey, playerInfo, playerRole
+    local i, slot, classInfo, roleInfo, row, playerKey, playerInfo, playerRole, blessingInfo, shamanTotems, totemInfo, totemKey
 
     for i = 1, 40 do
         row = SCB.presetSlotRows[i]
@@ -1338,21 +1942,52 @@ local function SCB_RefreshPresetSlots()
                     row.classButton.scbTooltip = SCB_PresetSlotLabel(i) .. ": " .. classInfo.name .. "\n" .. SCB_L("TIP_CLASS_CYCLE", "Left-click next class; right-click previous") .. "\n" .. SCB_L("TIP_CLASS_GROUP", "Shift-click: match group; repeat to rotate")
                     SCB_SetArtButtonTexture(row.roleButton, SCB_RoleTexture(roleInfo), SCB_RoleHighlightTexture(roleInfo))
                     row.roleButton.scbTooltip = roleInfo.label .. "\nLeft-click next role/spec; right-click previous"
+
+                    if row.blessingButton then
+                        if slot.class == "paladin" then
+                            blessingInfo = SCB_FindPaladinBlessing(slot.extra)
+                            row.blessingButton.icon:Show()
+                            SCB_SetArtButtonTexture(row.blessingButton, blessingInfo.texture, nil)
+                            if row.blessingButton.totemIcons then
+                                for totemKey = 1, 4 do row.blessingButton.totemIcons[totemKey]:Hide() end
+                            end
+                            if UnitLevel and UnitLevel("player") == 60 then
+                                SCB_SetArtButtonAvailable(row.blessingButton, true)
+                                row.blessingButton.scbTooltip = SCB_L("TIP_PRESET_BLESSING")
+                                row.blessingButton.scbTooltip = string.gsub(row.blessingButton.scbTooltip, "%%s", blessingInfo.label)
+                            else
+                                SCB_SetArtButtonAvailable(row.blessingButton, false)
+                                row.blessingButton.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_LEVEL")
+                            end
+                            row.blessingButton:Show()
+                        elseif slot.class == "shaman" then
+                            shamanTotems = SCB_ParseShamanTotems(slot.extra)
+                            SCB_SetArtButtonAvailable(row.blessingButton, true)
+                            row.blessingButton.icon:Hide()
+                            if row.blessingButton.totemIcons then
+                                for totemKey = 1, 4 do
+                                    local groupKey = SCB_SHAMAN_TOTEM_ORDER[totemKey]
+                                    totemInfo = SCB_FindShamanTotem(groupKey, shamanTotems[groupKey])
+                                    row.blessingButton.totemIcons[totemKey]:SetTexture(totemInfo.texture)
+                                    row.blessingButton.totemIcons[totemKey]:Show()
+                                end
+                            end
+                            row.blessingButton.scbTooltip =
+                                "Shaman Totems\n"
+                                .. "Air: " .. SCB_FindShamanTotem("air", shamanTotems.air).label .. "\n"
+                                .. "Earth: " .. SCB_FindShamanTotem("earth", shamanTotems.earth).label .. "\n"
+                                .. "Fire: " .. SCB_FindShamanTotem("fire", shamanTotems.fire).label .. "\n"
+                                .. "Water: " .. SCB_FindShamanTotem("water", shamanTotems.water).label
+                                .. "\nClick a quadrant to cycle; right-click reverses"
+                            row.blessingButton:Show()
+                        else
+                            row.blessingButton:Hide()
+                        end
+                    end
                 end
             else
                 row:Hide()
             end
-        end
-    end
-
-    -- Player role artwork is a separate button layered above the bot role
-    -- button.  Keep the underlying bot role completely untouched here.
-    for playerKey, i in pairs(SCB.presetEditorPlayers or {}) do
-        playerInfo = present[playerKey]
-        row = i and SCB.presetSlotRows[i]
-        if playerInfo and row and i <= size and row.playerRoleButton then
-            playerRole = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles[playerKey] or SCB_DefaultPlayerRole(playerInfo))
-            SCB_SetArtButtonTexture(row.playerRoleButton, SCB.assetRoot .. playerRole.icon, SCB.assetRoot .. string.gsub(playerRole.icon, "%.tga$", "_h.tga"))
         end
     end
 
@@ -1384,34 +2019,27 @@ local function SCB_FrameContainsCursor(frame)
         and y >= frame:GetBottom() and y <= frame:GetTop()
 end
 
-local function SCB_PlayerAtPresetSlot(slotIndex)
-    local key, assigned
-    for key, assigned in pairs(SCB.presetEditorPlayers or {}) do
-        if assigned == slotIndex then
-            return key
-        end
-    end
-    return nil
+local function SCB_AssignPresetPlayer(key, groupIndex)
+    local size = SCB_CurrentPresetSize()
+    local groupCount = math.max(1, math.ceil(size / 5))
+    if size <= 5 or not key or not groupIndex or groupIndex < 1 or groupIndex > groupCount then return end
+    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+    SCB.presetEditorPlayers[key] = groupIndex
+    SCB_SetPresetDirty(true)
 end
 
-local function SCB_AssignPresetPlayer(key, slotIndex)
-    local size = SCB_CurrentPresetSize()
-    local otherKey, oldSlot
-    if size <= 5 or not key or not slotIndex or slotIndex < 1 or slotIndex > size then
-        return
-    end
-    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
-    otherKey = SCB_PlayerAtPresetSlot(slotIndex)
-    oldSlot = SCB.presetEditorPlayers[key]
-    if otherKey and otherKey ~= key then
-        if oldSlot then
-            SCB.presetEditorPlayers[otherKey] = oldSlot
-        else
-            SCB.presetEditorPlayers[otherKey] = nil
+function SCB_SetPresetGroupDragHighlight(groupIndex, alpha)
+    local i, frame
+    for i = 1, 8 do
+        frame = SCB.presetGroupFrames[i]
+        if frame then
+            if i == groupIndex then
+                frame:SetBackdropBorderColor(1, 0.82, 0.08, alpha or 1)
+            else
+                frame:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+            end
         end
     end
-    SCB.presetEditorPlayers[key] = slotIndex
-    SCB_SetPresetDirty(true)
 end
 
 local function SCB_UpdateDragGhost()
@@ -1424,6 +2052,18 @@ local function SCB_UpdateDragGhost()
     SCB.dragGhost:ClearAllPoints()
     -- Keep the dragged player representation centred directly on the cursor.
     SCB.dragGhost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    if SCB.draggedPresetPlayer then
+        local i, hovered
+        for i = 1, math.ceil(SCB_CurrentPresetSize() / 5) do
+            if SCB_FrameContainsCursor(SCB.presetGroupFrames[i]) then hovered = i break end
+        end
+        SCB.draggedPresetPlayerHoverGroup = hovered
+        if hovered then
+            SCB_SetPresetGroupDragHighlight(hovered, 0.55 + (0.45 * math.abs(math.sin((GetTime and GetTime() or 0) * 5))))
+        else
+            SCB_SetPresetGroupDragHighlight(nil)
+        end
+    end
 end
 
 local function SCB_ShowDragGhost(info)
@@ -1495,14 +2135,11 @@ local function SCB_PresetPlayerDragStart()
     SCB.draggedPresetPlayerOriginSlot = originSlot
     present = SCB_GetPresentHumanMap()
     if present[this.scbPlayerKey] then
-        -- Reveal the bot assignment being sacrificed as soon as the player
-        -- leaves the slot, rather than waiting until the drop completes.
-        SCB_RevealUnderlyingBot(originSlot)
         SCB_ShowDragGhost(present[this.scbPlayerKey])
     end
 end
 
-local function SCB_FinishPresetPlayerDrag(slotIndex)
+local function SCB_FinishPresetPlayerDrag(groupIndex)
     local key = SCB.draggedPresetPlayer
     if not key then
         return false
@@ -1511,9 +2148,11 @@ local function SCB_FinishPresetPlayerDrag(slotIndex)
     SCB.draggedPresetPlayer = nil
     SCB.draggedPresetPlayerOriginSlot = nil
     SCB_HideDragGhost()
+    SCB.draggedPresetPlayerHoverGroup = nil
+    SCB_SetPresetGroupDragHighlight(nil)
 
-    if slotIndex then
-        SCB_AssignPresetPlayer(key, slotIndex)
+    if groupIndex then
+        SCB_AssignPresetPlayer(key, groupIndex)
     end
 
     SCB_RefreshPresetSlots()
@@ -1524,13 +2163,11 @@ local function SCB_FinishPresetPlayerDrag(slotIndex)
 end
 
 local function SCB_PresetPlayerDragStop()
-    local i, size
-    if not SCB.draggedPresetPlayer or SCB_CurrentPresetSize() <= 5 then
-        return
-    end
-    size = SCB_CurrentPresetSize()
-    for i = 1, size do
-        if SCB_FrameContainsCursor(SCB.presetDropTargets[i]) then
+    local i, groupCount
+    if not SCB.draggedPresetPlayer or SCB_CurrentPresetSize() <= 5 then return end
+    groupCount = math.ceil(SCB_CurrentPresetSize() / 5)
+    for i = 1, groupCount do
+        if SCB_FrameContainsCursor(SCB.presetGroupFrames[i]) then
             SCB_FinishPresetPlayerDrag(i)
             return
         end
@@ -1547,6 +2184,8 @@ local function SCB_CancelPresetPlayerDrag()
     SCB.draggedPresetPlayer = nil
     SCB.draggedPresetPlayerOriginSlot = nil
     SCB_HideDragGhost()
+    SCB.draggedPresetPlayerHoverGroup = nil
+    SCB_SetPresetGroupDragHighlight(nil)
     if SCB.presetPanel and SCB.presetPanel:IsShown() then
         SCB_RefreshPresetSlots()
         if SCB_RefreshPresetPlayers then
@@ -1559,7 +2198,7 @@ local function SCB_PresetPlayerOnClick()
     local roster, i, info, classInfo, roleInfo, groupStart, groupEnd, j, groupSlot, size
 
     if SCB.draggedPresetPlayer and this.scbSlotIndex then
-        SCB_FinishPresetPlayerDrag(this.scbSlotIndex)
+        SCB_FinishPresetPlayerDrag(math.floor((this.scbSlotIndex - 1) / 5) + 1)
         return
     end
 
@@ -1613,7 +2252,7 @@ local function SCB_SetPlayerNameIdentity(button, info, draggable)
     end
     button.scbPlayerKey = info.key
     if draggable then
-        button.scbTooltip = info.name .. "\n" .. SCB_L("TIP_PLAYER_DRAG", "Drag to another raid slot")
+        button.scbTooltip = info.name .. "\n" .. SCB_L("TIP_PLAYER_DRAG", "Drag to another raid group")
     else
         button.scbTooltip = info.name
     end
@@ -1670,63 +2309,66 @@ local function SCB_AutoPartyPlayerSlots(roster)
 end
 
 SCB_RefreshPresetPlayers = function()
-    local size, roster, present, activeAssignments, assignedPresent
-    local i, info, slotIndex, row, button, poolIndex, poolRows, draggable
+    local size, roster, present, assignedPresent, playerRows, groupCounts
+    local i, g, info, key, groupIndex, slotIndex, row, button, poolIndex, poolRows, draggable
 
-    if not SCB.presetPanel then
-        return
-    end
+    if not SCB.presetPanel then return end
     size = SCB_CurrentPresetSize()
     roster = SCB_GetHumanRoster()
-    present = {}
-    assignedPresent = {}
-    for i = 1, table.getn(roster) do
-        present[roster[i].key] = roster[i]
-    end
+    present, assignedPresent, playerRows, groupCounts = {}, {}, {}, {}
+    for i = 1, table.getn(roster) do present[roster[i].key] = roster[i] end
 
-    if size <= 5 then
-        activeAssignments = SCB_AutoPartyPlayerSlots(roster)
-    else
-        activeAssignments = SCB.presetEditorPlayers or {}
-    end
+    SCB_RefreshPresetSlots()
 
     for i = 1, 40 do
         row = SCB.presetSlotRows[i]
         if row then
             row.scbPresentPlayerKey = nil
-            if row.playerOverlay then
-                row.playerOverlay:SetAlpha(1)
-                row.playerOverlay:Hide()
-            end
-            if row.playerRoleButton then
-                row.playerRoleButton.scbPlayerKey = nil
-                row.playerRoleButton:Hide()
-            end
+            if row.playerOverlay then row.playerOverlay:SetAlpha(1); row.playerOverlay:Hide() end
+            if row.playerRoleButton then row.playerRoleButton.scbPlayerKey = nil; row.playerRoleButton:Hide() end
             if row.classButton then row.classButton:Show() end
         end
     end
 
-    for info, slotIndex in pairs(activeAssignments) do
-        if present[info] and slotIndex >= 1 and slotIndex <= size then
-            assignedPresent[info] = true
+    if size <= 5 then
+        local auto = SCB_AutoPartyPlayerSlots(roster)
+        for key, slotIndex in pairs(auto) do playerRows[key] = slotIndex end
+    else
+        -- Players are assigned only to groups. Display them packed at the top
+        -- of each logical group in stable live-roster order; those rows consume
+        -- the group's front N bot slots, but do not claim controllable raid slots.
+        for i = 1, table.getn(roster) do
+            info = roster[i]
+            groupIndex = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
+            if groupIndex and groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
+                groupCounts[groupIndex] = (groupCounts[groupIndex] or 0) + 1
+                if groupCounts[groupIndex] <= 5 then
+                    playerRows[info.key] = ((groupIndex - 1) * 5) + groupCounts[groupIndex]
+                    assignedPresent[info.key] = true
+                end
+            end
+        end
+    end
+
+    for key, slotIndex in pairs(playerRows) do
+        if present[key] and slotIndex >= 1 and slotIndex <= size then
             row = SCB.presetSlotRows[slotIndex]
             if row then
-                row.scbPresentPlayerKey = info
+                row.scbPresentPlayerKey = key
                 if not row.playerOverlay then
                     row.playerOverlay = SCB_CreatePresetPlayerNameButton(row, 64, 26)
-                    row.playerOverlay:SetPoint("LEFT", row.roleButton, "RIGHT", 8, 0)
+                    -- Final horizontal origin is applied by SCB_LayoutPresetRowGeometry.
+                    row.playerOverlay:SetPoint("LEFT", row.classButton, "LEFT", 0, 0)
                     row.playerOverlay:SetFrameLevel(row:GetFrameLevel() + 4)
                 end
                 draggable = size > 5
-                SCB_SetPlayerNameIdentity(row.playerOverlay, present[info], draggable)
+                SCB_SetPlayerNameIdentity(row.playerOverlay, present[key], draggable)
                 row.playerOverlay.scbSlotIndex = slotIndex
-                row.playerOverlay:SetAlpha(1)
-                row.playerOverlay:Show()
-                row.classButton:Hide()
-
-                local roleInfo = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles[info] or SCB_DefaultPlayerRole(present[info]))
+                row.playerOverlay:SetAlpha(1); row.playerOverlay:Show(); row.classButton:Hide()
+                if row.blessingButton then row.blessingButton:Hide() end
+                local roleInfo = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles[key] or SCB_DefaultPlayerRole(present[key]))
                 if row.playerRoleButton then
-                    row.playerRoleButton.scbPlayerKey = info
+                    row.playerRoleButton.scbPlayerKey = key
                     row.playerRoleButton.scbSlotIndex = slotIndex
                     SCB_SetArtButtonTexture(row.playerRoleButton, SCB.assetRoot .. roleInfo.icon, SCB.assetRoot .. string.gsub(roleInfo.icon, "%.tga$", "_h.tga"))
                     row.playerRoleButton.scbTooltip = roleInfo.label .. "\nLeft-click next player role; right-click previous"
@@ -1743,10 +2385,7 @@ SCB_RefreshPresetPlayers = function()
             if not assignedPresent[info.key] then
                 poolIndex = poolIndex + 1
                 button = SCB.presetPlayerPoolButtons[poolIndex]
-                if not button then
-                    button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22)
-                    SCB.presetPlayerPoolButtons[poolIndex] = button
-                end
+                if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
                 button:ClearAllPoints()
                 button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
                 SCB_SetPlayerNameIdentity(button, info, true)
@@ -1755,27 +2394,16 @@ SCB_RefreshPresetPlayers = function()
             end
         end
     end
-
-    for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do
-        SCB.presetPlayerPoolButtons[i]:Hide()
-    end
-
+    for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do SCB.presetPlayerPoolButtons[i]:Hide() end
     SCB.presetPlayerPoolVisibleCount = poolIndex
     if poolIndex > 0 then
         poolRows = math.floor((poolIndex - 1) / 2) + 1
-        SCB.presetPlayerPool:Show()
-        SCB.presetPlayerPoolLabel:Show()
-        SCB.presetPlayerPool:SetHeight(16 + (poolRows * 24))
+        SCB.presetPlayerPool:Show(); SCB.presetPlayerPoolLabel:Show(); SCB.presetPlayerPool:SetHeight(16 + (poolRows * 24))
     else
-        SCB.presetPlayerPool:Hide()
-        SCB.presetPlayerPoolLabel:Hide()
-        SCB.presetPlayerPool:SetHeight(1)
+        SCB.presetPlayerPool:Hide(); SCB.presetPlayerPoolLabel:Hide(); SCB.presetPlayerPool:SetHeight(1)
     end
-
-    SCB_RefreshPresetSlots()
-    if SCB_LayoutPresetGroups then
-        SCB_LayoutPresetGroups()
-    end
+    if SCB_RefreshPresetCounters then SCB_RefreshPresetCounters() end
+    if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
 end
 
 local function SCB_LoadPreset(groupIndex, presetIndex)
@@ -1794,12 +2422,19 @@ local function SCB_LoadPreset(groupIndex, presetIndex)
 
     if preset then
         SCB.presetEditorSlots = SCB_NormalizePresetSlots(preset.slots, size)
-        SCB.presetEditorPlayers = SCB_CopyPlayerSlots(preset.playerSlots, size)
+        SCB.presetEditorPlayers = SCB_CopyPlayerGroups(preset.playerGroups or preset.playerSlots, size, preset.playerGroups == nil)
         SCB.presetEditorPlayerRoles = SCB_CopyPlayerRoles(preset.playerRoles)
+        -- Old presets did not necessarily persist self role. Seed it once from
+        -- this character's default, then it becomes an ordinary preset value.
+        if not SCB.presetEditorPlayerRoles["$self"] then
+            SCB.presetEditorPlayerRoles["$self"] = SCB_GetCharacterDefaultRole()
+            preset.playerRoles = preset.playerRoles or {}
+            preset.playerRoles["$self"] = SCB.presetEditorPlayerRoles["$self"]
+        end
     else
         SCB.presetEditorSlots = SCB_DefaultPresetSlots(size)
         SCB.presetEditorPlayers = { ["$self"] = 1 }
-        SCB.presetEditorPlayerRoles = {}
+        SCB.presetEditorPlayerRoles = { ["$self"] = SCB_GetCharacterDefaultRole() }
     end
 
     SCB_UpdatePresetSelectorText()
@@ -1822,7 +2457,8 @@ local function SCB_SaveCurrentPreset()
     end
     size = group.size
     preset.slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
-    preset.playerSlots = SCB_CopyPlayerSlots(SCB.presetEditorPlayers, size)
+    preset.playerGroups = SCB_CopyPlayerGroups(SCB.presetEditorPlayers, size, false)
+    preset.playerSlots = nil
     preset.playerRoles = SCB_CopyPlayerRoles(SCB.presetEditorPlayerRoles)
     SCB_SetPresetDirty(false, true)
 end
@@ -1831,6 +2467,30 @@ local function SCB_PresetSaveOnClick()
     if SCB.presetDirty then
         SCB_SaveCurrentPreset()
     end
+end
+
+function SCB_ChoosePresetPaladinBlessing(excludeIndex)
+    local counts = {}
+    local i, slot, blessing, bestIndex, bestCount
+    for i = 1, table.getn(SCB_PALADIN_BLESSINGS) do counts[i] = 0 end
+    for i = 1, SCB_CurrentPresetSize() do
+        if i ~= excludeIndex then
+            slot = SCB.presetEditorSlots[i]
+            if slot and slot.class == "paladin" then
+                blessing, bestIndex = SCB_FindPaladinBlessing(slot.extra)
+                counts[bestIndex] = (counts[bestIndex] or 0) + 1
+            end
+        end
+    end
+    bestIndex = 1
+    bestCount = counts[1] or 0
+    for i = 2, table.getn(SCB_PALADIN_BLESSINGS) do
+        if (counts[i] or 0) < bestCount then
+            bestIndex = i
+            bestCount = counts[i] or 0
+        end
+    end
+    return SCB_PALADIN_BLESSINGS[bestIndex].key
 end
 
 local function SCB_PresetClassOnClick()
@@ -1888,9 +2548,21 @@ local function SCB_PresetClassOnClick()
         for j = groupStart, groupEnd do
             groupSlot = SCB.presetEditorSlots[j]
             if groupSlot then
+                local wasPaladin = groupSlot.class == "paladin"
+                local paladinBlessing
+                if classInfo.key == "paladin" and not wasPaladin then
+                    paladinBlessing = SCB_ChoosePresetPaladinBlessing(j)
+                end
                 groupSlot.class = classInfo.key
                 groupSlot.role = roleInfo.role
-                groupSlot.extra = roleInfo.extra
+                if classInfo.key == "paladin" then
+                    if not wasPaladin then groupSlot.extra = paladinBlessing end
+                    if not groupSlot.extra or groupSlot.extra == "" then groupSlot.extra = "BoK" end
+                elseif classInfo.key == "shaman" then
+                    groupSlot.extra = SCB_DEFAULT_SHAMAN_TOTEMS
+                else
+                    groupSlot.extra = roleInfo.extra
+                end
             end
         end
     else
@@ -1903,9 +2575,21 @@ local function SCB_PresetClassOnClick()
         end
         classInfo = visible[newIndex]
         roleInfo = classInfo.roles[1]
+        local wasPaladin = slot.class == "paladin"
+        local paladinBlessing
+        if classInfo.key == "paladin" and not wasPaladin then
+            paladinBlessing = SCB_ChoosePresetPaladinBlessing(slotIndex)
+        end
         slot.class = classInfo.key
         slot.role = roleInfo.role
-        slot.extra = roleInfo.extra
+        if classInfo.key == "paladin" then
+            if not wasPaladin then slot.extra = paladinBlessing end
+            if not slot.extra or slot.extra == "" then slot.extra = "BoK" end
+        elseif classInfo.key == "shaman" then
+            slot.extra = SCB_DEFAULT_SHAMAN_TOTEMS
+        else
+            slot.extra = roleInfo.extra
+        end
     end
 
     SCB_RefreshPresetSlots()
@@ -1944,7 +2628,7 @@ local function SCB_PresetPlayerRoleOnClick()
         return
     end
 
-    currentRole = SCB.presetEditorPlayerRoles[playerKey] or SCB_DefaultPlayerRole(playerInfo)
+    currentRole = SCB.presetEditorPlayerRoles[playerKey] or (playerKey == "$self" and SCB_GetCharacterDefaultRole() or SCB_DefaultPlayerRole(playerInfo))
     currentIndex = 1
     for newIndex = 1, table.getn(classInfo.roles) do
         if classInfo.roles[newIndex].role == currentRole then
@@ -1999,9 +2683,104 @@ local function SCB_PresetRoleOnClick()
     end
     roleInfo = classInfo.roles[newIndex]
     slot.role = roleInfo.role
-    slot.extra = roleInfo.extra
+    if slot.class == "paladin" then
+        if not slot.extra or slot.extra == "" then slot.extra = "BoK" end
+    elseif slot.class == "shaman" then
+        if not slot.extra or slot.extra == "" then slot.extra = SCB_DEFAULT_SHAMAN_TOTEMS end
+    else
+        slot.extra = roleInfo.extra
+    end
     SCB_RefreshPresetSlots()
     SCB_SetPresetDirty(true)
+end
+
+local function SCB_PresetBlessingOnClick()
+    local slotIndex = this.scbSlotIndex
+    local slot = SCB.presetEditorSlots[slotIndex]
+    local blessing, currentIndex, newIndex
+
+    if SCB.draggedPresetPlayer then
+        SCB_FinishPresetPlayerDrag(slotIndex)
+        return
+    end
+    if not slot or slot.class ~= "paladin" then
+        return
+    end
+    if not UnitLevel or UnitLevel("player") ~= 60 then
+        SCB_RefreshPresetSlots()
+        return
+    end
+
+    blessing, currentIndex = SCB_FindPaladinBlessing(slot.extra)
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 1 then newIndex = table.getn(SCB_PALADIN_BLESSINGS) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(SCB_PALADIN_BLESSINGS) then newIndex = 1 end
+    end
+
+    blessing = SCB_PALADIN_BLESSINGS[newIndex]
+    slot.extra = blessing.key
+    SCB_RefreshPresetSlots()
+    SCB_SetPresetDirty(true)
+end
+
+local function SCB_GetShamanTotemQuadrant(button)
+    local x, y, scale, left, right, top, bottom, midX, midY
+    if not button or not GetCursorPosition then return "air" end
+    x, y = GetCursorPosition()
+    scale = button:GetEffectiveScale() or 1
+    x, y = x / scale, y / scale
+    left, right = button:GetLeft() or 0, button:GetRight() or 0
+    top, bottom = button:GetTop() or 0, button:GetBottom() or 0
+    midX, midY = (left + right) / 2, (top + bottom) / 2
+    if y >= midY then
+        if x < midX then return "air" else return "earth" end
+    end
+    if x < midX then return "fire" else return "water" end
+end
+
+local function SCB_PresetShamanTotemOnClick()
+    local slotIndex = this.scbSlotIndex
+    local slot = SCB.presetEditorSlots[slotIndex]
+    local groupKey, totems, current, currentIndex, newIndex, list
+
+    if SCB.draggedPresetPlayer then
+        SCB_FinishPresetPlayerDrag(slotIndex)
+        return
+    end
+    if not slot or slot.class ~= "shaman" then return end
+
+    groupKey = SCB_GetShamanTotemQuadrant(this)
+    totems = SCB_ParseShamanTotems(slot.extra)
+    current, currentIndex = SCB_FindShamanTotem(groupKey, totems[groupKey])
+    list = SCB_SHAMAN_TOTEMS[groupKey]
+
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 1 then newIndex = table.getn(list) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(list) then newIndex = 1 end
+    end
+
+    totems[groupKey] = list[newIndex].key
+    slot.extra = SCB_BuildShamanTotemExtra(totems)
+    SCB_RefreshPresetSlots()
+    SCB_SetPresetDirty(true)
+end
+
+
+
+local function SCB_PresetExtraOnClick()
+    local slot = SCB.presetEditorSlots[this.scbSlotIndex]
+    if not slot then return end
+    if slot.class == "paladin" then
+        SCB_PresetBlessingOnClick()
+    elseif slot.class == "shaman" then
+        SCB_PresetShamanTotemOnClick()
+    end
 end
 
 local function SCB_HidePresetMenus()
@@ -2018,7 +2797,7 @@ local function SCB_GetPresetPopupDialog(frame)
     end
     for i = 1, 4 do
         popup = getglobal("StaticPopup" .. i)
-        if popup and popup:IsShown() and (popup.which == "SOLOCRAFTBOTS_PRESET_NAME" or popup.which == "SOLOCRAFTBOTS_PRESET_GROUP_NAME") then
+        if popup and popup:IsShown() and (popup.which == "SOLOCRAFTBOTS_PRESET_NAME" or popup.which == "SOLOCRAFTBOTS_PRESET_GROUP_NAME" or popup.which == "SOLOCRAFTBOTS_PRESET_RENAME") then
             return popup
         end
     end
@@ -2041,12 +2820,15 @@ local function SCB_AcceptPresetName(dialog)
     if not name or name == "" then name = SCB.pendingPresetDefaultName or "Preset" end
     if not group then return end
 
+    SCB.pendingNewPresetPlayerRoles = SCB_CopyPlayerRoles(SCB.presetEditorPlayerRoles)
+    SCB.pendingNewPresetPlayerRoles["$self"] = SCB_GetCharacterDefaultRole()
     table.insert(group.presets, {
         name = name,
         slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, group.size),
-        playerSlots = SCB_CopyPlayerSlots(SCB.presetEditorPlayers, group.size),
-        playerRoles = SCB_CopyPlayerRoles(SCB.presetEditorPlayerRoles),
+        playerGroups = SCB_CopyPlayerGroups(SCB.presetEditorPlayers, group.size, false),
+        playerRoles = SCB.pendingNewPresetPlayerRoles,
     })
+    SCB.pendingNewPresetPlayerRoles = nil
     group.currentPreset = table.getn(group.presets)
     SCB.pendingPresetDefaultName = nil
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group.currentPreset)
@@ -2067,6 +2849,53 @@ local function SCB_AcceptPresetGroupName(dialog)
     })
     SoloCraftBotsDB.currentPresetGroup = table.getn(SoloCraftBotsDB.presetGroups)
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, nil)
+end
+
+function SCB_AcceptPresetRename(dialog)
+    local editBox = SCB_GetPopupEditBox(dialog)
+    local name = editBox and editBox:GetText() or ""
+    local group = SCB_CurrentPresetGroup()
+    local index = SCB.presetRenameIndex or (group and group.currentPreset)
+    local preset = group and index and group.presets[index]
+    if not group or not preset or not name or name == "" then return end
+    preset.name = name
+    if group.currentPreset == index then SCB_UpdatePresetSelectorText() end
+    SCB.presetRenameIndex = nil
+end
+
+StaticPopupDialogs["SOLOCRAFTBOTS_PRESET_RENAME"] = {
+    text = SCB_L("RENAME_PRESET", "Rename preset"), button1 = ACCEPT, button2 = CANCEL,
+    hasEditBox = 1, maxLetters = 32,
+    OnAccept = function() SCB_AcceptPresetRename(this) end,
+    EditBoxOnEnterPressed = function()
+        local dialog = SCB_GetPresetPopupDialog(this)
+        if dialog then
+            SCB_AcceptPresetRename(dialog)
+            dialog:Hide()
+        end
+    end,
+    EditBoxOnEscapePressed = function()
+        local dialog = SCB_GetPresetPopupDialog(this)
+        if dialog then dialog:Hide() end
+    end,
+    OnShow = function()
+        local editBox = SCB_GetPopupEditBox(this)
+        local group = SCB_CurrentPresetGroup()
+        local index = SCB.presetRenameIndex or (group and group.currentPreset)
+        local preset = group and index and group.presets[index]
+        if editBox then editBox:SetText(preset and preset.name or ""); editBox:HighlightText(); editBox:SetFocus() end
+    end,
+    OnHide = function() SCB.presetRenameIndex = nil end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, exclusive = 1,
+}
+
+function SCB_PresetRenameOnClick()
+    local group = SCB_CurrentPresetGroup()
+    local index = this and this.scbPresetIndex or (group and group.currentPreset)
+    if not group or not index or not group.presets[index] then return end
+    SCB.presetRenameIndex = index
+    SCB_HidePresetMenus()
+    StaticPopup_Show("SOLOCRAFTBOTS_PRESET_RENAME")
 end
 
 StaticPopupDialogs["SOLOCRAFTBOTS_PRESET_NAME"] = {
@@ -2200,6 +3029,26 @@ local function SCB_SetMenuDeleteButton(button, show, index, deleteScript)
     if show then button.deleteButton:Show() else button.deleteButton:Hide() end
 end
 
+function SCB_SetMenuRenameButton(button, show, index)
+    if not button.renameButton then
+        local rename = CreateFrame("Button", nil, button)
+        rename:SetWidth(16)
+        rename:SetHeight(16)
+        rename:SetPoint("RIGHT", button, "RIGHT", -20, 0)
+        local tex = rename:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints(rename)
+        tex:SetTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+        rename.icon = tex
+        rename.scbTooltip = SCB_L("TIP_RENAME_PRESET", "Rename preset")
+        rename:SetScript("OnClick", SCB_PresetRenameOnClick)
+        rename:SetScript("OnEnter", SCB_TooltipOnEnter)
+        rename:SetScript("OnLeave", SCB_TooltipOnLeave)
+        button.renameButton = rename
+    end
+    button.renameButton.scbPresetIndex = index
+    if show then button.renameButton:Show() else button.renameButton:Hide() end
+end
+
 local function SCB_RebuildPresetGroupMenu()
     local count = table.getn(SoloCraftBotsDB.presetGroups)
     local total = count + 1
@@ -2207,7 +3056,7 @@ local function SCB_RebuildPresetGroupMenu()
     for i = 1, total do
         button = SCB.presetGroupMenuButtons[i]
         if not button then
-            button = SCB_CreateTextButton(SCB.presetGroupMenu, nil, 126, 20, "")
+            button = SCB_CreateTextButton(SCB.presetGroupMenu, nil, math.max(1, SCB.presetGroupMenu:GetWidth() - 8), 20, "")
             button:SetPoint("TOPLEFT", SCB.presetGroupMenu, "TOPLEFT", 4, -4 - ((i - 1) * 20))
             button.label:ClearAllPoints()
             button.label:SetPoint("LEFT", button, "LEFT", 3, 0)
@@ -2222,6 +3071,7 @@ local function SCB_RebuildPresetGroupMenu()
             button.scbAddNew = true
             button.scbGroupIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetGroupOnClick)
+            if button.renameButton then button.renameButton:Hide() end
         else
             group = SoloCraftBotsDB.presetGroups[i - 1]
             button.label:SetText(group.name)
@@ -2233,6 +3083,7 @@ local function SCB_RebuildPresetGroupMenu()
             button.scbAddNew = nil
             button.scbGroupIndex = i - 1
             SCB_SetMenuDeleteButton(button, not group.isDefault, i - 1, SCB_DeletePresetGroupOnClick)
+            if button.renameButton then button.renameButton:Hide() end
         end
         button:Show()
     end
@@ -2250,11 +3101,11 @@ local function SCB_RebuildPresetMenu()
     for i = 1, total do
         button = SCB.presetNameMenuButtons[i]
         if not button then
-            button = SCB_CreateTextButton(SCB.presetMenu, nil, 126, 20, "")
+            button = SCB_CreateTextButton(SCB.presetMenu, nil, math.max(1, SCB.presetMenu:GetWidth() - 8), 20, "")
             button:SetPoint("TOPLEFT", SCB.presetMenu, "TOPLEFT", 4, -4 - ((i - 1) * 20))
             button.label:ClearAllPoints()
             button.label:SetPoint("LEFT", button, "LEFT", 3, 0)
-            button.label:SetPoint("RIGHT", button, "RIGHT", -20, 0)
+            button.label:SetPoint("RIGHT", button, "RIGHT", -38, 0)
             button.label:SetJustifyH("LEFT")
             button:SetScript("OnClick", SCB_PresetChoiceOnClick)
             SCB.presetNameMenuButtons[i] = button
@@ -2264,12 +3115,14 @@ local function SCB_RebuildPresetMenu()
             button.scbAddNew = true
             button.scbPresetIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetOnClick)
+            SCB_SetMenuRenameButton(button, false, nil)
         else
             preset = group.presets[i - 1]
             button.label:SetText(preset.name or ("Preset " .. (i - 1)))
             button.scbAddNew = nil
             button.scbPresetIndex = i - 1
             SCB_SetMenuDeleteButton(button, true, i - 1, SCB_DeletePresetOnClick)
+            SCB_SetMenuRenameButton(button, true, i - 1)
         end
         button:Show()
     end
@@ -2303,38 +3156,261 @@ end
 
 local SCB_PRESET_CONVERT_NOW = "__SCB_CONVERT_NOW__"
 local SCB_PRESET_WAIT_RAID = "__SCB_WAIT_RAID__"
+local SCB_PRESET_WAIT_BOOTSTRAP = "__SCB_WAIT_BOOTSTRAP__"
+SCB.PRESET_WAIT_REPLACEMENT = "__SCB_WAIT_REPLACEMENT__"
+SCB.PRESET_REMOVE_SURVIVOR = "__SCB_REMOVE_SURVIVOR__"
+SCB.PRESET_WAIT_SURVIVOR_GONE = "__SCB_WAIT_SURVIVOR_GONE__"
+SCB.PRESET_WAIT_GROUP = "__SCB_WAIT_GROUP__"
+SCB.PRESET_WAIT_FINAL_ROSTER = "__SCB_WAIT_FINAL_ROSTER__"
+SCB.PRESET_CHECK_COMBAT = "__SCB_CHECK_COMBAT__"
+SCB.PRESET_ARRANGE_PLAYERS = "__SCB_ARRANGE_PLAYERS__"
+
+function SCB_PresetGroupHasCombat()
+    local count, i, unit, pet
+    if not UnitAffectingCombat then return false end
+
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        count = GetNumRaidMembers()
+        for i = 1, count do
+            unit = "raid" .. i
+            if UnitAffectingCombat(unit) then return true end
+            pet = unit .. "pet"
+            if (not UnitExists or UnitExists(pet)) and UnitAffectingCombat(pet) then return true end
+        end
+        return false
+    end
+
+    if UnitAffectingCombat("player") then return true end
+    if (not UnitExists or UnitExists("pet")) and UnitAffectingCombat("pet") then return true end
+
+    count = GetNumPartyMembers and GetNumPartyMembers() or 0
+    for i = 1, count do
+        unit = "party" .. i
+        if UnitAffectingCombat(unit) then return true end
+        pet = unit .. "pet"
+        if (not UnitExists or UnitExists(pet)) and UnitAffectingCombat(pet) then return true end
+    end
+
+    return false
+end
+
+function SCB_ArrangePresetPlayers()
+    local desired = SCB.presetHumanGroups or {}
+    local key, wantedGroup, wantedName, i, name, _, currentGroup
+    if not SetRaidSubgroup or not GetRaidRosterInfo or not GetNumRaidMembers then return true end
+    if GetNumRaidMembers() == 0 then return false end
+
+    -- Resolve each human by name immediately before moving them. Raid indices
+    -- can change after SetRaidSubgroup(), so never cache an index across moves.
+    for key, wantedGroup in pairs(desired) do
+        wantedName = SCB_PresetPlayerDisplayName(key)
+        if wantedName then
+            for i = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(i)
+                if name == wantedName then
+                    if currentGroup ~= wantedGroup then
+                        SetRaidSubgroup(i, wantedGroup)
+                    end
+                    break
+                end
+            end
+        end
+    end
+
+    -- Verify from a fresh roster snapshot. If the server has not reflected the
+    -- moves yet, leave the queue parked here and try again next frame.
+    for key, wantedGroup in pairs(desired) do
+        wantedName = SCB_PresetPlayerDisplayName(key)
+        if wantedName then
+            local found = false
+            for i = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(i)
+                if name == wantedName then
+                    found = true
+                    if currentGroup ~= wantedGroup then return false end
+                    break
+                end
+            end
+            if not found then return false end
+        end
+    end
+    return true
+end
+
+function SCB_ProbeSurvivorWorldPresence(name)
+    local hadTarget, oldTargetName, found
+    if not name or name == "" or not TargetByName or not UnitName then
+        return false
+    end
+
+    hadTarget = UnitExists and UnitExists("target")
+    oldTargetName = hadTarget and UnitName("target") or nil
+
+    -- Exact matching matters here: a failed lookup must not accept the closest
+    -- partial name. TargetByName leaves the current target unchanged on failure.
+    TargetByName(name, true)
+    found = UnitName("target") == name
+
+    -- Restore the player's previous targeting state only if our successful
+    -- probe actually changed it. A failed exact lookup leaves it untouched.
+    if found and oldTargetName ~= name then
+        if hadTarget then
+            if TargetLastTarget then TargetLastTarget() end
+        elseif ClearTarget then
+            ClearTarget()
+        end
+    end
+
+    return found
+end
 
 local function SCB_PresetSpawnQueueOnUpdate()
-    local nextItem
-    if table.getn(SCB.presetSpawnQueue) == 0 then
-        SCB.presetSpawnElapsed = 0
-        return
-    end
-    nextItem = SCB.presetSpawnQueue[1]
-    if nextItem == SCB_PRESET_CONVERT_NOW then
-        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetSpawnElapsed = 0
-        elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
-            ConvertToRaid()
-            SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
-            SCB.presetSpawnElapsed = 0
-        end
-        return
-    elseif nextItem == SCB_PRESET_WAIT_RAID then
-        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetSpawnElapsed = 0
-        end
-        return
+    local nextItem, bootstrapName
+    local elapsed = arg1 or 0
+
+    -- A logical preset group is a single same-frame burst. The only timed
+    -- spacing in the normal preset scheduler is the tested, exact 1.0 second
+    -- boundary between logical five-slot groups.
+    if SCB.presetGroupWaitRemaining and SCB.presetGroupWaitRemaining > 0 then
+        SCB.presetGroupWaitRemaining = SCB.presetGroupWaitRemaining - elapsed
+        if SCB.presetGroupWaitRemaining > 0 then return end
+        SCB.presetGroupWaitRemaining = 0
     end
 
-    SCB.presetSpawnElapsed = SCB.presetSpawnElapsed + (arg1 or 0)
-    if SCB.presetSpawnElapsed < SCB.presetSpawnInterval then return end
-    SCB.presetSpawnElapsed = SCB.presetSpawnElapsed - SCB.presetSpawnInterval
-    SCB_SendSpawnCommand(nextItem)
-    table.remove(SCB.presetSpawnQueue, 1)
+    while table.getn(SCB.presetSpawnQueue) > 0 do
+        nextItem = SCB.presetSpawnQueue[1]
+
+        if nextItem == SCB.PRESET_WAIT_GROUP then
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetGroupWaitRemaining = 1.0
+            SCB.presetSpawnElapsed = 0
+            return
+        elseif nextItem == SCB.PRESET_ARRANGE_PLAYERS then
+            -- Once the raid exists, put each live human into the logical preset
+            -- subgroup they were assigned to before any real bot burst is sent.
+            if SCB_ArrangePresetPlayers() then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            else
+                return
+            end
+        elseif nextItem == SCB.PRESET_CHECK_COMBAT then
+            -- Gate each logical summon burst on the live combat state of every
+            -- group member and pet. Keep the marker at the head of the queue
+            -- while blocked; once clear, consume it and release the entire
+            -- logical group in the same frame exactly as before.
+            SCB.presetCombatPollRemaining = (SCB.presetCombatPollRemaining or 0) - elapsed
+            if SCB.presetCombatPollRemaining > 0 then return end
+            if SCB_PresetGroupHasCombat() then
+                SCB.presetCombatPollRemaining = 0.50
+                return
+            end
+            SCB.presetCombatPollRemaining = nil
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+        elseif nextItem == SCB_PRESET_CONVERT_NOW then
+            if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
+                ConvertToRaid()
+                SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
+                SCB.presetSpawnElapsed = 0
+                return
+            else
+                return
+            end
+        elseif nextItem == SCB_PRESET_WAIT_BOOTSTRAP then
+            bootstrapName = SCB_FindFirstGroupBotName()
+            if bootstrapName then
+                SCB.presetBootstrapBotName = bootstrapName
+                SCB.presetSurvivorBotName = bootstrapName
+                if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+                    SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
+                elseif ConvertToRaid then
+                    ConvertToRaid()
+                    SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
+                end
+                SCB.presetSpawnElapsed = 0
+            end
+            return
+        elseif nextItem == SCB_PRESET_WAIT_RAID then
+            if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            else
+                return
+            end
+        elseif nextItem == SCB.PRESET_WAIT_REPLACEMENT then
+            -- Legacy barrier retained for compatibility with an in-flight queue
+            -- created by an older build. New queues use WAIT_FINAL_ROSTER.
+            if SCB_CountGroupBots() >= 2 then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            else
+                return
+            end
+        elseif nextItem == SCB.PRESET_WAIT_FINAL_ROSTER then
+            -- For the new Group 1 hand-off, keep the temporary survivor until
+            -- every other requested preset bot is actually visible in roster.
+            -- The survivor itself occupies the held bot's place, so the target
+            -- bot count equals the preset's final required bot count.
+            if SCB_CountGroupBots() >= (SCB.presetExpectedBotCountBeforeHandoff or 0) then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            else
+                return
+            end
+        elseif nextItem == SCB.PRESET_REMOVE_SURVIVOR then
+            if SCB.presetSurvivorBotName and UninviteByName then
+                if SCB_DebugLog then
+                    SCB_DebugLog("SURVIVOR", string.format(SCB_L("DEBUG_SURVIVOR_KICK"), SCB.presetSurvivorBotName))
+                end
+                UninviteByName(SCB.presetSurvivorBotName)
+            end
+            SCB.presetSurvivorProbeRemaining = 1.0
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+            return
+        elseif nextItem == SCB.PRESET_WAIT_SURVIVOR_GONE then
+            -- Leaving the raid roster is not enough: SoloCraft can keep the
+            -- kicked bot physically alive in the instance for another server
+            -- tick or two. Poll the exact bot name once per second and do not
+            -- send the held Group 1 replacement until the world unit is gone.
+            SCB.presetSurvivorProbeRemaining = (SCB.presetSurvivorProbeRemaining or 0) - elapsed
+            if SCB.presetSurvivorProbeRemaining > 0 then
+                return
+            end
+
+            if SCB_ProbeSurvivorWorldPresence(SCB.presetSurvivorBotName) then
+                if SCB_DebugLog then
+                    SCB_DebugLog("SURVIVOR", string.format(SCB_L("DEBUG_SURVIVOR_PRESENT"), SCB.presetSurvivorBotName))
+                end
+                SCB.presetSurvivorProbeRemaining = 1.0
+                return
+            end
+
+            if SCB_DebugLog then
+                SCB_DebugLog("SURVIVOR", string.format(SCB_L("DEBUG_SURVIVOR_GONE"), SCB.presetSurvivorBotName or "?"))
+            end
+            SCB.presetSurvivorProbeRemaining = nil
+            SCB.presetSurvivorBotName = nil
+            SCB.presetBootstrapBotName = nil
+            SCB.presetExpectedBotCountBeforeHandoff = nil
+            table.remove(SCB.presetSpawnQueue, 1)
+            SCB.presetSpawnElapsed = 0
+        else
+            -- Normal preset spawn commands are intentionally consumed without
+            -- a per-command throttle. This makes each logical group a true
+            -- same-frame burst; SCB.PRESET_WAIT_GROUP supplies the 1.0s gap.
+            SCB_SendSpawnCommand(nextItem)
+            table.remove(SCB.presetSpawnQueue, 1)
+        end
+    end
+
+    SCB.presetSpawnElapsed = 0
 end
+
 
 local function SCB_QueuePresetSpawn(commands)
     local i
@@ -2387,17 +3463,34 @@ end
 local function SCB_PresetSummonOnClick()
     local group = SCB_CurrentPresetGroup()
     local size = SCB_CurrentPresetSize()
-    local commands, slots, present, occupied = {}, SCB_NormalizePresetSlots(SCB.presetEditorSlots, size), SCB_GetPresentHumanMap(), {}
-    local roster, activeAssignments, key, slotIndex, i, slot, existingParty, availableBeforeRaid, sentBeforeConvert
+    local commands = {}
+    local slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
+    local present = SCB_GetPresentHumanMap()
+    local occupied = {}
+    local roster, activeAssignments, key, slotIndex, i, slot, partyMembers
+    local startBotState, survivorName
+    local groupCommands = {}
+    local groupCount = math.ceil(size / 5)
+    local g, heldFirstCommand, hasLater, expectedBotCount
 
     if not group or not SCB_CurrentPreset() then
         SCB_Print("Add or select a preset before Summon.")
         return
     end
-    if size > 20 then
-        SCB_Print("40-player preset spawning is reserved for the tracked queue revision.")
+    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 then
+        SCB_Print("Preset Summon is already in progress.")
         return
     end
+
+    -- Empty gate. The only permitted existing bot is the deliberate safety
+    -- survivor: exactly one bot while the player is the only human. That bot
+    -- is always treated as a temporary Group 1 member.
+    startBotState, survivorName = SCB_GetPresetStartBotState()
+    if startBotState == "blocked" then
+        SCB_Print("Preset Summon requires an empty group, or one safety survivor with no other players.")
+        return
+    end
+    SCB.presetSurvivorBotName = survivorName
 
     SCB.presetEditorSlots = slots
     SCB_RefreshPresetPlayers()
@@ -2405,63 +3498,140 @@ local function SCB_PresetSummonOnClick()
     if size <= 5 then
         roster = SCB_GetHumanRoster()
         activeAssignments = SCB_AutoPartyPlayerSlots(roster)
-        -- Every existing party position is occupied, whether human or bot.
-        -- Five-man order cannot be reorganised, so fill only the remaining
-        -- invite-order positions.
-        local partyMembers = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+        partyMembers = (GetNumPartyMembers and GetNumPartyMembers()) or 0
         for i = 1, math.min(5, partyMembers + 1) do occupied[i] = true end
-        for i = 1, 5 do
-            if not occupied[i] then
-                slot = slots[i]
-                table.insert(commands, SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
+    else
+        local playersPerGroup = {}
+        for key in pairs(present) do
+            local assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[key]
+            if not assignedGroup then
+                SCB_Print("Assign " .. SCB_PresetPlayerDisplayName(key) .. " to a preset group before Summon.")
+                return
+            end
+            if assignedGroup < 1 or assignedGroup > groupCount then return end
+            playersPerGroup[assignedGroup] = (playersPerGroup[assignedGroup] or 0) + 1
+            if playersPerGroup[assignedGroup] > 5 then
+                SCB_Print("Preset Group " .. assignedGroup .. " has more than five players assigned.")
+                return
             end
         end
-        SCB_QueuePresetSpawn(commands)
-        return
-    end
-
-    for key, slotIndex in pairs(SCB.presetEditorPlayers or {}) do
-        if present[key] and slotIndex >= 1 and slotIndex <= size then occupied[slotIndex] = true end
-    end
-    for key in pairs(present) do
-        if not SCB.presetEditorPlayers[key] then
-            SCB_Print("Assign " .. SCB_PresetPlayerDisplayName(key) .. " to a preset slot before Summon.")
-            return
+        for g = 1, groupCount do
+            for i = 1, (playersPerGroup[g] or 0) do occupied[((g - 1) * 5) + i] = true end
         end
     end
 
-    existingParty = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-    availableBeforeRaid = 4 - existingParty
-    if availableBeforeRaid < 0 then availableBeforeRaid = 0 end
-    sentBeforeConvert = 0
-
+    -- Build the spawn plan by logical five-slot preset group. Players simply
+    -- occupy their assigned slots, so a group with one player sends four bots,
+    -- two players sends three, and so on.
+    for g = 1, groupCount do groupCommands[g] = {} end
     for i = 1, size do
         if not occupied[i] then
-            if (not GetNumRaidMembers or GetNumRaidMembers() == 0) and sentBeforeConvert >= availableBeforeRaid then
-                if table.getn(commands) == 0 or commands[table.getn(commands)] ~= SCB_PRESET_CONVERT_NOW then
-                    table.insert(commands, SCB_PRESET_CONVERT_NOW)
-                end
-                sentBeforeConvert = -1000
-            end
             slot = slots[i]
-            table.insert(commands, SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
-            if sentBeforeConvert >= 0 then sentBeforeConvert = sentBeforeConvert + 1 end
+            g = math.floor((i - 1) / 5) + 1
+            table.insert(groupCommands[g], SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
         end
     end
 
-    -- If the first group exactly fills a party, conversion must happen before
-    -- any later raid-only additions. This barrier remains deliberately simple
-    -- until the acknowledged queue arrives in 0.3.0.
-    if size > 5 and (not GetNumRaidMembers or GetNumRaidMembers() == 0) then
-        local commandCount = table.getn(commands)
-        if commandCount > availableBeforeRaid and availableBeforeRaid > 0 then
-            local converted = false
-            for i = 1, commandCount do
-                if commands[i] == SCB_PRESET_CONVERT_NOW then converted = true break end
+    -- Raid presets must actually be raids before the real preset bots are sent.
+    -- If we already have a safety survivor it doubles as the raidmaker. If we
+    -- are completely solo, create one temporary Warrior tank and then use the
+    -- exact same Group 1 survivor hand-off.
+    if size > 5 then
+        if startBotState == "survivor" then
+            if not (GetNumRaidMembers and GetNumRaidMembers() > 0) then
+                table.insert(commands, SCB_PRESET_CONVERT_NOW)
             end
-            if not converted then table.insert(commands, availableBeforeRaid + 1, SCB_PRESET_CONVERT_NOW) end
+        elseif GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            -- Already a raid: nothing to do.
+        elseif ((GetNumPartyMembers and GetNumPartyMembers()) or 0) > 0 then
+            table.insert(commands, SCB_PRESET_CONVERT_NOW)
+        else
+            SCB.presetBootstrapBotName = nil
+            SCB.presetSurvivorBotName = nil
+            table.insert(commands, SCB.PRESET_CHECK_COMBAT)
+            table.insert(commands, SCB_BuildSpawnCommand("warrior", "tank", nil))
+            table.insert(commands, SCB_PRESET_WAIT_BOOTSTRAP)
+            startBotState = "survivor"
         end
     end
+
+    if size > 5 then
+        -- Preserve the user's logical player placement in the actual Blizzard
+        -- raid subgroups. This runs after conversion/bootstrap has produced a
+        -- real raid and before any preset group burst is released.
+        SCB.presetHumanGroups = {}
+        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
+            if present[key] and groupIndex >= 1 and groupIndex <= groupCount then
+                SCB.presetHumanGroups[key] = groupIndex
+            end
+        end
+        table.insert(commands, SCB.PRESET_ARRANGE_PLAYERS)
+    else
+        SCB.presetHumanGroups = nil
+    end
+
+    expectedBotCount = 0
+    for g = 1, groupCount do
+        expectedBotCount = expectedBotCount + table.getn(groupCommands[g])
+    end
+
+    if startBotState == "survivor" then
+        -- Preserve Group 1 bot-relative order. The temporary survivor occupies
+        -- the first bot position while we summon every OTHER G1 bot in order,
+        -- then all later logical groups with the proven scheduler. Only after
+        -- the rest of the preset is present do we remove the survivor and send
+        -- the held first G1 bot into the newly opened position. Human occupants
+        -- are already omitted from groupCommands, so their physical slot order
+        -- does not affect this bot-order model.
+        if table.getn(groupCommands[1]) == 0 then
+            SCB_Print("Preset Group 1 has no bot slot available to replace the safety survivor.")
+            return
+        end
+
+        heldFirstCommand = groupCommands[1][1]
+        table.remove(groupCommands[1], 1)
+        SCB.presetExpectedBotCountBeforeHandoff = expectedBotCount
+    else
+        SCB.presetExpectedBotCountBeforeHandoff = nil
+    end
+
+    -- Finish each logical group as one same-frame LIFO burst. SoloCraft inserts
+    -- same-frame bot adds into authoritative raid order in reverse request
+    -- order, so sending the active preset assignments backwards makes the
+    -- Blizzard Raid-tab bot order match the preset. Then wait exactly 1.0
+    -- second before the next logical group that has bots to summon.
+    for g = 1, groupCount do
+        if table.getn(groupCommands[g]) > 0 then
+            table.insert(commands, SCB.PRESET_CHECK_COMBAT)
+        end
+        for i = table.getn(groupCommands[g]), 1, -1 do
+            table.insert(commands, groupCommands[g][i])
+        end
+
+        hasLater = false
+        if g < groupCount then
+            local gg
+            for gg = g + 1, groupCount do
+                if table.getn(groupCommands[gg]) > 0 then
+                    hasLater = true
+                    break
+                end
+            end
+        end
+        if hasLater then table.insert(commands, SCB.PRESET_WAIT_GROUP) end
+    end
+
+    if heldFirstCommand then
+        -- Do not disturb the known-good G2+ sequencing. Wait until every other
+        -- preset bot is actually present, then perform only the final G1 hole
+        -- replacement: survivor out, held first bot in.
+        table.insert(commands, SCB.PRESET_WAIT_FINAL_ROSTER)
+        table.insert(commands, SCB.PRESET_REMOVE_SURVIVOR)
+        table.insert(commands, SCB.PRESET_WAIT_SURVIVOR_GONE)
+        table.insert(commands, SCB.PRESET_CHECK_COMBAT)
+        table.insert(commands, heldFirstCommand)
+    end
+
     SCB_QueuePresetSpawn(commands)
 end
 
@@ -2470,7 +3640,12 @@ local function SCB_StopPresetTutorial(markSeen)
     if not SCB.presetTutorial then return end
     SCB.presetTutorial:SetScript("OnUpdate", nil)
     SCB.presetTutorial:Hide()
+    if SCB.presetTutorial.scbHiddenTargetRow then
+        SCB.presetTutorial.scbHiddenTargetRow:Show()
+        SCB.presetTutorial.scbHiddenTargetRow = nil
+    end
     if SCB.presetTutorialFlash then SCB.presetTutorialFlash:Hide() end
+    SCB_SetPresetGroupDragHighlight(nil)
     if markSeen then
         SoloCraftBotsCharDB.helpers = SoloCraftBotsCharDB.helpers or {}
         SoloCraftBotsCharDB.helpers.presetPlayerDrag = true
@@ -2483,68 +3658,88 @@ local function SCB_PresetTutorialOnUpdate()
     if f.elapsed < 0.50 then
         if SCB.presetTutorialFlash then
             local pulse = math.abs(math.sin((f.elapsed / 0.50) * 3 * math.pi))
-            SCB.presetTutorialFlash:SetAlpha(0.12 + (pulse * 0.43))
-            SCB.presetTutorialFlash:Show()
+            SCB.presetTutorialFlash:SetAlpha(0.12 + (pulse * 0.43)); SCB.presetTutorialFlash:Show()
         end
-        f:SetAlpha(0)
-        return
+        f:SetAlpha(0); return
     end
     if SCB.presetTutorialFlash then SCB.presetTutorialFlash:Hide() end
     f:SetAlpha(1)
     local t = (f.elapsed - 0.50) / 2.0
-    if t >= 1 then SCB_StopPresetTutorial(true); return end
-    local p
-    if t < 0.18 then p = 0 elseif t < 0.78 then p = (t - 0.18) / 0.60 else p = 1 end
-    local x = f.sx + ((f.ex - f.sx) * p)
-    local y = f.sy + ((f.ey - f.sy) * p)
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    if t >= 1 then SCB_SetPresetGroupDragHighlight(nil); SCB_StopPresetTutorial(true); return end
+    local x, y
+    if t < 0.18 then
+        x, y = f.sx, f.sy
+    elseif t < 0.70 then
+        local p = (t - 0.18) / 0.52
+        x = f.sx + ((f.cx - f.sx) * p); y = f.sy + ((f.cy - f.sy) * p)
+    else
+        -- This is the tutorial's mouse-up moment. Keep the fake cursor exactly
+        -- where the user released it, but snap the player representation to
+        -- the first logical player row just like a real group-level drop.
+        if not f.released then
+            local cursorLeft, cursorTop = f.cursor:GetLeft(), f.cursor:GetTop()
+            f.cursor:ClearAllPoints()
+            if cursorLeft and cursorTop then
+                f.cursor:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", cursorLeft, cursorTop)
+            else
+                f.cursor:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", f.cx + 10, f.cy + 3)
+            end
+            if f.targetRow and f.targetRow:IsShown() then
+                f.targetRow:Hide()
+                f.scbHiddenTargetRow = f.targetRow
+            end
+            f.released = true
+        end
+        x, y = f.ex, f.ey
+    end
+    -- Match the real drag hover feedback: the destination group itself pulses
+    -- gold as the cursor enters it, and remains highlighted through the drop.
+    if t >= 0.64 then
+        SCB_SetPresetGroupDragHighlight(f.targetGroup, 0.55 + (0.45 * math.abs(math.sin(f.elapsed * 5))))
+    else
+        SCB_SetPresetGroupDragHighlight(nil)
+    end
+    f:ClearAllPoints(); f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
 end
 
 local function SCB_StartPresetTutorial()
     local source = SCB.presetSlotRows[1]
-    local target = SCB.presetSlotRows[9]
+    local targetGroup = SCB.presetGroupFrames[2]
+    local targetTop = SCB.presetSlotRows[6]
     local f = SCB.presetTutorial
-    if not f or not source or not target or not source:IsShown() or not target:IsShown() then return end
-    local sourceName = source.playerOverlay or source
-    f.sx = ((sourceName:GetLeft() + sourceName:GetRight()) / 2) - 13
-    f.sy = ((sourceName:GetTop() + sourceName:GetBottom()) / 2)
-    f.ex = (target:GetLeft() + 64) - 13
-    f.ey = ((target:GetTop() + target:GetBottom()) / 2)
-    f.elapsed = 0
-    f:SetAlpha(0)
+    if not f or not source or not targetGroup or not targetTop or not source:IsShown() or not targetGroup:IsShown() then return end
+    -- The tutorial ghost uses the same 84px width as a real preset row.
+    -- Centre it on the row/group itself so its backdrop edges line up exactly.
+    f.sx = ((source:GetLeft() + source:GetRight()) / 2)
+    f.sy = ((source:GetTop() + source:GetBottom()) / 2)
+    f.cx = ((targetGroup:GetLeft() + targetGroup:GetRight()) / 2)
+    f.cy = ((targetGroup:GetTop() + targetGroup:GetBottom()) / 2)
+    f.ex = ((targetTop:GetLeft() + targetTop:GetRight()) / 2)
+    f.ey = ((targetTop:GetTop() + targetTop:GetBottom()) / 2)
+    f.targetGroup = 2; f.targetRow = targetTop; f.scbHiddenTargetRow = nil; f.elapsed = 0; f.released = false; f:SetAlpha(0)
+    -- SCB_PresetTutorialOnUpdate detaches the cursor from the player on the
+    -- simulated mouse-up, so always restore the normal drag anchor on start.
+    f.cursor:ClearAllPoints(); f.cursor:SetPoint("TOPLEFT", f.label, "CENTER", -3, 3)
     if SCB.presetTutorialFlash then
-        SCB.presetTutorialFlash:ClearAllPoints()
-        SCB.presetTutorialFlash:SetPoint("TOPLEFT", source, "TOPLEFT", -2, 2)
-        SCB.presetTutorialFlash:SetPoint("BOTTOMRIGHT", source, "BOTTOMRIGHT", 2, -2)
-        SCB.presetTutorialFlash:SetAlpha(0.12)
-        SCB.presetTutorialFlash:Show()
+        SCB.presetTutorialFlash:ClearAllPoints(); SCB.presetTutorialFlash:SetPoint("TOPLEFT", source, "TOPLEFT", -2, 2); SCB.presetTutorialFlash:SetPoint("BOTTOMRIGHT", source, "BOTTOMRIGHT", 2, -2); SCB.presetTutorialFlash:SetAlpha(0.12); SCB.presetTutorialFlash:Show()
     end
     f.label:SetText(SCB_PresetPlayerDisplayName("$self"))
     local info = SCB_GetPresentHumanMap()["$self"]
     if info then
-        local c = SCB_ClassColor(info.classToken)
-        if c then f.label:SetTextColor(c.r, c.g, c.b, 1) end
-        local role = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles["$self"] or SCB_DefaultPlayerRole(info))
-        f.roleIcon:SetTexture(SCB.assetRoot .. role.icon)
+        local c = SCB_ClassColor(info.classToken); if c then f.label:SetTextColor(c.r, c.g, c.b, 1) end
+        local role = SCB_PlayerRoleInfo(SCB.presetEditorPlayerRoles["$self"] or SCB_DefaultPlayerRole(info)); f.roleIcon:SetTexture(SCB.assetRoot .. role.icon)
     end
-    f:Show()
-    f:SetScript("OnUpdate", SCB_PresetTutorialOnUpdate)
+    f:Show(); f:SetScript("OnUpdate", SCB_PresetTutorialOnUpdate)
 end
 
 function SCB_MaybeStartPresetTutorial()
     SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
     SoloCraftBotsCharDB.helpers = SoloCraftBotsCharDB.helpers or {}
+    SCB_EnsureOptionsDB()
+    if not SoloCraftBotsDB.options.showTutorialHelpers then return end
     if SoloCraftBotsCharDB.helpers.presetPlayerDrag then return end
     if SCB_CurrentPresetSize() < 10 then return end
     SCB_StartPresetTutorial()
-end
-
-local function SCB_ResetTutorialHelpers()
-    SCB_StopPresetTutorial(false)
-    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
-    SoloCraftBotsCharDB.helpers = {}
-    SCB_Print(SCB_L("HELPERS_RESET", "Tutorial helpers reset for this character."))
 end
 
 local function SCB_SetPresetToggleDirection(open)
@@ -2589,6 +3784,389 @@ local function SCB_PresetToggleOnClick()
     SCB_SetPresetPanelShown(not SCB.presetPanel:IsShown())
 end
 
+function SCB_ResetTutorialHelpers()
+    -- Closing Presets first mirrors what the user would do manually and also
+    -- stops any running helper cleanly.  Reset afterwards so reopening the
+    -- drawer can immediately demonstrate the tutorial again.
+    if SCB.presetPanel and SCB.presetPanel:IsShown() then
+        SCB_SetPresetPanelShown(false)
+    else
+        SCB_StopPresetTutorial(false)
+    end
+    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
+    SoloCraftBotsCharDB.helpers = {}
+    SCB_Print(SCB_L("HELPERS_RESET", "Tutorial helpers reset for this character."))
+end
+
+function SCB_ResetTutorialsOnClick()
+    SCB_ResetTutorialHelpers()
+end
+
+
+-- -------------------------------------------------------------------------
+-- Options drawer
+-- -------------------------------------------------------------------------
+
+function SCB_OptionCheckOnClick()
+    if not this or not this.scbOptionKey then return end
+    SCB_EnsureOptionsDB()
+    SoloCraftBotsDB.options[this.scbOptionKey] = this:GetChecked() and true or false
+    if this.scbOptionKey == "showTutorialHelpers" and not this:GetChecked() then
+        SCB_StopPresetTutorial(false)
+    end
+end
+
+function SCB_CreateOptionCheck(parent, key, labelKey, y)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    check:SetWidth(24)
+    check:SetHeight(24)
+    check:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, y)
+    check.scbOptionKey = key
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", check, "RIGHT", 4, 0)
+    label:SetText(SCB_L(labelKey))
+    label:SetTextColor(0.90, 0.90, 0.90, 1)
+    check.scbLabel = label
+    check:SetScript("OnClick", SCB_OptionCheckOnClick)
+    return check
+end
+
+function SCB_SetDebugOutline(frame, shown)
+    local edge, i
+    if not frame then return end
+    if not frame.scbDebugOutline then
+        frame.scbDebugOutline = {}
+        for i = 1, 4 do
+            edge = frame:CreateTexture(nil, "OVERLAY")
+            edge:SetTexture(1, 0, 0, 1)
+            frame.scbDebugOutline[i] = edge
+        end
+        frame.scbDebugOutline[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.scbDebugOutline[1]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.scbDebugOutline[1]:SetHeight(1)
+        frame.scbDebugOutline[2]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.scbDebugOutline[2]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.scbDebugOutline[2]:SetHeight(1)
+        frame.scbDebugOutline[3]:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.scbDebugOutline[3]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.scbDebugOutline[3]:SetWidth(1)
+        frame.scbDebugOutline[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.scbDebugOutline[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.scbDebugOutline[4]:SetWidth(1)
+    end
+    for i = 1, 4 do
+        if shown then frame.scbDebugOutline[i]:Show() else frame.scbDebugOutline[i]:Hide() end
+    end
+end
+
+function SCB_UpdateLayoutDebugBorders()
+    local shown, r, i, row, frame
+    shown = SCB.optionsDebugMode and SCB.optionsDebugMode.command
+    if SCB.commandLayout then
+        for r = 1, table.getn(SCB.commandLayout.rows or {}) do
+            row = SCB.commandLayout.rows[r]
+            SCB_SetDebugOutline(row.recipientButton, shown)
+            for i = 1, table.getn(row.commandButtons or {}) do SCB_SetDebugOutline(row.commandButtons[i], shown) end
+        end
+        for i = 1, table.getn(SCB.commandLayout.standaloneButtons or {}) do SCB_SetDebugOutline(SCB.commandLayout.standaloneButtons[i], shown) end
+        SCB_SetDebugOutline(SCB.commandLayout.kickDead, shown)
+        SCB_SetDebugOutline(SCB.commandLayout.kickAll, shown)
+    end
+
+    shown = SCB.optionsDebugMode and SCB.optionsDebugMode.preset
+    for i = 1, 8 do SCB_SetDebugOutline(SCB.presetGroupFrames and SCB.presetGroupFrames[i], shown) end
+    for i = 1, 40 do
+        row = SCB.presetSlotRows and SCB.presetSlotRows[i]
+        if row then
+            SCB_SetDebugOutline(row, shown)
+            SCB_SetDebugOutline(row.roleButton, shown)
+            SCB_SetDebugOutline(row.classButton, shown)
+            SCB_SetDebugOutline(row.blessingButton, shown)
+            SCB_SetDebugOutline(row.playerRoleButton, shown)
+            SCB_SetDebugOutline(row.playerOverlay, shown)
+        end
+    end
+end
+
+function SCB_AdjustLayoutOption()
+    local sectionKey, valueKey, delta, minimum, maximum, options, target, value
+    if not this then return end
+    sectionKey = this.scbLayoutSection
+    valueKey = this.scbLayoutKey
+    delta = this.scbDelta or 0
+    if not sectionKey or not valueKey then return end
+    SCB_EnsureOptionsDB()
+    options = SoloCraftBotsDB.options
+    if SCB.optionsDebugMode and SCB.optionsDebugMode[sectionKey] then
+        target = sectionKey == "command" and options.commandLayoutDebug or options.presetLayoutDebug
+        minimum = this.scbDebugMinimum
+        maximum = this.scbDebugMaximum
+    else
+        target = sectionKey == "command" and options.commandLayoutUser or options.presetLayoutUser
+        minimum = this.scbUserMinimum or -20
+        maximum = this.scbUserMaximum or 20
+    end
+    value = (target[valueKey] or 0) + delta
+    if minimum and value < minimum then value = minimum end
+    if maximum and value > maximum then value = maximum end
+    target[valueKey] = value
+    SCB_RefreshOptionsUI()
+    if sectionKey == "command" and SCB_LayoutCommandUI then SCB_LayoutCommandUI() end
+    if sectionKey == "preset" and SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
+    SCB_UpdateLayoutDebugBorders()
+end
+
+function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debugMinimum, debugMaximum, userMinimum, userMaximum)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local minus, value, plus
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+    label:SetWidth(116)
+    label:SetJustifyH("LEFT")
+    label:SetText(SCB_L(labelKey))
+    label:SetTextColor(0.82, 0.82, 0.82, 1)
+
+    minus = SCB_CreateTextButton(parent, nil, 22, 20, "-")
+    minus:SetPoint("LEFT", label, "RIGHT", 2, 0)
+    minus.scbLayoutSection = sectionKey
+    minus.scbLayoutKey = valueKey
+    minus.scbDelta = -1
+    minus.scbDebugMinimum = debugMinimum
+    minus.scbDebugMaximum = debugMaximum
+    minus.scbUserMinimum = userMinimum
+    minus.scbUserMaximum = userMaximum
+    minus:SetScript("OnClick", SCB_AdjustLayoutOption)
+
+    value = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    value:SetPoint("LEFT", minus, "RIGHT", 3, 0)
+    value:SetWidth(24)
+    value:SetJustifyH("CENTER")
+    value:SetTextColor(1, 0.82, 0, 1)
+
+    plus = SCB_CreateTextButton(parent, nil, 22, 20, "+")
+    plus:SetPoint("LEFT", value, "RIGHT", 3, 0)
+    plus.scbLayoutSection = sectionKey
+    plus.scbLayoutKey = valueKey
+    plus.scbDelta = 1
+    plus.scbDebugMinimum = debugMinimum
+    plus.scbDebugMaximum = debugMaximum
+    plus.scbUserMinimum = userMinimum
+    plus.scbUserMaximum = userMaximum
+    plus:SetScript("OnClick", SCB_AdjustLayoutOption)
+
+    return { label = label, minus = minus, value = value, plus = plus, sectionKey = sectionKey, valueKey = valueKey }
+end
+
+function SCB_OptionsSubsectionToggleOnClick()
+    if not this or not this.scbOptionsSection then return end
+    this.scbOptionsSection.scbExpanded = not this.scbOptionsSection.scbExpanded
+    SCB_LayoutOptionsUI()
+end
+
+function SCB_OptionsDebugOnClick()
+    local sectionKey = this and this.scbLayoutSection
+    if not sectionKey then return end
+    SCB.optionsDebugMode = SCB.optionsDebugMode or {}
+    SCB.optionsDebugMode[sectionKey] = this:GetChecked() and true or false
+    SCB_RefreshOptionsUI()
+    if sectionKey == "command" and SCB_LayoutCommandUI then SCB_LayoutCommandUI() end
+    if sectionKey == "preset" and SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
+    SCB_UpdateLayoutDebugBorders()
+end
+
+function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeight)
+    local section = CreateFrame("Frame", nil, parent)
+    local toggle, title, debugCheck, debugLabel, content
+    section:SetWidth(parent:GetWidth())
+    section.scbExpanded = false
+    section.scbCollapsedHeight = 26
+    section.scbExpandedHeight = expandedHeight
+
+    toggle = SCB_CreateArrowButton(section, 18)
+    toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
+    toggle.scbOptionsSection = section
+    toggle:SetScript("OnClick", SCB_OptionsSubsectionToggleOnClick)
+    section.scbToggle = toggle
+
+    title = section:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", section, "TOPLEFT", 36, -5)
+    title:SetText(SCB_L(labelKey))
+    title:SetTextColor(0.82, 0.82, 0.82, 1)
+    section.scbTitle = title
+
+    debugCheck = CreateFrame("CheckButton", nil, section, "UICheckButtonTemplate")
+    debugCheck:SetWidth(20)
+    debugCheck:SetHeight(20)
+    debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
+    debugCheck.scbLayoutSection = sectionKey
+    debugCheck:SetScript("OnClick", SCB_OptionsDebugOnClick)
+    section.scbDebugCheck = debugCheck
+
+    debugLabel = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    debugLabel:SetPoint("RIGHT", debugCheck, "LEFT", -2, 0)
+    debugLabel:SetText(SCB_L("OPTION_DEBUG"))
+    debugLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+
+    content = CreateFrame("Frame", nil, section)
+    content:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -26)
+    content:SetWidth(parent:GetWidth())
+    content:SetHeight(expandedHeight - 26)
+    section.scbContent = content
+    return section
+end
+
+function SCB_RefreshOptionsSectionArrow(section)
+    if not section or not section.scbToggle or not section.scbToggle.scbArrowTexture then return end
+    if section.scbExpanded then
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "down")
+        section.scbContent:Show()
+    else
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "right")
+        section.scbContent:Hide()
+    end
+end
+
+function SCB_LayoutOptionsUI()
+    local y, commandHeight, presetHeight, panelHeight
+    if not SCB.optionsPanel then return end
+    y = -128
+    if SCB.optionCommandSection then
+        commandHeight = SCB.optionCommandSection.scbExpanded and SCB.optionCommandSection.scbExpandedHeight or SCB.optionCommandSection.scbCollapsedHeight
+        SCB.optionCommandSection:ClearAllPoints()
+        SCB.optionCommandSection:SetPoint("TOPLEFT", SCB.optionsPanel, "TOPLEFT", 0, y)
+        SCB.optionCommandSection:SetHeight(commandHeight)
+        SCB_RefreshOptionsSectionArrow(SCB.optionCommandSection)
+        y = y - commandHeight
+    end
+    if SCB.optionPresetSection then
+        presetHeight = SCB.optionPresetSection.scbExpanded and SCB.optionPresetSection.scbExpandedHeight or SCB.optionPresetSection.scbCollapsedHeight
+        SCB.optionPresetSection:ClearAllPoints()
+        SCB.optionPresetSection:SetPoint("TOPLEFT", SCB.optionsPanel, "TOPLEFT", 0, y)
+        SCB.optionPresetSection:SetHeight(presetHeight)
+        SCB_RefreshOptionsSectionArrow(SCB.optionPresetSection)
+        y = y - presetHeight
+    end
+    panelHeight = (-y) + 38
+    if panelHeight < 220 then panelHeight = 220 end
+    SCB.optionsPanel:SetHeight(panelHeight)
+    if SCB.optionVersion then
+        SCB.optionVersion:ClearAllPoints()
+        SCB.optionVersion:SetPoint("BOTTOMLEFT", SCB.optionsPanel, "BOTTOMLEFT", 16, 14)
+    end
+end
+
+function SCB_RefreshOptionsUI()
+    local options, sectionKey, valueKey, target, i, control
+    SCB_EnsureOptionsDB()
+    options = SoloCraftBotsDB.options
+    if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.showSafetyMessages and 1 or nil) end
+    if SCB.optionTutorialCheck then SCB.optionTutorialCheck:SetChecked(options.showTutorialHelpers and 1 or nil) end
+    SCB.optionsDebugMode = SCB.optionsDebugMode or { command = false, preset = false }
+    if SCB.optionCommandSection and SCB.optionCommandSection.scbDebugCheck then
+        SCB.optionCommandSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.command and 1 or nil)
+    end
+    if SCB.optionPresetSection and SCB.optionPresetSection.scbDebugCheck then
+        SCB.optionPresetSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.preset and 1 or nil)
+    end
+    for i = 1, table.getn(SCB.optionLayoutControls or {}) do
+        control = SCB.optionLayoutControls[i]
+        sectionKey = control.sectionKey
+        valueKey = control.valueKey
+        if SCB.optionsDebugMode[sectionKey] then
+            target = sectionKey == "command" and options.commandLayoutDebug or options.presetLayoutDebug
+        else
+            target = sectionKey == "command" and options.commandLayoutUser or options.presetLayoutUser
+        end
+        control.value:SetText(target[valueKey] or 0)
+    end
+end
+
+function SCB_SetOptionsPanelShown(show)
+    if not SCB.optionsPanel then return end
+    if show then
+        SCB_RefreshOptionsUI()
+        SCB_LayoutOptionsUI()
+        SCB.optionsPanel:ClearAllPoints()
+        SCB.optionsPanel:SetPoint("TOPLEFT", SCB.frame, "TOPRIGHT", 2, 0)
+        SCB.optionsPanel:Show()
+    else
+        SCB.optionsPanel:Hide()
+    end
+end
+
+function SCB_ConfigOnClick()
+    if not SCB.optionsPanel then return end
+    SCB_SetOptionsPanelShown(not SCB.optionsPanel:IsShown())
+end
+
+function SCB_CreateOptionsUI(frame)
+    local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
+    local heading, resetTutorials, commandContent, presetContent, sublabel, control
+    panel:SetWidth(230)
+    panel:SetHeight(220)
+    panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
+    panel:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 24,
+        insets = { left = 8, right = 8, top = 8, bottom = 8 },
+    })
+    panel:SetBackdropColor(0.05, 0.05, 0.05, 0.96)
+    panel:SetFrameStrata(frame:GetFrameStrata())
+    panel:SetFrameLevel(math.max(0, frame:GetFrameLevel() - 1))
+    SCB.optionsPanel = panel
+    SCB.optionsDebugMode = { command = false, preset = false }
+    SCB.optionLayoutControls = {}
+
+    heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -12)
+    heading:SetText(SCB_L("OPTIONS_TITLE"))
+    heading:SetTextColor(1, 0.82, 0, 1)
+
+    SCB.optionSafetyCheck = SCB_CreateOptionCheck(panel, "showSafetyMessages", "OPTION_SAFETY_MESSAGES", -42)
+    SCB.optionTutorialCheck = SCB_CreateOptionCheck(panel, "showTutorialHelpers", "OPTION_TUTORIAL_HELPERS", -70)
+
+    resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS", "Reset tutorials"))
+    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -99)
+    resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
+
+    SCB.optionCommandSection = SCB_CreateOptionsSubsection(panel, "command", "OPTION_COMMAND_BUTTONS", 104)
+    commandContent = SCB.optionCommandSection.scbContent
+    control = SCB_CreateLayoutControl(commandContent, "command", "horizontalSpacing", "OPTION_COMMAND_H_SPACING", -2, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(commandContent, "command", "verticalSpacing", "OPTION_COMMAND_V_SPACING", -28, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(commandContent, "command", "groupVerticalSpacing", "OPTION_COMMAND_GROUP_SPACING", -54, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
+
+    SCB.optionPresetSection = SCB_CreateOptionsSubsection(panel, "preset", "OPTION_PRESET_GROUPS", 286)
+    presetContent = SCB.optionPresetSection.scbContent
+    control = SCB_CreateLayoutControl(presetContent, "preset", "groupWidth", "OPTION_GROUP_WIDTH", -2, 60, 160, -30, 30); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "groupHeight", "OPTION_GROUP_HEIGHT", -26, 100, 240, -50, 50); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "roleSize", "OPTION_ROLE_SIZE", -54, 12, 40, -12, 12); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "classSize", "OPTION_CLASS_SIZE", -78, 12, 40, -12, 12); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "buffSize", "OPTION_BUFF_SIZE", -102, 12, 40, -12, 12); table.insert(SCB.optionLayoutControls, control)
+
+    sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -130)
+    sublabel:SetText(SCB_L("OPTION_BORDER_OFFSET"))
+    sublabel:SetTextColor(1, 0.82, 0, 1)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "borderHorizontal", "OPTION_HORIZONTAL", -150, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "borderVertical", "OPTION_VERTICAL", -174, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
+
+    sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -202)
+    sublabel:SetText(SCB_L("OPTION_ICON_SPACING"))
+    sublabel:SetTextColor(1, 0.82, 0, 1)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "iconHorizontal", "OPTION_HORIZONTAL", -222, -10, 20, -20, 20); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "iconVertical", "OPTION_VERTICAL", -246, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
+
+    SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
+    SCB.optionVersion:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    SCB_RefreshOptionsUI()
+    SCB_LayoutOptionsUI()
+    panel:Hide()
+end
 
 -- -------------------------------------------------------------------------
 -- Escape / top-level visibility
@@ -2615,7 +4193,20 @@ local function SCB_EscapeProxyOnHide()
         return
     end
 
-    -- First Escape closes the preset side panel; the next closes SCB.
+    -- Blizzard also hides UISpecialFrames when player control is lost (fear,
+    -- charm, etc.). Re-arm the proxy in that case; only a normal special-frame
+    -- close should be interpreted as the user's Escape action.
+    if SCB.playerControlLost then
+        this:Show()
+        return
+    end
+
+    -- Side drawers close before the main SCB frame.
+    if SCB.optionsPanel and SCB.optionsPanel:IsShown() then
+        SCB_SetOptionsPanelShown(false)
+        this:Show()
+        return
+    end
     if SCB.presetPanel and SCB.presetPanel:IsShown() then
         SCB_SetPresetPanelShown(false)
         this:Show()
@@ -2631,6 +4222,7 @@ end
 
 local function SCB_MainFrameOnHide()
     SCB_SetPresetPanelShown(false, true)
+    SCB_SetOptionsPanelShown(false)
     SCB_SetEscapeProxyShown(false)
 end
 
@@ -2683,7 +4275,7 @@ local function SCB_CloseOnClick()
 end
 
 local function SCB_CreateSummonUI(frame)
-    local section, content = SCB_CreateCollapsibleSection(frame, "summon", "Summon Bots", 196)
+    local section, content = SCB_CreateCollapsibleSection(frame, "summon", SCB_L("SECTION_SUMMON"), 196)
 
     -- One state button: silver binoculars = Spawn Near (distance off, default),
     -- gold binoculars = Spawn Far (distance on).
@@ -2726,6 +4318,18 @@ local function SCB_CreateSummonUI(frame)
         classTexture:SetAllPoints(classFrame)
         classTexture:SetTexture(SCB.assetRoot .. classInfo.icon)
 
+        if classInfo.key == "paladin" then
+            local blessingButton = SCB_CreateArtButton(content, "SoloCraftBotsMainPaladinBlessing", roleSize, SCB_PALADIN_BLESSINGS[1].texture, true)
+            blessingButton:SetPoint("TOPLEFT", classFrame, "TOPLEFT", -2, 2)
+            blessingButton:SetFrameLevel(classFrame:GetFrameLevel() + 2)
+            blessingButton:SetScript("OnClick", SCB_MainPaladinBlessingOnClick)
+            blessingButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+            blessingButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+            SCB.mainPaladinBlessingButton = blessingButton
+            if not SCB.mainPaladinBlessing then SCB.mainPaladinBlessing = "BoK" end
+            SCB_RefreshMainPaladinBlessingButton()
+        end
+
         roleCount = table.getn(classInfo.roles)
         for j = 1, roleCount do
             roleInfo = classInfo.roles[j]
@@ -2757,33 +4361,86 @@ local function SCB_CreateSummonUI(frame)
     end
 end
 
+function SCB_LayoutCommandUI()
+    local layout = SCB.commandLayout
+    local options, gap, rowGap, groupGap, buttonSize, maxColumns, maxRowWidth, left, y
+    local r, i, row, button, standaloneWidth, standaloneLeft
+    if not layout or not layout.content then return end
+
+    SCB_EnsureOptionsDB()
+    options = SoloCraftBotsDB.options
+    gap = SCB_GetLayoutValue("command", "horizontalSpacing")
+    rowGap = SCB_GetLayoutValue("command", "verticalSpacing")
+    groupGap = SCB_GetLayoutValue("command", "groupVerticalSpacing")
+    buttonSize = layout.buttonSize or 36
+    maxColumns = 5
+    maxRowWidth = (maxColumns * buttonSize) + ((maxColumns - 1) * gap)
+    left = math.floor((SCB.frame:GetWidth() - maxRowWidth) / 2)
+    y = -2
+
+    for r = 1, table.getn(layout.rows) do
+        row = layout.rows[r]
+        if row.gapBefore then y = y - groupGap end
+
+        row.recipientButton:ClearAllPoints()
+        row.recipientButton:SetPoint("TOPLEFT", layout.content, "TOPLEFT", left, y)
+
+        for i = 1, table.getn(row.commandButtons) do
+            button = row.commandButtons[i]
+            button:ClearAllPoints()
+            button:SetPoint(
+                "TOPLEFT", layout.content, "TOPLEFT",
+                left + ((i + (row.indent or 0)) * (buttonSize + gap)), y
+            )
+        end
+        y = y - buttonSize - rowGap
+    end
+
+    y = y - groupGap
+    standaloneWidth = (4 * buttonSize) + (3 * gap)
+    standaloneLeft = math.floor((SCB.frame:GetWidth() - standaloneWidth) / 2)
+    for i = 1, table.getn(layout.standaloneButtons) do
+        button = layout.standaloneButtons[i]
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", layout.content, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
+    end
+
+    y = y - buttonSize - 6
+    layout.kickDead:ClearAllPoints()
+    layout.kickDead:SetPoint("TOPRIGHT", layout.content, "TOP", -3, y)
+    layout.kickAll:ClearAllPoints()
+    layout.kickAll:SetPoint("TOPLEFT", layout.content, "TOP", 3, y)
+
+    -- Positive spacing can make the command block taller than its original
+    -- fixed content area. Grow the section only when needed; negative spacing
+    -- can compact the controls without leaving the following section misplaced.
+    local neededHeight = math.max(310, (-y) + 28)
+    if layout.content:GetHeight() ~= neededHeight then
+        layout.content:SetHeight(neededHeight)
+        layout.section.scbExpandedHeight = 26 + neededHeight
+        if SoloCraftBotsDB.sections.commands ~= true then
+            layout.section:SetHeight(layout.section.scbExpandedHeight)
+        end
+        if SCB_LayoutSections then SCB_LayoutSections() end
+    end
+    SCB_UpdateLayoutDebugBorders()
+end
+
 local function SCB_CreateCommandUI(frame)
-    local section, content = SCB_CreateCollapsibleSection(frame, "commands", "Command Bots", 276)
-
-    local buttonSize = 32
-    local gap = 3
-    local rowGap = 1
-    local groupGap = 20
-    -- Global command columns:
-    -- Recipient | Play | Move | Come | Stay | Action
-    -- Role rows intentionally leave the Play column blank.
-    local maxColumns = 6
-    local maxRowWidth = (maxColumns * buttonSize) + ((maxColumns - 1) * gap)
-    local left = math.floor((frame:GetWidth() - maxRowWidth) / 2)
-    local top = -2
-
+    local section, content = SCB_CreateCollapsibleSection(frame, "commands", SCB_L("SECTION_COMMANDS"), 310)
+    local buttonSize = 36
     local rows = {
-        { recipient = "all", indent = 0, commands = { "play", "move", "come", "stay", "pause" } },
-        { recipient = "target", indent = 0, commands = { "play", "move", "come", "stay", "pause" } },
-        { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "come", "stay", "pull" } },
-        { recipient = "healer", indent = 1, commands = { "move", "come", "stay" } },
-        { recipient = "melee", indent = 1, commands = { "move", "come", "stay" } },
-        { recipient = "ranged", indent = 1, commands = { "move", "come", "stay", "spreadtoggle" } },
+        { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
+        { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
+        { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
+        { recipient = "healer", indent = 1, commands = { "move", "stay" } },
+        { recipient = "melee", indent = 1, commands = { "move", "stay" } },
+        { recipient = "ranged", indent = 1, commands = { "move", "stay", "spreadtoggle" } },
     }
-
     local recipientByKey = {}
-    local i, r, row, recipient, commandKey, commandInfo, button
-    local y = top
+    local layoutRows = {}
+    local standaloneButtons = {}
+    local i, r, row, recipient, commandKey, commandInfo, button, layoutRow
 
     for i = 1, table.getn(SCB.recipients) do
         recipientByKey[SCB.recipients[i].key] = SCB.recipients[i]
@@ -2791,10 +4448,8 @@ local function SCB_CreateCommandUI(frame)
 
     for r = 1, table.getn(rows) do
         row = rows[r]
-        if row.gapBefore then
-            y = y - groupGap
-        end
         recipient = recipientByKey[row.recipient]
+        layoutRow = { indent = row.indent or 0, gapBefore = row.gapBefore, commandButtons = {} }
 
         button = SCB_CreateArtButton(
             content, nil, buttonSize,
@@ -2802,10 +4457,14 @@ local function SCB_CreateCommandUI(frame)
             nil,
             SCB.assetRoot .. recipient.highlightIcon
         )
-        button:SetPoint("TOPLEFT", content, "TOPLEFT", left, y)
-        button.scbTooltip = recipient.label
+        button.scbCommandKey = "come"
+        button.scbRecipientKey = row.recipient
+        button.scbRecipientLabel = recipient.label
+        button.scbTooltip = recipient.label .. " - " .. SCB.commands.come.label .. "\n" .. SCB_L("TIP_CTRL_COME", "Ctrl-click: Move, then Come")
+        button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
+        layoutRow.recipientButton = button
 
         for i = 1, table.getn(row.commands) do
             commandKey = row.commands[i]
@@ -2816,17 +4475,10 @@ local function SCB_CreateCommandUI(frame)
                 nil,
                 SCB.assetRoot .. commandInfo.highlightIcon
             )
-            button:SetPoint(
-                "TOPLEFT", content, "TOPLEFT",
-                left + ((i + (row.indent or 0)) * (buttonSize + gap)), y
-            )
             button.scbCommandKey = commandKey
             button.scbRecipientKey = row.recipient
             button.scbRecipientLabel = recipient.label
             button.scbTooltip = recipient.label .. " - " .. commandInfo.label
-            if commandKey == "come" then
-                button.scbTooltip = button.scbTooltip .. "\n" .. SCB_L("TIP_CTRL_COME", "Ctrl-click: Move, then Come")
-            end
             if commandKey == "spreadtoggle" then
                 SCB.spreadToggleButton = button
                 SCB_RefreshSpreadToggle(button)
@@ -2836,16 +4488,12 @@ local function SCB_CreateCommandUI(frame)
             end
             button:SetScript("OnEnter", SCB_TooltipOnEnter)
             button:SetScript("OnLeave", SCB_TooltipOnLeave)
+            table.insert(layoutRow.commandButtons, button)
         end
-
-        y = y - buttonSize - rowGap
+        table.insert(layoutRows, layoutRow)
     end
 
-    -- All-only / unique actions sit outside the recipient matrix.
-    y = y - groupGap
     local standalone = { "aoe", "object", "attackstart", "attackstop" }
-    local standaloneWidth = (4 * buttonSize) + (3 * gap)
-    local standaloneLeft = math.floor((frame:GetWidth() - standaloneWidth) / 2)
     for i = 1, table.getn(standalone) do
         commandKey = standalone[i]
         commandInfo = SCB.commands[commandKey]
@@ -2855,7 +4503,6 @@ local function SCB_CreateCommandUI(frame)
             nil,
             SCB.assetRoot .. commandInfo.highlightIcon
         )
-        button:SetPoint("TOPLEFT", content, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
         button.scbCommandKey = commandKey
         button.scbRecipientKey = "all"
         button.scbRecipientLabel = "All"
@@ -2863,11 +4510,38 @@ local function SCB_CreateCommandUI(frame)
         button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
+        table.insert(standaloneButtons, button)
     end
+
+    -- Native removals deliberately do not use .partybot remove. Both routes
+    -- share survivor safety so the last bot is retained when the player is
+    -- the only human in the group.
+    local kickDead = SCB_CreateTextButton(content, "SoloCraftBotsKickDead", 80, 24, "Kick Dead")
+    kickDead.scbTooltip = "Remove dead bots\nKeeps one survivor if you are the only human"
+    kickDead:SetScript("OnClick", SCB_KickDeadOnClick)
+    kickDead:SetScript("OnEnter", SCB_TooltipOnEnter)
+    kickDead:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 80, 24, "Kick All")
+    kickAll.scbTooltip = "Remove all bots\nKeeps one survivor if you are the only human"
+    kickAll:SetScript("OnClick", SCB_KickAllOnClick)
+    kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
+    kickAll:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+    SCB.commandLayout = {
+        section = section,
+        content = content,
+        buttonSize = buttonSize,
+        rows = layoutRows,
+        standaloneButtons = standaloneButtons,
+        kickDead = kickDead,
+        kickAll = kickAll,
+    }
+    SCB_LayoutCommandUI()
 end
 
 local function SCB_CreateRaidmarkUI(frame)
-    local section, content = SCB_CreateCollapsibleSection(frame, "assignments", "Assignments", 34)
+    local section, content = SCB_CreateCollapsibleSection(frame, "assignments", SCB_L("SECTION_ASSIGNMENTS"), 34)
     local toggleSize = 22
 
     -- One always-highlighted state button. Focus is the default; clicking it
@@ -2928,34 +4602,114 @@ SCB_RefreshPresetCounters = function()
     local counts = { tank = 0, healer = 0, meleedps = 0, rangedps = 0 }
     local size = SCB_CurrentPresetSize()
     local present = SCB_GetPresentHumanMap()
-    local playerBySlot = {}
-    local key, slotIndex, i, slot, role, info
+    local playersPerGroup = {}
+    local key, groupIndex, i, g, slot, role, info
 
-    for key, slotIndex in pairs(SCB.presetEditorPlayers or {}) do
-        if present[key] and slotIndex and slotIndex >= 1 and slotIndex <= size then
-            playerBySlot[slotIndex] = key
+    if size > 5 then
+        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
+            if present[key] and groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
+                playersPerGroup[groupIndex] = (playersPerGroup[groupIndex] or 0) + 1
+                info = present[key]
+                role = SCB.presetEditorPlayerRoles[key] or (key == "$self" and SCB_GetCharacterDefaultRole() or SCB_DefaultPlayerRole(info))
+                if counts[role] ~= nil then counts[role] = counts[role] + 1 end
+            end
+        end
+        for i = 1, size do
+            g = math.floor((i - 1) / 5) + 1
+            if math.mod(i - 1, 5) + 1 > (playersPerGroup[g] or 0) then
+                slot = SCB.presetEditorSlots[i]; role = slot and slot.role
+                if counts[role] ~= nil then counts[role] = counts[role] + 1 end
+            end
+        end
+    else
+        for i = 1, size do
+            slot = SCB.presetEditorSlots[i]; role = slot and slot.role
+            if counts[role] ~= nil then counts[role] = counts[role] + 1 end
         end
     end
+    for key, info in pairs(SCB.presetCounterLabels or {}) do info:SetText(tostring(counts[key] or 0)) end
+end
 
-    for i = 1, size do
-        key = playerBySlot[i]
-        if key then
-            info = present[key]
-            role = SCB.presetEditorPlayerRoles[key] or SCB_DefaultPlayerRole(info)
-        else
-            slot = SCB.presetEditorSlots[i]
-            role = slot and slot.role
-        end
-        if counts[role] ~= nil then
-            counts[role] = counts[role] + 1
-        end
-    end
+function SCB_LayoutPresetRowGeometry()
+    local groupWidth = SCB_GetLayoutValue("preset", "groupWidth")
+    local groupHeight = SCB_GetLayoutValue("preset", "groupHeight")
+    local roleSize = SCB_GetLayoutValue("preset", "roleSize")
+    local classSize = SCB_GetLayoutValue("preset", "classSize")
+    local buffSize = SCB_GetLayoutValue("preset", "buffSize")
+    local borderH = SCB_GetLayoutValue("preset", "borderHorizontal")
+    local borderV = SCB_GetLayoutValue("preset", "borderVertical")
+    local iconH = SCB_GetLayoutValue("preset", "iconHorizontal")
+    local iconV = SCB_GetLayoutValue("preset", "iconVertical")
+    local rowWidth, rowHeight, roleX, classX, buffX, groupIndex, localIndex, slotIndex, groupFrame, row, totemSize, totemIndex
 
-    if SCB.presetCounterLabels then
-        SCB.presetCounterLabels.tank:SetText(counts.tank)
-        SCB.presetCounterLabels.healer:SetText(counts.healer)
-        SCB.presetCounterLabels.meleedps:SetText(counts.meleedps)
-        SCB.presetCounterLabels.rangedps:SetText(counts.rangedps)
+    if groupWidth < 1 then groupWidth = 1 end
+    if groupHeight < 1 then groupHeight = 1 end
+    if roleSize < 1 then roleSize = 1 end
+    if classSize < 1 then classSize = 1 end
+    if buffSize < 1 then buffSize = 1 end
+
+    rowWidth = groupWidth - (2 * borderH)
+    if rowWidth < 1 then rowWidth = 1 end
+    rowHeight = math.max(roleSize, classSize, buffSize) + 2
+
+    -- Preserve the current hand-tuned baseline exactly: Role x=2, Class x=29,
+    -- Buff x=57 at 24px icons.  Horizontal spacing then expands/contracts both
+    -- inter-icon gaps from that baseline without changing the row inset.
+    roleX = 2
+    classX = roleX + roleSize + 3 + iconH
+    buffX = classX + classSize + 4 + iconH
+
+    for groupIndex = 1, 8 do
+        groupFrame = SCB.presetGroupFrames and SCB.presetGroupFrames[groupIndex]
+        if groupFrame then
+            groupFrame:SetWidth(groupWidth)
+            groupFrame:SetHeight(groupHeight)
+        end
+        for localIndex = 1, 5 do
+            slotIndex = ((groupIndex - 1) * 5) + localIndex
+            row = SCB.presetSlotRows and SCB.presetSlotRows[slotIndex]
+            if row and groupFrame then
+                row:ClearAllPoints()
+                row:SetWidth(rowWidth)
+                row:SetHeight(rowHeight)
+                row:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", borderH, -borderV - ((localIndex - 1) * (rowHeight + iconV)))
+
+                row.roleButton:ClearAllPoints()
+                row.roleButton:SetWidth(roleSize)
+                row.roleButton:SetHeight(roleSize)
+                row.roleButton:SetPoint("LEFT", row, "LEFT", roleX, 0)
+
+                row.classButton:ClearAllPoints()
+                row.classButton:SetWidth(classSize)
+                row.classButton:SetHeight(classSize)
+                row.classButton:SetPoint("LEFT", row, "LEFT", classX, 0)
+
+                row.blessingButton:ClearAllPoints()
+                row.blessingButton:SetWidth(buffSize)
+                row.blessingButton:SetHeight(buffSize)
+                row.blessingButton:SetPoint("LEFT", row, "LEFT", buffX, 0)
+
+                if row.playerRoleButton then
+                    row.playerRoleButton:ClearAllPoints()
+                    row.playerRoleButton:SetWidth(roleSize)
+                    row.playerRoleButton:SetHeight(roleSize)
+                    row.playerRoleButton:SetPoint("CENTER", row.roleButton, "CENTER", 0, 0)
+                end
+                if row.playerOverlay then
+                    row.playerOverlay:ClearAllPoints()
+                    row.playerOverlay:SetPoint("LEFT", row, "LEFT", classX, 0)
+                end
+
+                if row.blessingButton.totemIcons then
+                    totemSize = math.floor((buffSize - 4) / 2)
+                    if totemSize < 1 then totemSize = 1 end
+                    for totemIndex = 1, 4 do
+                        row.blessingButton.totemIcons[totemIndex]:SetWidth(totemSize)
+                        row.blessingButton.totemIcons[totemIndex]:SetHeight(totemSize)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -2965,7 +4719,7 @@ SCB_LayoutPresetGroups = function()
     local columns = 2
     local rows, panelWidth, panelHeight, groupFrame, title
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
-    local headerHeight
+    local headerHeight, twoGroupWidth, contentWidth, menuWidth
 
     if groupCount == 1 then
         columns = 1
@@ -2974,16 +4728,19 @@ SCB_LayoutPresetGroups = function()
     end
     rows = math.floor((groupCount + columns - 1) / columns)
 
-    groupWidth = 92
-    groupHeight = 158
+    groupWidth = SCB_GetLayoutValue("preset", "groupWidth")
+    groupHeight = SCB_GetLayoutValue("preset", "groupHeight")
+    SCB_LayoutPresetRowGeometry()
 
     -- Bordered controls use 6 frame units for the intended visible 12px gap.
     -- The Group-title row clearance stays at the existing 20 units.
     gapX = 6
     gapY = 20
 
-    panelWidth = (columns * groupWidth) + ((columns - 1) * gapX) + 24
-    if panelWidth < 214 then panelWidth = 214 end
+    twoGroupWidth = (2 * groupWidth) + gapX
+    contentWidth = (columns * groupWidth) + ((columns - 1) * gapX)
+    if contentWidth < twoGroupWidth then contentWidth = twoGroupWidth end
+    panelWidth = contentWidth + 24
 
     poolExtra = 0
     if SCB.presetPlayerPool and SCB.presetPlayerPool:IsShown() then
@@ -3005,9 +4762,30 @@ SCB_LayoutPresetGroups = function()
 
     SCB.presetPanel:SetWidth(panelWidth)
     SCB.presetPanel:SetHeight(panelHeight)
-    if SCB.presetCounterBox then
-        SCB.presetCounterBox:SetWidth(panelWidth - 24)
+
+    -- Header furniture follows the group geometry. Selectors/actions remain a
+    -- two-column strip; the role counter expands to the live group-grid width.
+    if SCB.presetGroupSelector then SCB.presetGroupSelector:SetWidth(groupWidth) end
+    if SCB.presetSelector then SCB.presetSelector:SetWidth(groupWidth) end
+    if SCB.presetSaveButton then SCB.presetSaveButton:SetWidth(groupWidth) end
+    if SCB.presetSummonButton then SCB.presetSummonButton:SetWidth(groupWidth) end
+    if SCB.presetCounterBox then SCB.presetCounterBox:SetWidth(contentWidth) end
+
+    -- Open dropdown menus deliberately use the two-group span, independent of
+    -- whether this preset currently renders one, two or four group columns.
+    menuWidth = twoGroupWidth
+    if SCB.presetGroupMenu then
+        SCB.presetGroupMenu:SetWidth(menuWidth)
+        SCB.presetGroupMenu:ClearAllPoints()
+        SCB.presetGroupMenu:SetPoint("TOPLEFT", SCB.presetGroupSelector, "BOTTOMLEFT", 0, -1)
     end
+    if SCB.presetMenu then
+        SCB.presetMenu:SetWidth(menuWidth)
+        SCB.presetMenu:ClearAllPoints()
+        SCB.presetMenu:SetPoint("TOPLEFT", SCB.presetGroupSelector, "BOTTOMLEFT", 0, -1)
+    end
+    for i = 1, table.getn(SCB.presetGroupMenuButtons or {}) do SCB.presetGroupMenuButtons[i]:SetWidth(menuWidth - 8) end
+    for i = 1, table.getn(SCB.presetNameMenuButtons or {}) do SCB.presetNameMenuButtons[i]:SetWidth(menuWidth - 8) end
 
     for i = 1, 8 do
         groupFrame = SCB.presetGroupFrames[i]
@@ -3045,6 +4823,7 @@ SCB_LayoutPresetGroups = function()
             -20 - (rows * groupHeight) - ((rows - 1) * gapY) - 8
         )
     end
+    SCB_UpdateLayoutDebugBorders()
 end
 local function SCB_CreatePresetUI(frame)
     local toggle = SCB_CreateArrowButton(frame, 18)
@@ -3055,7 +4834,7 @@ local function SCB_CreatePresetUI(frame)
     toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB_SetArrowDirection(toggle.scbArrowTexture, "left")
     SCB.presetToggle = toggle
-    SCB.presetHeading = SCB_CreateSectionTitle(frame, "Presets", 36, -42)
+    SCB.presetHeading = SCB_CreateSectionTitle(frame, SCB_L("SECTION_PRESETS"), 36, -42)
 
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", UIParent)
     panel:SetWidth(302)
@@ -3076,13 +4855,28 @@ local function SCB_CreatePresetUI(frame)
 
     local presetHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     presetHeader:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -12)
-    presetHeader:SetText("Preset Configuration")
+    presetHeader:SetText(SCB_L("PRESET_CONFIGURATION"))
     presetHeader:SetTextColor(1, 0.82, 0, 1)
-    local presetHeaderFont, presetHeaderSize, presetHeaderFlags = presetHeader:GetFont()
-    if presetHeaderFont and presetHeaderSize then
-        presetHeader:SetFont(presetHeaderFont, presetHeaderSize * 1.20, presetHeaderFlags)
-    end
     SCB.presetConfigurationHeading = presetHeader
+
+    -- Per-character preset identity: actual class is read-only; role is this
+    -- character's default used only to seed newly-created presets.
+    SCB.presetSelfClassFrame = CreateFrame("Frame", nil, panel)
+    SCB.presetSelfClassFrame:SetWidth(20)
+    SCB.presetSelfClassFrame:SetHeight(20)
+    SCB.presetSelfClassFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
+    SCB.presetSelfClassFrame:EnableMouse(true)
+    SCB.presetSelfClassFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.presetSelfClassFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.presetSelfClassIcon = SCB.presetSelfClassFrame:CreateTexture(nil, "ARTWORK")
+    SCB.presetSelfClassIcon:SetAllPoints(SCB.presetSelfClassFrame)
+
+    SCB.presetSelfRoleButton = SCB_CreateArtButton(panel, nil, 20, SCB.assetRoot .. "melee.tga", true, SCB.assetRoot .. "melee_h.tga")
+    SCB.presetSelfRoleButton:SetPoint("LEFT", SCB.presetSelfClassFrame, "RIGHT", 4, 0)
+    SCB.presetSelfRoleButton:SetScript("OnClick", SCB_CharacterPresetRoleOnClick)
+    SCB.presetSelfRoleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.presetSelfRoleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB_RefreshCharacterPresetIdentity()
 
     local groupSelector = SCB_CreatePresetDropdown(panel, "SoloCraftBotsPresetGroupSelector", 92, "Preset Group", SCB_PresetGroupSelectorOnClick)
     groupSelector.scbTooltip = SCB_L("TIP_PRESET_GROUP", "Choose preset group")
@@ -3178,14 +4972,14 @@ local function SCB_CreatePresetUI(frame)
             -- Consistent grammar: [Role] [Class] for bots, [Role] [PlayerName]
             -- for live players. Player names use class colour, not class icons.
             roleButton = SCB_CreateArtButton(row, nil, 24, SCB.assetRoot .. "tank.tga", true, SCB.assetRoot .. "tank_h.tga")
-            roleButton:SetPoint("LEFT", row, "LEFT", 0, 0)
+            roleButton:SetPoint("LEFT", row, "LEFT", 2, 0)
             roleButton.scbSlotIndex = i
             roleButton:SetScript("OnClick", SCB_PresetRoleOnClick)
             roleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
             roleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
             classButton = SCB_CreateArtButton(row, nil, 24, SCB.assetRoot .. "warrior.tga", true)
-            classButton:SetPoint("LEFT", roleButton, "RIGHT", 8, 0)
+            classButton:SetPoint("LEFT", row, "LEFT", 29, 0)
             classButton.scbSlotIndex = i
             classButton:SetScript("OnClick", SCB_PresetClassOnClick)
             classButton:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -3193,6 +4987,35 @@ local function SCB_CreatePresetUI(frame)
 
             row.classButton = classButton
             row.roleButton = roleButton
+
+            local blessingButton = SCB_CreateArtButton(row, nil, 24, SCB_PALADIN_BLESSINGS[1].texture, true)
+            blessingButton:SetPoint("LEFT", row, "LEFT", 57, 0)
+            blessingButton.scbSlotIndex = i
+            blessingButton:SetScript("OnClick", SCB_PresetExtraOnClick)
+            blessingButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+            blessingButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+            -- Shaman uses this same reserved class-extra button as a compact
+            -- 2x2 Air/Earth/Fire/Water selector.
+            blessingButton.totemIcons = {}
+            local totemPositions = {
+                { "TOPLEFT", 1, -1 },
+                { "TOPRIGHT", -1, -1 },
+                { "BOTTOMLEFT", 1, 1 },
+                { "BOTTOMRIGHT", -1, 1 },
+            }
+            local totemIndex, totemTexture
+            for totemIndex = 1, 4 do
+                totemTexture = blessingButton:CreateTexture(nil, "ARTWORK")
+                totemTexture:SetWidth(10)
+                totemTexture:SetHeight(10)
+                totemTexture:SetPoint(totemPositions[totemIndex][1], blessingButton, totemPositions[totemIndex][1], totemPositions[totemIndex][2], totemPositions[totemIndex][3])
+                totemTexture:Hide()
+                blessingButton.totemIcons[totemIndex] = totemTexture
+            end
+
+            blessingButton:Hide()
+            row.blessingButton = blessingButton
 
             -- Player role is a fully independent clickable button layered
             -- over the bot role.  The bot assignment therefore stays intact
@@ -3212,6 +5035,9 @@ local function SCB_CreatePresetUI(frame)
             SCB.presetSlotButtons[i] = { classButton = classButton, roleButton = roleButton }
         end
     end
+
+    SCB_LayoutPresetRowGeometry()
+    SCB_UpdateLayoutDebugBorders()
 
     local playerPool = CreateFrame("Frame", nil, panel)
     playerPool:SetWidth(224)
@@ -3278,7 +5104,7 @@ local function SCB_CreatePresetUI(frame)
     end
 
     local dragGhost = CreateFrame("Frame", "SoloCraftBotsPresetDragGhost", UIParent)
-    dragGhost:SetWidth(94)
+    dragGhost:SetWidth(84)
     dragGhost:SetHeight(22)
     dragGhost:SetFrameStrata("TOOLTIP")
     dragGhost:EnableMouse(false)
@@ -3299,7 +5125,7 @@ local function SCB_CreatePresetUI(frame)
     SCB.dragGhost = dragGhost
 
     local tutorial = CreateFrame("Frame", "SoloCraftBotsPresetTutorial", UIParent)
-    tutorial:SetWidth(104)
+    tutorial:SetWidth(84)
     tutorial:SetHeight(26)
     tutorial:SetFrameStrata("TOOLTIP")
     tutorial:EnableMouse(false)
@@ -3403,26 +5229,44 @@ local function SCB_CreateUI()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", frame, "TOP", 0, -13)
-    title:SetText("SoloCraft Bots")
+    title:SetText(SCB_L("ADDON_TITLE"))
 
-    local close = CreateFrame("Button", "SoloCraftBotsCloseButton", frame, "UIPanelButtonTemplate")
-    close:SetWidth(22)
-    close:SetHeight(20)
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -11, -10)
-    close:SetText("X")
+    local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "close.tga")
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -9)
+    close.scbTooltip = SCB_L("TIP_CLOSE")
     close:SetScript("OnClick", SCB_CloseOnClick)
+    close:SetScript("OnEnter", SCB_TooltipOnEnter)
+    close:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    local version = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    version:SetPoint("RIGHT", close, "LEFT", -5, 0)
-    version:SetText(SCB.version)
-    version:SetTextColor(0.6, 0.6, 0.6, 1)
+    local config = SCB_CreateArtButton(frame, "SoloCraftBotsConfigButton", 18, SCB.assetRoot .. "config.tga")
+    config:SetPoint("RIGHT", close, "LEFT", -2, 0)
+    config.scbTooltip = SCB_L("TIP_CONFIG")
+    config:SetScript("OnClick", SCB_ConfigOnClick)
+    config:SetScript("OnEnter", SCB_TooltipOnEnter)
+    config:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.configButton = config
 
     SCB.rangedSpreadOn = false
     SCB_CreateCommandUI(frame)
     SCB_CreateRaidmarkUI(frame)
     SCB_CreateSummonUI(frame)
     SCB_CreatePresetUI(frame)
+    SCB_CreateOptionsUI(frame)
     SCB_LayoutSections()
+
+    local safety = CreateFrame("Frame", "SoloCraftBotsSafetyMessage", UIParent)
+    safety:SetWidth(520)
+    safety:SetHeight(40)
+    safety:SetPoint("CENTER", UIParent, "CENTER", 0, 110)
+    safety:SetFrameStrata("DIALOG")
+    safety:EnableMouse(false)
+    local safetyText = safety:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    safetyText:SetPoint("CENTER", safety, "CENTER", 0, 0)
+    safetyText:SetText(SCB_L("SURVIVOR_MESSAGE"))
+    safetyText:SetTextColor(1, 0.82, 0, 1)
+    safety.text = safetyText
+    safety:Hide()
+    SCB.safetyMessageFrame = safety
 
     local escapeProxy = CreateFrame("Frame", "SoloCraftBotsEscapeFrame", UIParent)
     escapeProxy:SetWidth(1)
@@ -3445,6 +5289,621 @@ local function SCB_CreateUI()
     end
 end
 
+
+-- ---------------------------------------------------------------------------
+-- Debug laboratory
+-- ---------------------------------------------------------------------------
+
+SCB.debug = SCB.debug or {
+    lines = {},
+    batch = {},
+    batchIndex = 1,
+    batchElapsed = 0,
+    batchRunning = false,
+    combatStates = {},
+    roster = {},
+    petTraces = {},
+}
+
+local function SCB_DebugTimestamp()
+    if GetTime then return string.format("%.3f", GetTime()) end
+    return "0.000"
+end
+
+local function SCB_DebugRefreshLog()
+    if not SCB.debugLogEditBox then return end
+
+    local text = table.concat(SCB.debug.lines, "\n")
+    local lineCount = table.getn(SCB.debug.lines)
+    local height = math.max(250, (lineCount * 14) + 12)
+
+    SCB.debugLogEditBox:SetText(text)
+    SCB.debugLogEditBox:SetHeight(height)
+
+    if SCB.debugLogScroll and SCB.debugLogScroll.UpdateScrollChildRect then
+        SCB.debugLogScroll:UpdateScrollChildRect()
+        SCB.debugLogScroll:SetVerticalScroll(math.max(0, height - SCB.debugLogScroll:GetHeight()))
+    end
+end
+
+function SCB_DebugLog(kind, text)
+    if not text then return end
+    table.insert(SCB.debug.lines, SCB_DebugTimestamp() .. "  " .. kind .. "  " .. tostring(text))
+
+    while table.getn(SCB.debug.lines) > 2000 do
+        table.remove(SCB.debug.lines, 1)
+    end
+
+    SCB_DebugRefreshLog()
+end
+
+local function SCB_DebugClear()
+    SCB.debug.lines = {}
+    SCB_DebugRefreshLog()
+    if SCB.debugLogScroll then
+        SCB.debugLogScroll:SetVerticalScroll(0)
+    end
+    if SCB.debugLogEditBox and SCB.debugLogEditBox.SetCursorPosition then
+        SCB.debugLogEditBox:SetCursorPosition(0)
+    end
+end
+
+local function SCB_DebugSelectAll()
+    if not SCB.debugLogEditBox then return end
+    SCB.debugLogEditBox:SetFocus()
+    SCB.debugLogEditBox:HighlightText()
+end
+
+local function SCB_DebugUnitSummary(unit, subgroup)
+    local name = UnitName(unit)
+    if not name then return nil end
+
+    local _, class = UnitClass(unit)
+    local bot = string.sub(name, -1) == "*"
+    local status = UnitIsDeadOrGhost(unit) and "dead" or "alive"
+    local combat = UnitAffectingCombat and UnitAffectingCombat(unit) and "combat" or "clear"
+
+    local result = name .. " [" .. (class or "?") .. "]"
+    if subgroup then result = result .. " G" .. subgroup end
+    result = result .. " " .. status .. " " .. combat
+    if bot then result = result .. " BOT" else result = result .. " PLAYER" end
+    return result
+end
+
+local function SCB_DebugCollectRoster()
+    local roster = {}
+    local count, i, name, subgroup, unit
+
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        count = GetNumRaidMembers()
+        for i = 1, count do
+            name, _, subgroup = GetRaidRosterInfo(i)
+            unit = "raid" .. i
+            if name then
+                local _, class = UnitClass(unit)
+                roster[name] = {
+                    summary = SCB_DebugUnitSummary(unit, subgroup) or name,
+                    unit = unit,
+                    class = class,
+                }
+            end
+        end
+    else
+        name = UnitName("player")
+        if name then
+            local _, class = UnitClass("player")
+            roster[name] = {
+                summary = SCB_DebugUnitSummary("player", nil) or name,
+                unit = "player",
+                class = class,
+            }
+        end
+
+        count = GetNumPartyMembers and GetNumPartyMembers() or 0
+        for i = 1, count do
+            unit = "party" .. i
+            name = UnitName(unit)
+            if name then
+                local _, class = UnitClass(unit)
+                roster[name] = {
+                    summary = SCB_DebugUnitSummary(unit, nil) or name,
+                    unit = unit,
+                    class = class,
+                }
+            end
+        end
+    end
+
+    return roster
+end
+
+local function SCB_DebugStartPetTrace(name, class)
+    if not name or (class ~= "HUNTER" and class ~= "WARLOCK") then return end
+    SCB.debug.petTraces[name] = {
+        class = class,
+        expires = (GetTime and GetTime() or 0) + 2.5,
+        exists = false,
+        petName = nil,
+        combat = nil,
+    }
+    if SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked() then
+        SCB_DebugLog("PET TRACE", name .. " [" .. class .. "] started")
+    end
+end
+
+local function SCB_DebugFindGroupUnitByName(wantedName)
+    local i, unit, name
+    if not wantedName then return nil end
+
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        for i = 1, GetNumRaidMembers() do
+            unit = "raid" .. i
+            name = UnitName(unit)
+            if name == wantedName then return unit end
+        end
+    else
+        if UnitName("player") == wantedName then return "player" end
+        local count = GetNumPartyMembers and GetNumPartyMembers() or 0
+        for i = 1, count do
+            unit = "party" .. i
+            name = UnitName(unit)
+            if name == wantedName then return unit end
+        end
+    end
+    return nil
+end
+
+local function SCB_DebugScanPetTraces()
+    local now = GetTime and GetTime() or 0
+    local ownerName, trace
+    for ownerName, trace in pairs(SCB.debug.petTraces) do
+        if now > (trace.expires or 0) then
+            SCB.debug.petTraces[ownerName] = nil
+        else
+            local ownerUnit = SCB_DebugFindGroupUnitByName(ownerName)
+            if ownerUnit then
+                local petUnit = ownerUnit .. "pet"
+                local exists = UnitExists and UnitExists(petUnit) and true or false
+                local petName = exists and UnitName(petUnit) or nil
+                local petCombat = exists and UnitAffectingCombat and UnitAffectingCombat(petUnit) and true or false
+
+                if exists and not trace.exists then
+                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] " .. petUnit .. " appeared: " .. (petName or "?") .. " " .. (petCombat and "combat" or "clear"))
+                elseif not exists and trace.exists then
+                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] pet disappeared")
+                elseif exists and trace.petName and petName ~= trace.petName then
+                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] " .. petUnit .. " changed: " .. trace.petName .. " -> " .. (petName or "?"))
+                end
+
+                if exists and trace.combat ~= nil and petCombat ~= trace.combat then
+                    SCB_DebugLog("PET COMBAT", ownerName .. " [" .. trace.class .. "] " .. (petName or "?") .. " " .. petUnit .. " -> " .. (petCombat and "IN" or "OUT"))
+                end
+
+                trace.exists = exists
+                trace.petName = petName
+                trace.combat = exists and petCombat or nil
+            end
+        end
+    end
+end
+
+local function SCB_DebugRosterChanged()
+    local current = SCB_DebugCollectRoster()
+    local name, data
+
+    if SCB.debugRosterCheck and SCB.debugRosterCheck:GetChecked() then
+        for name, data in pairs(current) do
+            if not SCB.debug.roster[name] then
+                SCB_DebugLog("ROSTER", "+ " .. data.summary)
+                SCB_DebugStartPetTrace(name, data.class)
+            elseif SCB.debug.roster[name].summary ~= data.summary then
+                SCB_DebugLog("ROSTER", "~ " .. data.summary)
+            end
+        end
+
+        for name, data in pairs(SCB.debug.roster) do
+            if not current[name] then
+                SCB_DebugLog("ROSTER", "- " .. data.summary)
+            end
+        end
+    end
+
+    SCB.debug.roster = current
+end
+
+local function SCB_DebugSnapshotRoster()
+    local current = SCB_DebugCollectRoster()
+    local name, data
+
+    SCB_DebugLog("ROSTER", "--- snapshot ---")
+    for name, data in pairs(current) do
+        SCB_DebugLog("ROSTER", data.summary)
+    end
+    SCB.debug.roster = current
+end
+
+local function SCB_DebugCollectCombatStates()
+    local states = {}
+    local count, i
+
+    local function add(unitID)
+        local name = UnitName(unitID)
+        if not name then return end
+        states[name] = UnitAffectingCombat and UnitAffectingCombat(unitID) and true or false
+    end
+
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        count = GetNumRaidMembers()
+        for i = 1, count do add("raid" .. i) end
+    else
+        add("player")
+        count = GetNumPartyMembers and GetNumPartyMembers() or 0
+        for i = 1, count do add("party" .. i) end
+    end
+
+    return states
+end
+
+local function SCB_DebugPollCombat()
+    local current = SCB_DebugCollectCombatStates()
+    local name, state
+
+    if SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked() then
+        for name, state in pairs(current) do
+            if SCB.debug.combatStates[name] ~= nil and SCB.debug.combatStates[name] ~= state then
+                SCB_DebugLog("COMBAT POLL", name .. " -> " .. (state and "IN" or "OUT"))
+            end
+        end
+    end
+
+    SCB.debug.combatStates = current
+end
+
+local function SCB_DebugParseBatch()
+    local text = SCB.debugInput and SCB.debugInput:GetText() or ""
+    local batch = {}
+    local line
+
+    for line in string.gfind(text, "[^\r\n]+") do
+        line = string.gsub(line, "^%s+", "")
+        line = string.gsub(line, "%s+$", "")
+
+        if line ~= "" and string.sub(line, 1, 1) ~= "#" then
+            if string.sub(string.lower(line), 1, 10) == ".partybot " then
+                line = string.sub(line, 11)
+            end
+            table.insert(batch, line)
+        end
+    end
+
+    return batch
+end
+
+local function SCB_DebugSendLine(line)
+    if not line or line == "" then return end
+
+    SCB_DebugLog("SEND", ".partybot " .. line)
+
+    if string.sub(string.lower(line), 1, 4) == "add " then
+        SendChatMessage(".partybot " .. line, "SAY")
+    else
+        SendChatMessage(".partybot " .. line, "PARTY")
+    end
+end
+
+local function SCB_DebugStartBatch()
+    local delay = tonumber(SCB.debugDelay and SCB.debugDelay:GetText() or "") or 0.10
+
+    if delay < 0 then delay = 0 end
+    if delay > 5 then delay = 5 end
+    if SCB.debugDelay then SCB.debugDelay:SetText(string.format("%.2f", delay)) end
+
+    SCB.debug.batch = SCB_DebugParseBatch()
+    SCB.debug.batchIndex = 1
+    SCB.debug.batchElapsed = delay
+    SCB.debug.batchDelay = delay
+    SCB.debug.batchWaitRemaining = nil
+    SCB.debug.batchRunning = table.getn(SCB.debug.batch) > 0
+
+    if SCB.debug.batchRunning then
+        SCB_DebugLog("BATCH", "start " .. table.getn(SCB.debug.batch) .. " commands @ " .. string.format("%.2fs", delay))
+    else
+        SCB_DebugLog("BATCH", "no commands")
+    end
+end
+
+local function SCB_DebugStopBatch()
+    if SCB.debug.batchRunning then
+        SCB.debug.batchRunning = false
+        SCB_DebugLog("BATCH", "stopped")
+    end
+end
+
+local function SCB_DebugProcessNextBatchLine()
+    local line = SCB.debug.batch[SCB.debug.batchIndex]
+    if not line then
+        SCB.debug.batchRunning = false
+        SCB_DebugLog("BATCH", "complete")
+        return false
+    end
+
+    local _, _, waitText = string.find(string.lower(line), "^wait%s+([%d%.]+)$")
+    local waitSeconds = waitText and tonumber(waitText) or nil
+    if waitSeconds then
+        if waitSeconds < 0 then waitSeconds = 0 end
+        if waitSeconds > 30 then waitSeconds = 30 end
+        SCB.debug.batchIndex = SCB.debug.batchIndex + 1
+        SCB.debug.batchWaitRemaining = waitSeconds
+        SCB_DebugLog("BATCH", "wait " .. string.format("%.2fs", waitSeconds))
+        return false
+    end
+
+    SCB_DebugSendLine(line)
+    SCB.debug.batchIndex = SCB.debug.batchIndex + 1
+    return true
+end
+
+local function SCB_DebugOnUpdate()
+    local elapsed = arg1 or 0
+
+    SCB.debug.combatElapsed = (SCB.debug.combatElapsed or 0) + elapsed
+    if SCB.debug.combatElapsed >= 0.25 then
+        SCB.debug.combatElapsed = 0
+        SCB_DebugPollCombat()
+    end
+
+    SCB_DebugScanPetTraces()
+
+    if not SCB.debug.batchRunning then return end
+
+    if SCB.debug.batchWaitRemaining then
+        SCB.debug.batchWaitRemaining = SCB.debug.batchWaitRemaining - elapsed
+        if SCB.debug.batchWaitRemaining > 0 then return end
+        SCB.debug.batchWaitRemaining = nil
+        SCB.debug.batchElapsed = SCB.debug.batchDelay
+        SCB_DebugLog("BATCH", "wait complete")
+    end
+
+    -- A true 0.00 delay is an intentional stress-test mode: consume commands
+    -- in the same frame until a WAIT boundary or the batch ends.
+    if SCB.debug.batchDelay <= 0 then
+        while SCB.debug.batchRunning and not SCB.debug.batchWaitRemaining do
+            if not SCB_DebugProcessNextBatchLine() then break end
+        end
+        return
+    end
+
+    SCB.debug.batchElapsed = SCB.debug.batchElapsed + elapsed
+    if SCB.debug.batchElapsed < SCB.debug.batchDelay then return end
+    SCB.debug.batchElapsed = 0
+    SCB_DebugProcessNextBatchLine()
+end
+
+local function SCB_DebugMakeCheck(parent, label)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    check:SetWidth(22)
+    check:SetHeight(22)
+    check:SetChecked(1)
+
+    local text = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("LEFT", check, "RIGHT", 1, 0)
+    text:SetText(label)
+    text:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    check.scbLabel = text
+    return check
+end
+
+local function SCB_CreateDebugUI()
+    if SCB.debugFrame then return end
+
+    local frame = CreateFrame("Frame", "SoloCraftBotsDebugFrame", UIParent)
+    frame:SetWidth(560)
+    frame:SetHeight(520)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameLevel(60)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function() this:StartMoving() end)
+    frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+    SCB_ButtonBackdrop(frame)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -12)
+    title:SetText("SoloCraftBots Debug")
+    title:SetTextColor(1, 0.82, 0, 1)
+
+    local close = SCB_CreateTextButton(frame, nil, 24, 22, "X")
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
+    close:SetScript("OnClick", function() frame:Hide() end)
+
+    local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    inputLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -42)
+    inputLabel:SetText("Batch commands")
+    inputLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    local inputScroll = CreateFrame("ScrollFrame", "SoloCraftBotsDebugInputScroll", frame, "UIPanelScrollFrameTemplate")
+    inputScroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -58)
+    inputScroll:SetWidth(512)
+    inputScroll:SetHeight(68)
+    SCB_ButtonBackdrop(inputScroll)
+
+    local input = CreateFrame("EditBox", nil, inputScroll)
+    input:SetWidth(490)
+    input:SetHeight(68)
+    input:SetMultiLine(true)
+    input:SetAutoFocus(false)
+    input:SetFontObject(ChatFontNormal)
+    input:SetTextInsets(6, 6, 4, 4)
+    input:SetMaxLetters(8192)
+    input:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+    input:SetScript("OnTextChanged", function()
+        local _, lines = string.gsub(this:GetText() or "", "\n", "\n")
+        local height = math.max(68, ((lines or 0) + 1) * 14 + 10)
+        this:SetHeight(height)
+        if inputScroll.UpdateScrollChildRect then
+            inputScroll:UpdateScrollChildRect()
+            inputScroll:SetVerticalScroll(math.max(0, height - inputScroll:GetHeight()))
+        end
+    end)
+    inputScroll:SetScrollChild(input)
+    SCB.debugInput = input
+    SCB.debugInputScroll = inputScroll
+
+    local delayLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    delayLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -134)
+    delayLabel:SetText("Delay")
+    delayLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    local delay = CreateFrame("EditBox", nil, frame)
+    delay:SetWidth(48)
+    delay:SetHeight(22)
+    delay:SetPoint("LEFT", delayLabel, "RIGHT", 8, 0)
+    delay:SetAutoFocus(false)
+    delay:SetFontObject(ChatFontNormal)
+    delay:SetText("0.10")
+    delay:SetJustifyH("CENTER")
+    delay:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+    SCB_ButtonBackdrop(delay)
+    SCB.debugDelay = delay
+
+    local send = SCB_CreateTextButton(frame, nil, 82, 22, "Send Batch")
+    send:SetPoint("LEFT", delay, "RIGHT", 8, 0)
+    send:SetScript("OnClick", SCB_DebugStartBatch)
+
+    local stop = SCB_CreateTextButton(frame, nil, 48, 22, "Stop")
+    stop:SetPoint("LEFT", send, "RIGHT", 6, 0)
+    stop:SetScript("OnClick", SCB_DebugStopBatch)
+
+    local snapshot = SCB_CreateTextButton(frame, nil, 92, 22, "Roster Now")
+    snapshot:SetPoint("LEFT", stop, "RIGHT", 6, 0)
+    snapshot:SetScript("OnClick", SCB_DebugSnapshotRoster)
+
+    local rosterCheck = SCB_DebugMakeCheck(frame, "Roster")
+    rosterCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -158)
+    SCB.debugRosterCheck = rosterCheck
+
+    local combatCheck = SCB_DebugMakeCheck(frame, "Combat")
+    combatCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 100, -158)
+    SCB.debugCombatCheck = combatCheck
+
+    local serverCheck = SCB_DebugMakeCheck(frame, "Server")
+    serverCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 188, -158)
+    SCB.debugServerCheck = serverCheck
+
+    local logLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    logLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -188)
+    logLabel:SetText("Result log")
+    logLabel:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    local scroll = CreateFrame("ScrollFrame", "SoloCraftBotsDebugScroll", frame, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -204)
+    scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -32, 46)
+    SCB_ButtonBackdrop(scroll)
+    SCB.debugLogScroll = scroll
+
+    local log = CreateFrame("EditBox", nil, scroll)
+    log:SetWidth(500)
+    log:SetHeight(250)
+    log:SetMultiLine(true)
+    log:SetAutoFocus(false)
+    log:SetFontObject(ChatFontNormal)
+    log:SetTextInsets(5, 5, 5, 5)
+    log:SetMaxLetters(200000)
+    log:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+    scroll:SetScrollChild(log)
+    SCB.debugLogEditBox = log
+
+    local selectAll = SCB_CreateTextButton(frame, nil, 74, 22, "Select All")
+    selectAll:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, 14)
+    selectAll:SetScript("OnClick", SCB_DebugSelectAll)
+
+    local clear = SCB_CreateTextButton(frame, nil, 54, 22, "Clear")
+    clear:SetPoint("LEFT", selectAll, "RIGHT", 6, 0)
+    clear:SetScript("OnClick", SCB_DebugClear)
+
+    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -14, 18)
+    hint:SetText("Select All, then Ctrl+C")
+    hint:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    frame:SetScript("OnShow", function()
+        SCB.debug.roster = SCB_DebugCollectRoster()
+        SCB.debug.combatStates = SCB_DebugCollectCombatStates()
+        SCB_DebugRefreshLog()
+    end)
+
+    frame:Hide()
+    SCB.debugFrame = frame
+
+    if UISpecialFrames then
+        table.insert(UISpecialFrames, "SoloCraftBotsDebugFrame")
+    end
+end
+
+local function SCB_DebugIsGroupUnit(unit)
+    if not unit then return false end
+    if unit == "player" or unit == "pet" then return true end
+    if string.find(unit, "^party%d+$") or string.find(unit, "^raid%d+$") then return true end
+    if string.find(unit, "^party%d+pet$") or string.find(unit, "^raid%d+pet$") then return true end
+    return false
+end
+
+local function SCB_DebugDescribeEventUnit(unit)
+    local name = UnitName(unit) or "?"
+    local _, class = UnitClass(unit)
+    if string.find(unit or "", "pet$") then
+        local ownerUnit = string.gsub(unit, "pet$", "")
+        local ownerName = UnitName(ownerUnit) or "?"
+        local _, ownerClass = UnitClass(ownerUnit)
+        return name .. " [PET of " .. ownerName .. " " .. (ownerClass or "?") .. "] " .. unit
+    end
+    return name .. " [" .. (class or "?") .. "] " .. unit
+end
+
+local function SCB_DebugUnitFlags(unit)
+    if not (SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked()) then return end
+    if not SCB_DebugIsGroupUnit(unit) then return end
+    if not UnitName(unit) then return end
+
+    local state = UnitAffectingCombat and UnitAffectingCombat(unit) and true or false
+    local name = UnitName(unit)
+    local oldState = SCB.debug.combatStates[name]
+    if oldState ~= nil and oldState ~= state then
+        SCB_DebugLog("COMBAT EVENT", SCB_DebugDescribeEventUnit(unit) .. " -> " .. (state and "IN" or "OUT"))
+    end
+    SCB.debug.combatStates[name] = state
+end
+
+local function SCB_DebugUnitCombat(unit, action, critical, amount, damageType)
+    if not (SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked()) then return end
+    if not SCB_DebugIsGroupUnit(unit) then return end
+    if not UnitName(unit) then return end
+
+    local parts = { SCB_DebugDescribeEventUnit(unit) }
+    if action ~= nil then table.insert(parts, tostring(action)) end
+    if critical ~= nil then table.insert(parts, "crit=" .. tostring(critical)) end
+    if amount ~= nil then table.insert(parts, "amount=" .. tostring(amount)) end
+    if damageType ~= nil then table.insert(parts, "type=" .. tostring(damageType)) end
+    SCB_DebugLog("UNIT_COMBAT", table.concat(parts, " "))
+end
+
+local function SCB_DebugToggle()
+    if not SCB.debugFrame then SCB_CreateDebugUI() end
+
+    if SCB.debugFrame:IsShown() then
+        SCB.debugFrame:Hide()
+    else
+        SCB.debugFrame:Show()
+        SCB.debugFrame:Raise()
+    end
+end
+
+local debugUpdateFrame = CreateFrame("Frame", "SoloCraftBotsDebugUpdateFrame", UIParent)
+debugUpdateFrame:SetScript("OnUpdate", SCB_DebugOnUpdate)
+
 function SoloCraftBots_Toggle()
     if not SCB.frame then
         return
@@ -3464,6 +5923,15 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     if command == "tutorialreset" then
         SCB_ResetTutorialHelpers()
         return
+    elseif command == "debug" then
+        SCB_DebugToggle()
+        return
+    elseif command == "debugroster" then
+        if not SCB.debugFrame then SCB_CreateDebugUI() end
+        SCB_DebugSnapshotRoster()
+        SCB.debugFrame:Show()
+        SCB.debugFrame:Raise()
+        return
     end
     SoloCraftBots_Toggle()
 end
@@ -3472,8 +5940,17 @@ local eventFrame = CreateFrame("Frame", "SoloCraftBotsEventFrame", UIParent)
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_LEVEL_UP")
+eventFrame:RegisterEvent("PLAYER_CONTROL_LOST")
+eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+eventFrame:RegisterEvent("UNIT_FLAGS")
+eventFrame:RegisterEvent("UNIT_COMBAT")
+eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
+eventFrame:RegisterEvent("CHAT_MSG_PARTY")
+eventFrame:RegisterEvent("CHAT_MSG_RAID")
+eventFrame:RegisterEvent("CHAT_MSG_SAY")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
     if event == "ADDON_LOADED" and arg1 == "SoloCraftBots" then
@@ -3483,6 +5960,7 @@ eventFrame:SetScript("OnEvent", function()
         SCB_EnsureSessionDB()
         SCB_EnsurePresetDB()
         SCB_EnsureSectionDB()
+        SCB_EnsureOptionsDB()
     elseif event == "PLAYER_LOGIN" then
         -- Do not rely on ADDON_LOADED having matched a hard-coded folder name.
         -- This also makes first-run SavedVariables initialization explicit.
@@ -3492,19 +5970,50 @@ eventFrame:SetScript("OnEvent", function()
         SCB_EnsureSessionDB()
         SCB_EnsurePresetDB()
         SCB_EnsureSectionDB()
+        SCB_EnsureOptionsDB()
         if not SCB.frame then
             SCB_CreateUI()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if RequestRaidInfo then RequestRaidInfo() end
+        SCB_RefreshMainPaladinBlessingButton()
+        if SCB.presetPanel then SCB_RefreshPresetSlots() end
         if SCB.initialSessionValidationPending then
             SCB.initialSessionValidationPending = false
             SCB_ValidateSavedSession()
+        end
+    elseif event == "PLAYER_LEVEL_UP" then
+        SCB_RefreshMainPaladinBlessingButton()
+        if SCB.presetPanel then SCB_RefreshPresetSlots() end
+    elseif event == "PLAYER_CONTROL_LOST" then
+        SCB.playerControlLost = true
+    elseif event == "PLAYER_CONTROL_GAINED" then
+        SCB.playerControlLost = nil
+        if SCB.frame and SCB.frame:IsShown() then
+            SCB_SetEscapeProxyShown(true)
         end
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
         SCB_HandleRosterChange()
         if SCB.presetPanel then
             SCB_RefreshPresetPlayers()
+        end
+        SCB_DebugRosterChanged()
+    elseif event == "UNIT_FLAGS" then
+        SCB_DebugUnitFlags(arg1)
+    elseif event == "UNIT_COMBAT" then
+        SCB_DebugUnitCombat(arg1, arg2, arg3, arg4, arg5)
+    elseif event == "CHAT_MSG_SYSTEM" then
+        if SCB.debugServerCheck and SCB.debugServerCheck:GetChecked() then
+            SCB_DebugLog("SYSTEM", arg1 or "")
+        end
+    elseif event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_RAID" or event == "CHAT_MSG_SAY" then
+        if SCB.debugServerCheck and SCB.debugServerCheck:GetChecked() then
+            local sender = arg2 or ""
+            local message = arg1 or ""
+            if sender == "" or sender ~= UnitName("player") then
+                SCB_DebugLog("CHAT", (sender ~= "" and (sender .. ": ") or "") .. message)
+            end
         end
     elseif event == "PLAYER_LOGOUT" then
         SCB_SavePosition()
