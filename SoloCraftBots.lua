@@ -39,8 +39,12 @@ SCB.presetSpawnQueue = {}
 SCB.presetSpawnElapsed = 0
 SCB.presetSpawnInterval = 0.10
 SCB.presetGroupWaitRemaining = 0
+SCB.presetCombatRetryWaitRemaining = 0
+SCB.presetCombatRetryFailures = 0
+SCB.presetCombatRetryResetPending = nil
 SCB.initialSessionValidationPending = false
 SCB.lastRoster = nil
+SCB.refillState = nil
 
 BINDING_HEADER_SOLOCRAFTBOTS = "SoloCraft Bots"
 BINDING_NAME_SOLOCRAFTBOTS_TOGGLE = "Toggle SoloCraft Bots"
@@ -175,6 +179,14 @@ end
 
 local function SCB_TooltipOnLeave()
     GameTooltip:Hide()
+end
+
+local function SCB_RefreshVisibleTooltip(button)
+    if not button or not button.scbTooltip or not GameTooltip or not GameTooltip.IsOwned then return end
+    if GameTooltip:IsOwned(button) then
+        GameTooltip:SetText(button.scbTooltip, 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end
 end
 
 local function SCB_CreateSectionTitle(parent, text, x, y)
@@ -778,6 +790,7 @@ local function SCB_RefreshDistanceButtons()
         SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance_off.tga", nil)
         SCB.distanceButton.scbTooltip = "Spawn Near\n.partybot distance off\nClick to switch to Spawn Far"
     end
+    SCB_RefreshVisibleTooltip(SCB.distanceButton)
 end
 
 local function SCB_ValidateSavedSession()
@@ -886,6 +899,7 @@ local function SCB_RefreshMainPaladinBlessingButton()
     else
         button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_LEVEL")
     end
+    SCB_RefreshVisibleTooltip(SCB.mainPaladinBlessingButton)
 end
 
 local function SCB_MainPaladinBlessingOnClick()
@@ -1123,9 +1137,9 @@ SCB.recipients = {
     { key = "all", label = "All", icon = "all.tga", highlightIcon = "all_h.tga" },
     { key = "target", label = "Target", icon = "one.tga", highlightIcon = "one_h.tga" },
     { key = "tank", label = "Tanks", icon = "tank.tga", highlightIcon = "tank_h.tga" },
-    { key = "healer", label = "Healers", icon = "healer.tga", highlightIcon = "healer_h.tga" },
     { key = "melee", label = "Melee", icon = "melee.tga", highlightIcon = "melee_h.tga" },
     { key = "ranged", label = "Ranged", icon = "ranged.tga", highlightIcon = "ranged_h.tga" },
+    { key = "healer", label = "Healers", icon = "healer.tga", highlightIcon = "healer_h.tga" },
 }
 
 SCB.commandOrder = {
@@ -1154,6 +1168,9 @@ SCB.commands = {
             healer = { "moveheal" },
             melee = { "movemelee" },
             ranged = { "moverange" },
+            tankmelee = { "movetank", "movemelee" },
+            meleeranged = { "movemelee", "moverange" },
+            rangedhealer = { "moverange", "moveheal" },
         },
     },
     come = {
@@ -1167,6 +1184,9 @@ SCB.commands = {
             healer = { "comeheal" },
             melee = { "comemelee" },
             ranged = { "comerange" },
+            tankmelee = { "cometank", "comemelee" },
+            meleeranged = { "comemelee", "comerange" },
+            rangedhealer = { "comerange", "comeheal" },
         },
     },
     stay = {
@@ -1286,6 +1306,7 @@ local function SCB_RefreshSpreadToggle(button)
         SCB_SetArtButtonTexture(button, SCB.assetRoot .. "spread.tga", SCB.assetRoot .. "spread_h.tga")
         button.scbTooltip = "Ranged - Spread"
     end
+    SCB_RefreshVisibleTooltip(button)
 end
 
 local function SCB_SpreadToggleOnClick()
@@ -1365,6 +1386,7 @@ local function SCB_RefreshRaidmarkModeButton()
         SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "focus_h.tga", nil)
         SCB.assignmentModeButton.scbTooltip = "Focus assignments\nClick to switch to CC assignments"
     end
+    SCB_RefreshVisibleTooltip(SCB.assignmentModeButton)
 end
 
 local function SCB_RaidmarkModeOnClick()
@@ -1843,6 +1865,21 @@ local function SCB_PresetButtonPulseOnUpdate()
         return
     end
 
+    if this.scbPulseMode == "greenloop" then
+        t = math.mod(t, 2)
+        if t <= 1 then
+            mix = 1 - t
+        else
+            mix = t - 1
+        end
+        r = 0.90 - (0.55 * mix)
+        g = 0.90 + (0.10 * mix)
+        b = 0.90 - (0.50 * mix)
+        this.label:SetTextColor(r, g, b, 1)
+        this:SetBackdropBorderColor(0.45 - (0.20 * mix), 0.45 + (0.35 * mix), 0.45 - (0.20 * mix), 1)
+        return
+    end
+
     if this.scbPulseMode == "greensave" then
         if t >= 2 then
             this:SetScript("OnUpdate", nil)
@@ -1867,7 +1904,7 @@ local function SCB_StartPresetButtonPulse(button, mode)
 
     -- Apply the first frame immediately.  In particular, saved feedback
     -- should visibly turn green on the click instead of waiting for OnUpdate.
-    if mode == "greensave" and button.label then
+    if (mode == "greensave" or mode == "greenloop") and button.label then
         button.label:SetTextColor(0.35, 1.00, 0.40, 1)
         button:SetBackdropBorderColor(0.25, 0.80, 0.25, 1)
     elseif mode == "redloop" and button.label then
@@ -1983,7 +2020,10 @@ local function SCB_RefreshPresetSlots()
                         else
                             row.blessingButton:Hide()
                         end
+                        SCB_RefreshVisibleTooltip(row.blessingButton)
                     end
+                    SCB_RefreshVisibleTooltip(row.classButton)
+                    SCB_RefreshVisibleTooltip(row.roleButton)
                 end
             else
                 row:Hide()
@@ -3049,6 +3089,63 @@ function SCB_SetMenuRenameButton(button, show, index)
     if show then button.renameButton:Show() else button.renameButton:Hide() end
 end
 
+local SCB_RebuildPresetMenu
+
+local function SCB_MovePresetOnClick()
+    local group = SCB_CurrentPresetGroup()
+    local index = this.scbPresetIndex
+    local direction = this.scbPresetMoveDirection
+    local target
+    local selected
+    if not group or not index or not direction then return end
+
+    target = index + direction
+    if target < 1 or target > table.getn(group.presets) then return end
+
+    selected = group.currentPreset
+    group.presets[index], group.presets[target] = group.presets[target], group.presets[index]
+
+    -- Keep the same preset selected while its list position changes.
+    if selected == index then
+        group.currentPreset = target
+    elseif selected == target then
+        group.currentPreset = index
+    end
+
+    SCB_UpdatePresetSelectorText()
+    SCB_RebuildPresetMenu()
+end
+
+local function SCB_SetMenuMoveButtons(button, show, index, count)
+    if not button.moveUpButton then
+        local up = SCB_CreateArrowButton(button, 14)
+        up:SetPoint("RIGHT", button, "RIGHT", -56, 0)
+        SCB_SetArrowDirection(up.scbArrowTexture, "up")
+        up.scbPresetMoveDirection = -1
+        up.scbTooltip = SCB_L("TIP_MOVE_PRESET_UP", "Move preset up")
+        up:SetScript("OnClick", SCB_MovePresetOnClick)
+        up:SetScript("OnEnter", SCB_TooltipOnEnter)
+        up:SetScript("OnLeave", SCB_TooltipOnLeave)
+        button.moveUpButton = up
+
+        local down = SCB_CreateArrowButton(button, 14)
+        down:SetPoint("RIGHT", button, "RIGHT", -38, 0)
+        SCB_SetArrowDirection(down.scbArrowTexture, "down")
+        down.scbPresetMoveDirection = 1
+        down.scbTooltip = SCB_L("TIP_MOVE_PRESET_DOWN", "Move preset down")
+        down:SetScript("OnClick", SCB_MovePresetOnClick)
+        down:SetScript("OnEnter", SCB_TooltipOnEnter)
+        down:SetScript("OnLeave", SCB_TooltipOnLeave)
+        button.moveDownButton = down
+    end
+
+    button.moveUpButton.scbPresetIndex = index
+    button.moveDownButton.scbPresetIndex = index
+
+    if show and index and index > 1 then button.moveUpButton:Show() else button.moveUpButton:Hide() end
+    if show and index and count and index < count then button.moveDownButton:Show() else button.moveDownButton:Hide() end
+end
+
 local function SCB_RebuildPresetGroupMenu()
     local count = table.getn(SoloCraftBotsDB.presetGroups)
     local total = count + 1
@@ -3093,7 +3190,7 @@ local function SCB_RebuildPresetGroupMenu()
     SCB.presetGroupMenu:SetHeight(8 + (total * 20))
 end
 
-local function SCB_RebuildPresetMenu()
+SCB_RebuildPresetMenu = function()
     local group = SCB_CurrentPresetGroup()
     local count = group and table.getn(group.presets) or 0
     local total = count + 1
@@ -3105,7 +3202,7 @@ local function SCB_RebuildPresetMenu()
             button:SetPoint("TOPLEFT", SCB.presetMenu, "TOPLEFT", 4, -4 - ((i - 1) * 20))
             button.label:ClearAllPoints()
             button.label:SetPoint("LEFT", button, "LEFT", 3, 0)
-            button.label:SetPoint("RIGHT", button, "RIGHT", -38, 0)
+            button.label:SetPoint("RIGHT", button, "RIGHT", -74, 0)
             button.label:SetJustifyH("LEFT")
             button:SetScript("OnClick", SCB_PresetChoiceOnClick)
             SCB.presetNameMenuButtons[i] = button
@@ -3116,6 +3213,7 @@ local function SCB_RebuildPresetMenu()
             button.scbPresetIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetOnClick)
             SCB_SetMenuRenameButton(button, false, nil)
+            SCB_SetMenuMoveButtons(button, false, nil, count)
         else
             preset = group.presets[i - 1]
             button.label:SetText(preset.name or ("Preset " .. (i - 1)))
@@ -3123,6 +3221,7 @@ local function SCB_RebuildPresetMenu()
             button.scbPresetIndex = i - 1
             SCB_SetMenuDeleteButton(button, true, i - 1, SCB_DeletePresetOnClick)
             SCB_SetMenuRenameButton(button, true, i - 1)
+            SCB_SetMenuMoveButtons(button, true, i - 1, count)
         end
         button:Show()
     end
@@ -3164,6 +3263,7 @@ SCB.PRESET_WAIT_GROUP = "__SCB_WAIT_GROUP__"
 SCB.PRESET_WAIT_FINAL_ROSTER = "__SCB_WAIT_FINAL_ROSTER__"
 SCB.PRESET_CHECK_COMBAT = "__SCB_CHECK_COMBAT__"
 SCB.PRESET_ARRANGE_PLAYERS = "__SCB_ARRANGE_PLAYERS__"
+SCB.PRESET_TRACK_ROSTER = "__SCB_TRACK_ROSTER__"
 
 function SCB_PresetGroupHasCombat()
     local count, i, unit, pet
@@ -3264,9 +3364,467 @@ function SCB_ProbeSurvivorWorldPresence(name)
     return found
 end
 
+-- Authoritative preset role tracking ----------------------------------------------
+-- Initial preset spawning establishes bot-relative order in Blizzard's own group
+-- roster. Raids use authoritative subgroup order; five-player parties use
+-- player/party1..party4 order. Roles still come only from the preset: roster order
+-- is used solely to bind each bot name to its logical preset assignment.
+function SCB_CreateRaidRoleTracker(slots, size, occupied, group)
+    local tracker = {
+        version = 4,
+        mode = size <= 5 and "party" or "raid",
+        ready = false,
+        allowFinalize = false,
+        size = size,
+        zone = size > 5 and ((GetRealZoneText and GetRealZoneText()) or "") or "",
+        presetGroupID = group and group.id or nil,
+        presetGroupName = group and group.name or nil,
+        presetName = SCB_CurrentPreset() and SCB_CurrentPreset().name or nil,
+        assignments = {},
+        players = {},
+    }
+    local i, slot, g, key, groupIndex, name, roster, partySlots
+
+    for i = 1, size do
+        slot = slots[i]
+        g = math.floor((i - 1) / 5) + 1
+        tracker.assignments[i] = {
+            slotIndex = i,
+            group = g,
+            class = slot.class,
+            role = slot.role,
+            extra = slot.extra,
+            command = SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra),
+            initialActive = not occupied[i],
+            botName = nil,
+        }
+    end
+
+    if tracker.mode == "party" then
+        -- Preserve each human's logical party slot from the moment the preset
+        -- starts. party1..party4 collapse when someone leaves, so recalculating
+        -- those slots later would make a missing bot appear to be a different
+        -- preset assignment.
+        roster = SCB_GetHumanRoster()
+        partySlots = SCB_AutoPartyPlayerSlots(roster)
+        for i = 1, table.getn(roster) do
+            if partySlots[roster[i].key] then
+                table.insert(tracker.players, {
+                    key = roster[i].key, name = roster[i].name, group = 1,
+                    slotIndex = partySlots[roster[i].key],
+                    role = SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[roster[i].key] or nil,
+                })
+            end
+        end
+    else
+        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
+            if groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
+                name = SCB_PresetPlayerDisplayName(key)
+                if name then
+                    table.insert(tracker.players, {
+                        key = key, name = name, group = groupIndex,
+                        role = SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[key] or nil,
+                    })
+                end
+            end
+        end
+    end
+
+    -- Keep the existing SavedVariables field name for migration compatibility.
+    SoloCraftBotsCharDB.raidRoleTracker = tracker
+    return tracker
+end
+
+function SCB_GetRaidBotsByGroup()
+    local result = {}
+    local count = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local i, name, _, subgroup
+    for i = 1, 8 do result[i] = {} end
+    for i = 1, count do
+        name = UnitName and UnitName("raid" .. i) or nil
+        _, _, subgroup = GetRaidRosterInfo(i)
+        if name and subgroup and SCB_IsBotName(name) then
+            table.insert(result[subgroup], { name = name, raidIndex = i })
+        end
+    end
+    return result
+end
+
+-- Apply SCB's known preset tank roles to pfUI when it is available.
+-- pfUI does not expose a public ToggleTank function: its own popup toggle writes
+-- directly to pfUI.uf.raid.tankrole[name] and shows the raid updater. Mirror that
+-- state change, but set an explicit value rather than toggling so repeated tracker
+-- refreshes can never accidentally turn a tank off.
+function SCB_ApplyTrackedPfUITankRoles(tracker)
+    local roles, i, assignment, player, name, frame
+    if not tracker or not tracker.ready then return end
+    if not pfUI or not pfUI.uf or not pfUI.uf.raid or type(pfUI.uf.raid.tankrole) ~= "table" then return end
+
+    roles = pfUI.uf.raid.tankrole
+    SCB.pfuiAutoTanks = SCB.pfuiAutoTanks or {}
+
+    -- Only undo tank flags that SCB itself previously applied. Never sweep pfUI's
+    -- whole tank table, because the user may have unrelated manual assignments.
+    for name in pairs(SCB.pfuiAutoTanks) do
+        roles[name] = nil
+    end
+    SCB.pfuiAutoTanks = {}
+
+    for i = 1, table.getn(tracker.assignments or {}) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.botName and assignment.role == "tank" then
+            roles[assignment.botName] = true
+            SCB.pfuiAutoTanks[assignment.botName] = true
+        end
+    end
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        if player and player.name and player.role == "tank" then
+            roles[player.name] = true
+            SCB.pfuiAutoTanks[player.name] = true
+        end
+    end
+
+    -- This is the same refresh trigger used by pfUI's own Toggle as Tank path
+    -- while in a raid. Avoid forcing the raid updater visible in a party.
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 and pfUI.uf.raid.Show then
+        pfUI.uf.raid:Show()
+    end
+
+    -- Refresh group/raid unitframes when possible. pfUI_TankIcons hooks
+    -- RefreshUnit, so its icon state updates immediately as well.
+    if pfUI.uf.RefreshUnit and pfUI.uf.frames then
+        for i = 1, table.getn(pfUI.uf.frames) do
+            frame = pfUI.uf.frames[i]
+            if frame and frame.label and (frame.label == "party" or frame.label == "raid") then
+                pfUI.uf:RefreshUnit(frame, "all")
+            end
+        end
+    end
+end
+
+function SCB_TryFinalizeRaidRoleTracking()
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
+    local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
+    if not tracker or tracker.ready or not tracker.assignments then return tracker and tracker.ready end
+    if not tracker.allowFinalize then return false end
+
+    expectedByGroup = {}
+    for g = 1, 8 do expectedByGroup[g] = {} end
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        if assignment.initialActive then table.insert(expectedByGroup[assignment.group], assignment) end
+    end
+
+    if tracker.mode == "party" or (tracker.size or 0) <= 5 then
+        -- A party has no subgroup API, but player/party1..party4 is still the
+        -- authoritative client roster order. Filter humans and ordinal-map the
+        -- remaining bot names onto the preset's active bot assignments.
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then return false end
+        members = SCB_CollectGroupMembers()
+        if table.getn(members) ~= (tracker.size or 0) then
+            tracker.partyFullSeenAt = nil
+            return false
+        end
+
+        actual = {}
+        for i = 1, table.getn(members) do
+            if members[i].isBot then table.insert(actual, { name = members[i].name }) end
+        end
+        expected = expectedByGroup[1]
+        if table.getn(actual) ~= table.getn(expected) then return false end
+        for ordinal = 1, table.getn(expected) do
+            expected[ordinal].botName = actual[ordinal].name
+        end
+    else
+        if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
+        botsByGroup = SCB_GetRaidBotsByGroup()
+        for g = 1, math.ceil((tracker.size or 0) / 5) do
+            expected = expectedByGroup[g]
+            actual = botsByGroup[g] or {}
+            if table.getn(actual) ~= table.getn(expected) then return false end
+        end
+        for g = 1, math.ceil((tracker.size or 0) / 5) do
+            expected = expectedByGroup[g]
+            actual = botsByGroup[g] or {}
+            for ordinal = 1, table.getn(expected) do
+                expected[ordinal].botName = actual[ordinal].name
+            end
+        end
+    end
+
+    tracker.ready = true
+    tracker.completedAt = GetTime and GetTime() or 0
+    SCB_ApplyTrackedPfUITankRoles(tracker)
+    if SCB_DebugLog then SCB_DebugLog("TRACK", "Authoritative preset bot-role map ready (" .. (tracker.mode or "raid") .. ").") end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    return true
+end
+
+function SCB_GetTrackedHumanCounts(tracker)
+    local counts, names, members, i, member, player
+    counts = {}
+    names = {}
+    for i = 1, 8 do counts[i] = 0 end
+    members = SCB_CollectGroupMembers()
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if not member.isBot then names[member.name] = true end
+    end
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        if player.name and names[player.name] then
+            counts[player.group] = (counts[player.group] or 0) + 1
+        end
+    end
+    return counts
+end
+
+function SCB_GetMissingRaidAssignments()
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
+    local missing = {}
+    local currentNames, humanCounts, subgroupCounts, members, i, member, assignment, localIndex, presentHumans, occupiedSlots
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if not tracker or not tracker.ready or not tracker.assignments then return missing end
+
+    members = SCB_CollectGroupMembers()
+    currentNames = {}
+    for i = 1, table.getn(members) do currentNames[members[i].name] = true end
+
+    if tracker.mode == "party" or (tracker.size or 0) <= 5 then
+        if raidCount > 0 or table.getn(members) >= (tracker.size or 0) then return missing end
+
+        -- Keep the original logical slots of tracked humans stable even though
+        -- WoW renumbers party1..party4 after another member leaves.
+        presentHumans = {}
+        for i = 1, table.getn(members) do
+            member = members[i]
+            if not member.isBot then presentHumans[member.name] = true end
+        end
+        occupiedSlots = {}
+        for i = 1, table.getn(tracker.players or {}) do
+            if tracker.players[i].name and presentHumans[tracker.players[i].name] and tracker.players[i].slotIndex then
+                occupiedSlots[tracker.players[i].slotIndex] = true
+            end
+        end
+
+        for i = 1, table.getn(tracker.assignments) do
+            assignment = tracker.assignments[i]
+            if not occupiedSlots[assignment.slotIndex] and (not assignment.botName or not currentNames[assignment.botName]) then
+                if table.getn(members) + table.getn(missing) < (tracker.size or 0) then
+                    table.insert(missing, assignment)
+                end
+            end
+        end
+        return missing
+    end
+
+    if raidCount == 0 or raidCount >= (tracker.size or 0) then return missing end
+    if tracker.zone and tracker.zone ~= "" and GetRealZoneText and GetRealZoneText() ~= tracker.zone then return missing end
+
+    subgroupCounts = {}
+    for i = 1, 8 do subgroupCounts[i] = 0 end
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.subgroup then subgroupCounts[member.subgroup] = (subgroupCounts[member.subgroup] or 0) + 1 end
+    end
+    humanCounts = SCB_GetTrackedHumanCounts(tracker)
+
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        localIndex = math.mod(assignment.slotIndex - 1, 5) + 1
+        -- Live assigned humans consume the front N logical rows of their group.
+        -- A human leaving therefore exposes the underlying bot assignment again.
+        if localIndex > (humanCounts[assignment.group] or 0) then
+            if (not assignment.botName or not currentNames[assignment.botName]) and (subgroupCounts[assignment.group] or 0) < 5 then
+                table.insert(missing, assignment)
+                subgroupCounts[assignment.group] = subgroupCounts[assignment.group] + 1
+            end
+        end
+    end
+    return missing
+end
+
+function SCB_RefreshRefillButton()
+    local button = SCB.presetRefillButton
+    local missing
+    if not button then return end
+    missing = SCB_GetMissingRaidAssignments()
+    if table.getn(missing) > 0 then
+        if button.scbPulseMode ~= "greenloop" then SCB_StartPresetButtonPulse(button, "greenloop") end
+        button.scbTooltip = string.format(SCB_L("PRESET_REFILL_TOOLTIP_READY", "Refill %d missing preset bot(s)."), table.getn(missing))
+    else
+        SCB_StopPresetButtonPulse(button)
+        button.scbTooltip = SCB_L("PRESET_REFILL_TOOLTIP_EMPTY", "No tracked preset bots are missing.")
+    end
+end
+
+function SCB_RefillPresetOnClick()
+    local missing = SCB_GetMissingRaidAssignments()
+    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 then
+        SCB_Print(SCB_L("PRESET_REFILL_SUMMON_BUSY", "Wait for Preset Summon to finish before refilling."))
+        return
+    end
+    if SCB.refillState and SCB.refillState.active then return end
+    if table.getn(missing) == 0 then return end
+    SCB.refillState = { active = true, phase = "nextgroup", cooldown = 0 }
+end
+
+function SCB_GetNewRefillBots(beforeNames)
+    local result = {}
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local count, i, name, _, subgroup
+    if raidCount > 0 then
+        for i = 1, raidCount do
+            name = UnitName and UnitName("raid" .. i) or nil
+            _, _, subgroup = GetRaidRosterInfo(i)
+            if name and SCB_IsBotName(name) and not beforeNames[name] then
+                table.insert(result, { name = name, raidIndex = i, subgroup = subgroup })
+            end
+        end
+    else
+        count = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+        for i = 1, count do
+            name = UnitName and UnitName("party" .. i) or nil
+            if name and SCB_IsBotName(name) and not beforeNames[name] then
+                table.insert(result, { name = name, subgroup = 1 })
+            end
+        end
+    end
+    return result
+end
+
+function SCB_RefillOnUpdate(elapsed)
+    local state = SCB.refillState
+    local missing, groupMissing, assignment, members, beforeNames, newBots
+    local i, j, group, name, subgroup, allMoved, raidCount, now
+    if not state or not state.active then return end
+
+    if state.cooldown and state.cooldown > 0 then
+        state.cooldown = state.cooldown - (elapsed or 0)
+        if state.cooldown > 0 then return end
+        state.cooldown = 0
+    end
+
+    if state.phase == "nextgroup" or state.phase == "combat" then
+        missing = SCB_GetMissingRaidAssignments()
+        if table.getn(missing) == 0 then
+            state.active = false
+            state.phase = nil
+            SCB_RefreshRefillButton()
+            return
+        end
+        if SCB_PresetGroupHasCombat() then
+            state.phase = "combat"
+            return
+        end
+
+        -- Refill one logical five-slot group per burst. All missing assignments
+        -- in that group are sent in the same frame, in reverse preset order,
+        -- preserving the same LIFO -> authoritative-order relationship used by
+        -- the normal preset summoner. There is never more than one group burst
+        -- outstanding at once.
+        group = missing[1].group
+        groupMissing = {}
+        for i = 1, table.getn(missing) do
+            if missing[i].group == group then table.insert(groupMissing, missing[i]) end
+        end
+
+        beforeNames = {}
+        members = SCB_CollectGroupMembers()
+        for i = 1, table.getn(members) do
+            if members[i].isBot then beforeNames[members[i].name] = true end
+        end
+
+        state.group = group
+        state.assignments = groupMissing
+        state.beforeNames = beforeNames
+        state.phase = "waitgroup"
+        state.fullSeenAt = nil
+
+        for i = table.getn(groupMissing), 1, -1 do
+            assignment = groupMissing[i]
+            SCB_SendSpawnCommand(assignment.command)
+            if SCB_DebugLog then SCB_DebugLog("REFILL", "Requested preset slot " .. assignment.slotIndex .. " in G" .. assignment.group) end
+        end
+        return
+    end
+
+    if state.phase == "waitgroup" then
+        newBots = SCB_GetNewRefillBots(state.beforeNames or {})
+        if table.getn(newBots) < table.getn(state.assignments or {}) then
+            state.fullSeenAt = nil
+            return
+        end
+        if table.getn(newBots) ~= table.getn(state.assignments or {}) then return end
+
+        raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+        if raidCount > 0 then
+            -- All bots in this burst belong to the same logical preset group.
+            -- If WoW initially placed one elsewhere, move it before ordinal
+            -- mapping; no role knowledge is required to do that because every
+            -- new name has the same destination subgroup.
+            allMoved = true
+            for i = 1, table.getn(newBots) do
+                if newBots[i].subgroup ~= state.group then
+                    allMoved = false
+                    if not SCB_PresetGroupHasCombat() and SetRaidSubgroup and newBots[i].raidIndex then
+                        SetRaidSubgroup(newBots[i].raidIndex, state.group)
+                    end
+                end
+            end
+            if not allMoved then
+                state.fullSeenAt = nil
+                return
+            end
+        end
+
+        -- Once the whole refill burst is present in its final logical group,
+        -- wait an exact 1.0 seconds before reading authoritative order. In a
+        -- party this also gives the Vanilla party1..party4 ordering time to
+        -- resolve after the fifth member joins.
+        now = GetTime and GetTime() or 0
+        if not state.fullSeenAt then
+            state.fullSeenAt = now
+            return
+        end
+        if GetTime and (now - state.fullSeenAt) < 1.0 then return end
+
+        newBots = SCB_GetNewRefillBots(state.beforeNames or {})
+        if table.getn(newBots) ~= table.getn(state.assignments or {}) then return end
+        if raidCount > 0 then
+            for i = 1, table.getn(newBots) do
+                if newBots[i].subgroup ~= state.group then
+                    state.fullSeenAt = nil
+                    return
+                end
+            end
+        end
+
+        -- Only newly joined names participate in this ordinal map. Existing
+        -- tracked bots keep their identity->role bindings. The refill burst was
+        -- sent LIFO, so authoritative new-bot order maps directly onto the
+        -- missing assignments in ascending preset-slot order.
+        for i = 1, table.getn(state.assignments) do
+            state.assignments[i].botName = newBots[i].name
+        end
+        SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
+
+        state.phase = "nextgroup"
+        state.group = nil
+        state.assignments = nil
+        state.beforeNames = nil
+        state.fullSeenAt = nil
+        SCB_RefreshRefillButton()
+        return
+    end
+end
+
 local function SCB_PresetSpawnQueueOnUpdate()
     local nextItem, bootstrapName
     local elapsed = arg1 or 0
+
+    SCB_RefillOnUpdate(elapsed)
 
     -- A logical preset group is a single same-frame burst. The only timed
     -- spacing in the normal preset scheduler is the tested, exact 1.0 second
@@ -3275,6 +3833,19 @@ local function SCB_PresetSpawnQueueOnUpdate()
         SCB.presetGroupWaitRemaining = SCB.presetGroupWaitRemaining - elapsed
         if SCB.presetGroupWaitRemaining > 0 then return end
         SCB.presetGroupWaitRemaining = 0
+        -- Reaching the end of the normal 1.0-second group boundary without a
+        -- server combat rejection confirms that any retried burst made it past
+        -- the race window. A later logical group gets a fresh retry ladder.
+        if SCB.presetCombatRetryResetPending then
+            SCB.presetCombatRetryFailures = 0
+            SCB.presetCombatRetryResetPending = nil
+        end
+    end
+
+    if SCB.presetCombatRetryWaitRemaining and SCB.presetCombatRetryWaitRemaining > 0 then
+        SCB.presetCombatRetryWaitRemaining = SCB.presetCombatRetryWaitRemaining - elapsed
+        if SCB.presetCombatRetryWaitRemaining > 0 then return end
+        SCB.presetCombatRetryWaitRemaining = 0
     end
 
     while table.getn(SCB.presetSpawnQueue) > 0 do
@@ -3283,12 +3854,25 @@ local function SCB_PresetSpawnQueueOnUpdate()
         if nextItem == SCB.PRESET_WAIT_GROUP then
             table.remove(SCB.presetSpawnQueue, 1)
             SCB.presetGroupWaitRemaining = 1.0
+            if (SCB.presetCombatRetryFailures or 0) > 0 then
+                SCB.presetCombatRetryResetPending = true
+            end
             SCB.presetSpawnElapsed = 0
             return
         elseif nextItem == SCB.PRESET_ARRANGE_PLAYERS then
             -- Once the raid exists, put each live human into the logical preset
             -- subgroup they were assigned to before any real bot burst is sent.
             if SCB_ArrangePresetPlayers() then
+                table.remove(SCB.presetSpawnQueue, 1)
+                SCB.presetSpawnElapsed = 0
+            else
+                return
+            end
+        elseif nextItem == SCB.PRESET_TRACK_ROSTER then
+            if SoloCraftBotsCharDB.raidRoleTracker then SoloCraftBotsCharDB.raidRoleTracker.allowFinalize = true end
+            if SCB_TryFinalizeRaidRoleTracking() then
+                SCB.presetCombatRetryFailures = 0
+                SCB.presetCombatRetryResetPending = nil
                 table.remove(SCB.presetSpawnQueue, 1)
                 SCB.presetSpawnElapsed = 0
             else
@@ -3306,6 +3890,8 @@ local function SCB_PresetSpawnQueueOnUpdate()
                 return
             end
             SCB.presetCombatPollRemaining = nil
+            SCB.presetLastBurstCommands = {}
+            SCB.presetLastBurstRequeued = nil
             table.remove(SCB.presetSpawnQueue, 1)
             SCB.presetSpawnElapsed = 0
         elseif nextItem == SCB_PRESET_CONVERT_NOW then
@@ -3323,6 +3909,8 @@ local function SCB_PresetSpawnQueueOnUpdate()
         elseif nextItem == SCB_PRESET_WAIT_BOOTSTRAP then
             bootstrapName = SCB_FindFirstGroupBotName()
             if bootstrapName then
+                SCB.presetCombatRetryFailures = 0
+                SCB.presetCombatRetryResetPending = nil
                 SCB.presetBootstrapBotName = bootstrapName
                 SCB.presetSurvivorBotName = bootstrapName
                 if GetNumRaidMembers and GetNumRaidMembers() > 0 then
@@ -3356,6 +3944,8 @@ local function SCB_PresetSpawnQueueOnUpdate()
             -- The survivor itself occupies the held bot's place, so the target
             -- bot count equals the preset's final required bot count.
             if SCB_CountGroupBots() >= (SCB.presetExpectedBotCountBeforeHandoff or 0) then
+                SCB.presetCombatRetryFailures = 0
+                SCB.presetCombatRetryResetPending = nil
                 table.remove(SCB.presetSpawnQueue, 1)
                 SCB.presetSpawnElapsed = 0
             else
@@ -3403,6 +3993,8 @@ local function SCB_PresetSpawnQueueOnUpdate()
             -- Normal preset spawn commands are intentionally consumed without
             -- a per-command throttle. This makes each logical group a true
             -- same-frame burst; SCB.PRESET_WAIT_GROUP supplies the 1.0s gap.
+            SCB.presetLastBurstCommands = SCB.presetLastBurstCommands or {}
+            table.insert(SCB.presetLastBurstCommands, nextItem)
             SCB_SendSpawnCommand(nextItem)
             table.remove(SCB.presetSpawnQueue, 1)
         end
@@ -3477,10 +4069,15 @@ local function SCB_PresetSummonOnClick()
         SCB_Print("Add or select a preset before Summon.")
         return
     end
-    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 then
+    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 or (SCB.presetCombatRetryWaitRemaining or 0) > 0 then
         SCB_Print("Preset Summon is already in progress.")
         return
     end
+    SCB.presetCombatRetryWaitRemaining = 0
+    SCB.presetCombatRetryFailures = 0
+    SCB.presetCombatRetryResetPending = nil
+    SCB.presetLastBurstCommands = nil
+    SCB.presetLastBurstRequeued = nil
 
     -- Empty gate. The only permitted existing bot is the deliberate safety
     -- survivor: exactly one bot while the player is the only human. That bot
@@ -3519,6 +4116,12 @@ local function SCB_PresetSummonOnClick()
             for i = 1, (playersPerGroup[g] or 0) do occupied[((g - 1) * 5) + i] = true end
         end
     end
+
+    -- Track both raids and five-player parties. The tracker uses Blizzard's
+    -- authoritative roster order for identity binding; preset data remains the
+    -- sole source of class/role/extra information.
+    SCB_CreateRaidRoleTracker(slots, size, occupied, group)
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
 
     -- Build the spawn plan by logical five-slot preset group. Players simply
     -- occupy their assigned slots, so a group with one player sends four bots,
@@ -3631,6 +4234,11 @@ local function SCB_PresetSummonOnClick()
         table.insert(commands, SCB.PRESET_CHECK_COMBAT)
         table.insert(commands, heldFirstCommand)
     end
+
+    -- Do not infer roles from roster arrival order. Wait until the complete
+    -- final group exists, then ordinal-map Blizzard's authoritative raid
+    -- subgroup order or party roster order onto the preset in one snapshot.
+    table.insert(commands, SCB.PRESET_TRACK_ROSTER)
 
     SCB_QueuePresetSpawn(commands)
 end
@@ -3868,7 +4476,9 @@ function SCB_UpdateLayoutDebugBorders()
             SCB_SetDebugOutline(row.recipientButton, shown)
             for i = 1, table.getn(row.commandButtons or {}) do SCB_SetDebugOutline(row.commandButtons[i], shown) end
         end
+        for i = 1, table.getn(SCB.commandLayout.pairedComeButtons or {}) do SCB_SetDebugOutline(SCB.commandLayout.pairedComeButtons[i].button, shown) end
         for i = 1, table.getn(SCB.commandLayout.standaloneButtons or {}) do SCB_SetDebugOutline(SCB.commandLayout.standaloneButtons[i], shown) end
+        SCB_SetDebugOutline(SCB.commandLayout.refill, shown)
         SCB_SetDebugOutline(SCB.commandLayout.kickDead, shown)
         SCB_SetDebugOutline(SCB.commandLayout.kickAll, shown)
     end
@@ -4185,6 +4795,35 @@ local function SCB_SetEscapeProxyShown(show)
     end
 end
 
+local function SCB_ProcessEscapeProxyHide()
+    if not SCB.frame or not SCB.frame:IsShown() then
+        return
+    end
+
+    -- Blizzard hides UISpecialFrames as part of losing player control too.
+    -- PLAYER_CONTROL_LOST can arrive after the proxy's OnHide, so this check
+    -- deliberately runs one frame later rather than interpreting OnHide itself
+    -- as Escape.
+    if SCB.playerControlLost then
+        SCB_SetEscapeProxyShown(true)
+        return
+    end
+
+    -- Side drawers close before the main SCB frame.
+    if SCB.optionsPanel and SCB.optionsPanel:IsShown() then
+        SCB_SetOptionsPanelShown(false)
+        SCB_SetEscapeProxyShown(true)
+        return
+    end
+    if SCB.presetPanel and SCB.presetPanel:IsShown() then
+        SCB_SetPresetPanelShown(false)
+        SCB_SetEscapeProxyShown(true)
+        return
+    end
+
+    SCB.frame:Hide()
+end
+
 local function SCB_EscapeProxyOnHide()
     if SCB.ignoreEscapeProxyHide then
         return
@@ -4193,27 +4832,15 @@ local function SCB_EscapeProxyOnHide()
         return
     end
 
-    -- Blizzard also hides UISpecialFrames when player control is lost (fear,
-    -- charm, etc.). Re-arm the proxy in that case; only a normal special-frame
-    -- close should be interpreted as the user's Escape action.
-    if SCB.playerControlLost then
-        this:Show()
-        return
+    if not SCB.escapeHideDeferred then
+        SCB.escapeHideDeferred = CreateFrame("Frame")
+        SCB.escapeHideDeferred:Hide()
+        SCB.escapeHideDeferred:SetScript("OnUpdate", function()
+            this:Hide()
+            SCB_ProcessEscapeProxyHide()
+        end)
     end
-
-    -- Side drawers close before the main SCB frame.
-    if SCB.optionsPanel and SCB.optionsPanel:IsShown() then
-        SCB_SetOptionsPanelShown(false)
-        this:Show()
-        return
-    end
-    if SCB.presetPanel and SCB.presetPanel:IsShown() then
-        SCB_SetPresetPanelShown(false)
-        this:Show()
-        return
-    end
-
-    SCB.frame:Hide()
+    SCB.escapeHideDeferred:Show()
 end
 
 local function SCB_MainFrameOnShow()
@@ -4382,6 +5009,7 @@ function SCB_LayoutCommandUI()
         row = layout.rows[r]
         if row.gapBefore then y = y - groupGap end
 
+        row.layoutY = y
         row.recipientButton:ClearAllPoints()
         row.recipientButton:SetPoint("TOPLEFT", layout.content, "TOPLEFT", left, y)
 
@@ -4396,20 +5024,57 @@ function SCB_LayoutCommandUI()
         y = y - buttonSize - rowGap
     end
 
+    -- The three paired Come controls deliberately do not create rows. They sit
+    -- in the otherwise-empty second column, centred vertically between the
+    -- role rows they address, to show that each button targets two roles.
+    for i = 1, table.getn(layout.pairedComeButtons or {}) do
+        local pair = layout.pairedComeButtons[i]
+        local upperRow = layout.rows[pair.upperRow]
+        local lowerRow = layout.rows[pair.lowerRow]
+        if pair.button and upperRow and lowerRow then
+            local pairY = (upperRow.layoutY + lowerRow.layoutY) / 2
+            pair.button:ClearAllPoints()
+            pair.button:SetPoint("TOPLEFT", layout.content, "TOPLEFT", left + buttonSize + gap, pairY)
+        end
+    end
+
     y = y - groupGap
-    standaloneWidth = (4 * buttonSize) + (3 * gap)
+    -- Standalone command row is visually grouped as:
+    -- AOE | Attack Start + Attack Stop | Use Object.
+    -- Use the existing Group Spacing value for the two larger separators so
+    -- this row stays aligned with the user's command-layout tuning.
+    standaloneWidth = (4 * buttonSize) + gap + (2 * groupGap)
     standaloneLeft = math.floor((SCB.frame:GetWidth() - standaloneWidth) / 2)
+    local standaloneX = standaloneLeft
     for i = 1, table.getn(layout.standaloneButtons) do
         button = layout.standaloneButtons[i]
         button:ClearAllPoints()
-        button:SetPoint("TOPLEFT", layout.content, "TOPLEFT", standaloneLeft + ((i - 1) * (buttonSize + gap)), y)
+        button:SetPoint("TOPLEFT", layout.content, "TOPLEFT", standaloneX, y)
+        standaloneX = standaloneX + buttonSize
+        if i == 1 or i == 3 then
+            standaloneX = standaloneX + groupGap
+        elseif i < table.getn(layout.standaloneButtons) then
+            standaloneX = standaloneX + gap
+        end
     end
 
     y = y - buttonSize - 6
+    -- Refill shares the removal row with Kick Dead / Kick All. Keep the three
+    -- utility buttons equal-width and centred as one compact strip.
+    local utilityWidth = 72
+    local utilityGap = 6
+    local utilityTotal = (3 * utilityWidth) + (2 * utilityGap)
+    local utilityLeft = math.floor((SCB.frame:GetWidth() - utilityTotal) / 2)
+
+    layout.refill:ClearAllPoints()
+    layout.refill:SetWidth(utilityWidth)
+    layout.refill:SetPoint("TOPLEFT", layout.content, "TOPLEFT", utilityLeft, y)
     layout.kickDead:ClearAllPoints()
-    layout.kickDead:SetPoint("TOPRIGHT", layout.content, "TOP", -3, y)
+    layout.kickDead:SetWidth(utilityWidth)
+    layout.kickDead:SetPoint("LEFT", layout.refill, "RIGHT", utilityGap, 0)
     layout.kickAll:ClearAllPoints()
-    layout.kickAll:SetPoint("TOPLEFT", layout.content, "TOP", 3, y)
+    layout.kickAll:SetWidth(utilityWidth)
+    layout.kickAll:SetPoint("LEFT", layout.kickDead, "RIGHT", utilityGap, 0)
 
     -- Positive spacing can make the command block taller than its original
     -- fixed content area. Grow the section only when needed; negative spacing
@@ -4433,12 +5098,13 @@ local function SCB_CreateCommandUI(frame)
         { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
-        { recipient = "healer", indent = 1, commands = { "move", "stay" } },
         { recipient = "melee", indent = 1, commands = { "move", "stay" } },
         { recipient = "ranged", indent = 1, commands = { "move", "stay", "spreadtoggle" } },
+        { recipient = "healer", indent = 1, commands = { "move", "stay" } },
     }
     local recipientByKey = {}
     local layoutRows = {}
+    local pairedComeButtons = {}
     local standaloneButtons = {}
     local i, r, row, recipient, commandKey, commandInfo, button, layoutRow
 
@@ -4493,7 +5159,34 @@ local function SCB_CreateCommandUI(frame)
         table.insert(layoutRows, layoutRow)
     end
 
-    local standalone = { "aoe", "object", "attackstart", "attackstop" }
+    local pairDefs = {
+        { key = "tankmelee", upperRow = 3, lowerRow = 4, tooltipKey = "TIP_COME_TANK_MELEE" },
+        { key = "meleeranged", upperRow = 4, lowerRow = 5, tooltipKey = "TIP_COME_MELEE_RANGED" },
+        { key = "rangedhealer", upperRow = 5, lowerRow = 6, tooltipKey = "TIP_COME_RANGED_HEALER" },
+    }
+    for i = 1, table.getn(pairDefs) do
+        local pair = pairDefs[i]
+        button = SCB_CreateArtButton(
+            content, nil, buttonSize,
+            SCB.assetRoot .. SCB.commands.come.icon,
+            nil,
+            SCB.assetRoot .. SCB.commands.come.highlightIcon
+        )
+        button.scbCommandKey = "come"
+        button.scbRecipientKey = pair.key
+        button.scbRecipientLabel = pair.key
+        button.scbTooltip = SCB_L(pair.tooltipKey)
+        button:SetScript("OnClick", SCB_DirectCommandOnClick)
+        button:SetScript("OnEnter", SCB_TooltipOnEnter)
+        button:SetScript("OnLeave", SCB_TooltipOnLeave)
+        table.insert(pairedComeButtons, {
+            button = button,
+            upperRow = pair.upperRow,
+            lowerRow = pair.lowerRow,
+        })
+    end
+
+    local standalone = { "aoe", "attackstart", "attackstop", "object" }
     for i = 1, table.getn(standalone) do
         commandKey = standalone[i]
         commandInfo = SCB.commands[commandKey]
@@ -4513,16 +5206,27 @@ local function SCB_CreateCommandUI(frame)
         table.insert(standaloneButtons, button)
     end
 
+    -- Refill belongs with the raid-maintenance actions rather than inside the
+    -- Presets drawer. Its tracker/state remains preset-backed; this is only a
+    -- UI relocation.
+    local refill = SCB_CreateTextButton(content, "SoloCraftBotsPresetRefill", 72, 24, SCB_L("PRESET_REFILL", "Refill"))
+    refill.scbTooltip = SCB_L("PRESET_REFILL_TOOLTIP_EMPTY", "No tracked preset bots are missing.")
+    refill:SetScript("OnClick", SCB_RefillPresetOnClick)
+    refill:SetScript("OnEnter", SCB_TooltipOnEnter)
+    refill:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.presetRefillButton = refill
+    SCB_SetPresetButtonGrey(refill)
+
     -- Native removals deliberately do not use .partybot remove. Both routes
     -- share survivor safety so the last bot is retained when the player is
     -- the only human in the group.
-    local kickDead = SCB_CreateTextButton(content, "SoloCraftBotsKickDead", 80, 24, "Kick Dead")
+    local kickDead = SCB_CreateTextButton(content, "SoloCraftBotsKickDead", 72, 24, "Kick Dead")
     kickDead.scbTooltip = "Remove dead bots\nKeeps one survivor if you are the only human"
     kickDead:SetScript("OnClick", SCB_KickDeadOnClick)
     kickDead:SetScript("OnEnter", SCB_TooltipOnEnter)
     kickDead:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 80, 24, "Kick All")
+    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 72, 24, "Kick All")
     kickAll.scbTooltip = "Remove all bots\nKeeps one survivor if you are the only human"
     kickAll:SetScript("OnClick", SCB_KickAllOnClick)
     kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -4533,7 +5237,9 @@ local function SCB_CreateCommandUI(frame)
         content = content,
         buttonSize = buttonSize,
         rows = layoutRows,
+        pairedComeButtons = pairedComeButtons,
         standaloneButtons = standaloneButtons,
+        refill = refill,
         kickDead = kickDead,
         kickAll = kickAll,
     }
@@ -4546,8 +5252,15 @@ local function SCB_CreateRaidmarkUI(frame)
 
     -- One always-highlighted state button. Focus is the default; clicking it
     -- swaps between Focus and CC assignment modes.
+    local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
+    clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
+    clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS", "Clear Focus/CC marks\nTarget a party bot: clear that bot\nOtherwise: clear all bots")
+    clearMarks:SetScript("OnClick", function() SendChatMessage(".partybot clearmarks", "PARTY") end)
+    clearMarks:SetScript("OnEnter", SCB_TooltipOnEnter)
+    clearMarks:SetScript("OnLeave", SCB_TooltipOnLeave)
+
     local mode = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "focus_h.tga")
-    mode:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
+    mode:SetPoint("RIGHT", clearMarks, "LEFT", -4, 0)
     mode:SetScript("OnClick", SCB_RaidmarkModeOnClick)
     mode:SetScript("OnEnter", SCB_TooltipOnEnter)
     mode:SetScript("OnLeave", SCB_TooltipOnLeave)
@@ -5165,6 +5878,8 @@ local function SCB_CreatePresetUI(frame)
     SCB_EnsurePresetDB()
     local group = SCB_CurrentPresetGroup()
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group and group.currentPreset or nil)
+    SCB_TryFinalizeRaidRoleTracking()
+    SCB_RefreshRefillButton()
 end
 
 
@@ -5978,7 +6693,10 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "PLAYER_ENTERING_WORLD" then
         if RequestRaidInfo then RequestRaidInfo() end
         SCB_RefreshMainPaladinBlessingButton()
-        if SCB.presetPanel then SCB_RefreshPresetSlots() end
+        if SCB.presetPanel then SCB_RefreshPresetPlayers() end
+        SCB_TryFinalizeRaidRoleTracking()
+        SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
+        SCB_RefreshRefillButton()
         if SCB.initialSessionValidationPending then
             SCB.initialSessionValidationPending = false
             SCB_ValidateSavedSession()
@@ -5998,12 +6716,74 @@ eventFrame:SetScript("OnEvent", function()
         if SCB.presetPanel then
             SCB_RefreshPresetPlayers()
         end
+        SCB_TryFinalizeRaidRoleTracking()
+        SCB_RefreshRefillButton()
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
         SCB_DebugUnitFlags(arg1)
     elseif event == "UNIT_COMBAT" then
         SCB_DebugUnitCombat(arg1, arg2, arg3, arg4, arg5)
     elseif event == "CHAT_MSG_SYSTEM" then
+        if arg1 and string.find(arg1, "Cannot add bots while any party member is in combat", 1, true)
+            and SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0
+            and SCB.presetLastBurstCommands and table.getn(SCB.presetLastBurstCommands) > 0
+            and not SCB.presetLastBurstRequeued then
+            -- The server is authoritative when the local UnitAffectingCombat
+            -- scan misses a distant/in-transition member. Treat every same-frame
+            -- burst as one attempt even if the server emits several identical
+            -- rejection lines. Requeue that exact logical group at the very
+            -- front so no later preset group can leapfrog it.
+            local retryDelays = { 1.0, 5.0, 10.0, 15.0 }
+            local failures = (SCB.presetCombatRetryFailures or 0) + 1
+            SCB.presetCombatRetryFailures = failures
+            SCB.presetCombatRetryResetPending = nil
+            SCB.presetLastBurstRequeued = true
+
+            if failures <= table.getn(retryDelays) then
+                local retry = {}
+                local ri
+                table.insert(retry, SCB.PRESET_CHECK_COMBAT)
+                for ri = 1, table.getn(SCB.presetLastBurstCommands) do
+                    table.insert(retry, SCB.presetLastBurstCommands[ri])
+                end
+                for ri = table.getn(retry), 1, -1 do
+                    table.insert(SCB.presetSpawnQueue, 1, retry[ri])
+                end
+
+                -- Replace any normal inter-group wait already running for the
+                -- failed burst with the bounded server-error backoff. The combat
+                -- marker remains at queue head after the delay, so the normal
+                -- live combat gate still gets the final say before resending.
+                SCB.presetGroupWaitRemaining = 0
+                SCB.presetCombatRetryWaitRemaining = retryDelays[failures]
+                SCB.presetCombatPollRemaining = 0
+            else
+                -- Fifth rejected attempt: stop rather than looping forever or
+                -- letting a later logical group corrupt the intended raid comp.
+                SCB.presetSpawnQueue = {}
+                SCB.presetGroupWaitRemaining = 0
+                SCB.presetCombatRetryWaitRemaining = 0
+                SCB.presetCombatPollRemaining = nil
+                SCB.presetLastBurstCommands = nil
+                SCB.presetLastBurstRequeued = nil
+                SCB.presetCombatRetryFailures = 0
+                SCB.presetCombatRetryResetPending = nil
+                SCB_Print(SCB_L("PRESET_SUMMON_COMBAT_ABORT", "Preset Summon stopped: the server still reports a party member in combat."))
+            end
+        end
+        if SCB.refillState and SCB.refillState.active and SCB.refillState.phase == "waitgroup" and arg1 and string.find(arg1, "Cannot add bots while any party member is in combat", 1, true) then
+            -- The pre-burst combat gate should normally prevent this. If combat
+            -- begins in the tiny race between checking and sending, do not retry
+            -- the whole burst blindly: some commands may already have been
+            -- accepted, which would make duplicate role requests ambiguous.
+            SCB.refillState.active = false
+            SCB.refillState.phase = nil
+            SCB.refillState.group = nil
+            SCB.refillState.assignments = nil
+            SCB.refillState.beforeNames = nil
+            SCB.refillState.fullSeenAt = nil
+            SCB_RefreshRefillButton()
+        end
         if SCB.debugServerCheck and SCB.debugServerCheck:GetChecked() then
             SCB_DebugLog("SYSTEM", arg1 or "")
         end
