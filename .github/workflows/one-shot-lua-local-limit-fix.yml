@@ -1,0 +1,56 @@
+name: One-shot Lua local-limit fix
+
+on:
+  push:
+    branches:
+      - fix/lua-local-limit
+    paths:
+      - .github/workflows/one-shot-lua-local-limit-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/lua-local-limit
+
+      - name: Patch top-level helper locals
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('SoloCraftBots.lua')
+          text = path.read_text(encoding='utf-8')
+          names = [
+              'SCB_GetPlayerRoleSelection',
+              'SCB_MakePlayerRoleSelection',
+              'SCB_GetPlayerClassRoleInfo',
+              'SCB_GetCharacterDefaultRoleTable',
+              'SCB_GetPresetHumanLayout',
+          ]
+
+          for name in names:
+              old = f'local function {name}('
+              new = f'function {name}('
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one {old!r}, found {count}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Remove one-shot workflow and commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/one-shot-lua-local-limit-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SoloCraftBots.lua .github/workflows/one-shot-lua-local-limit-fix.yml
+          git commit -m "Fix Vanilla Lua local variable limit"
+          git push origin HEAD:fix/lua-local-limit
