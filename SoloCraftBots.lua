@@ -5,9 +5,6 @@
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 local T = SoloCraftBotsLocale or {}
-if T["SAVED"] == "Saved" then T["SAVED"] = "Preset Saved" end
-if T["UNSAVED"] == "Unsaved" then T["UNSAVED"] = "Unsaved Changes" end
-if T["PRESET_SUMMON"] == "Summon" then T["PRESET_SUMMON"] = "Summon Bots" end
 function SCB_L(key, fallback)
     return T[key] or fallback or key
 end
@@ -629,6 +626,52 @@ function SCB_BuildSpawnCommand(classKey, role, extra)
         command = command .. " " .. extra
     end
     return command
+end
+
+function SCB_IsValidSpawnAssignment(classKey, role, extra)
+    local classInfo = SCB_FindClass(classKey)
+    local i, entry, blessing, values, value, groupKey, totem
+    if not classInfo or not role then return false end
+
+    if extra == "" then extra = nil end
+
+    if classKey == "paladin" then
+        local roleValid = false
+        for i = 1, table.getn(classInfo.roles) do
+            if classInfo.roles[i].role == role then roleValid = true break end
+        end
+        if not roleValid then return false end
+        if not extra then return true end
+        blessing = SCB_FindPaladinBlessing(extra)
+        return blessing and blessing.key == extra
+    end
+
+    if classKey == "shaman" then
+        local roleValid = false
+        for i = 1, table.getn(classInfo.roles) do
+            if classInfo.roles[i].role == role then roleValid = true break end
+        end
+        if not roleValid then return false end
+        if not extra then return true end
+        values = {}
+        for value in string.gfind(extra, "%S+") do table.insert(values, value) end
+        if table.getn(values) ~= 4 then return false end
+        for i = 1, table.getn(SCB_SHAMAN_TOTEM_ORDER) do
+            groupKey = SCB_SHAMAN_TOTEM_ORDER[i]
+            totem = SCB_FindShamanTotem(groupKey, values[i])
+            if not totem or totem.key ~= values[i] then return false end
+        end
+        return true
+    end
+
+    -- For all other classes, role + spec extra must exactly match one of the
+    -- class definitions. This also validates Mage Fire/Frost without accepting
+    -- arbitrary text that could later reach .partybot chat commands.
+    for i = 1, table.getn(classInfo.roles) do
+        entry = classInfo.roles[i]
+        if entry.role == role and entry.extra == extra then return true end
+    end
+    return false
 end
 
 function SCB_SendSpawnCommand(command)
@@ -2242,6 +2285,7 @@ end
 function SCB_HidePresetMenus()
     if SCB.presetGroupMenu then SCB.presetGroupMenu:Hide() end
     if SCB.presetMenu then SCB.presetMenu:Hide() end
+    if SCB_CommsHideTargetMenu then SCB_CommsHideTargetMenu() end
 end
 
 function SCB_GetPresetPopupDialog(frame)
@@ -2785,9 +2829,9 @@ end
 -- roster. Raids use authoritative subgroup order; five-player parties use
 -- player/party1..party4 order. Roles still come only from the preset: roster order
 -- is used solely to bind each bot name to its logical preset assignment.
-function SCB_CreateRaidRoleTracker(slots, size, occupied, group)
+function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     local tracker = {
-        version = 4,
+        version = 5,
         mode = size <= 5 and "party" or "raid",
         ready = false,
         allowFinalize = false,
@@ -2795,11 +2839,11 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group)
         zone = size > 5 and ((GetRealZoneText and GetRealZoneText()) or "") or "",
         presetGroupID = group and group.id or nil,
         presetGroupName = group and group.name or nil,
-        presetName = SCB_CurrentPreset() and SCB_CurrentPreset().name or nil,
+        presetName = snapshot and snapshot.presetName or (SCB_CurrentPreset() and SCB_CurrentPreset().name or nil),
         assignments = {},
         players = {},
     }
-    local i, slot, g, key, groupIndex, name, roster, partySlots
+    local i, slot, g, player
 
     for i = 1, size do
         slot = slots[i]
@@ -2816,35 +2860,17 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group)
         }
     end
 
-    if tracker.mode == "party" then
-        -- Preserve each human's logical party slot from the moment the preset
-        -- starts. party1..party4 collapse when someone leaves, so recalculating
-        -- those slots later would make a missing bot appear to be a different
-        -- preset assignment.
-        roster = SCB_GetHumanRoster()
-        partySlots = SCB_AutoPartyPlayerSlots(roster)
-        for i = 1, table.getn(roster) do
-            if partySlots[roster[i].key] then
-                local playerRole, playerExtra = SCB_GetPlayerRoleSelection(SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[roster[i].key] or nil)
-                table.insert(tracker.players, {
-                    key = roster[i].key, name = roster[i].name, group = 1,
-                    slotIndex = partySlots[roster[i].key],
-                    role = playerRole, extra = playerExtra,
-                })
-            end
-        end
-    else
-        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
-            if groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
-                name = SCB_PresetPlayerDisplayName(key)
-                if name then
-                    local playerRole, playerExtra = SCB_GetPlayerRoleSelection(SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[key] or nil)
-                    table.insert(tracker.players, {
-                        key = key, name = name, group = groupIndex,
-                        role = playerRole, extra = playerExtra,
-                    })
-                end
-            end
+    if snapshot and snapshot.players then
+        for i = 1, table.getn(snapshot.players) do
+            player = snapshot.players[i]
+            table.insert(tracker.players, {
+                key = player.name,
+                name = player.name,
+                group = player.group or 1,
+                slotIndex = player.slotIndex,
+                role = player.role,
+                extra = player.extra,
+            })
         end
     end
 
@@ -3561,28 +3587,213 @@ SCB_RefreshPresetSummonWarning = function()
     end
 end
 
-function SCB_PresetSummonOnClick()
-    local group = SCB_CurrentPresetGroup()
-    local size = SCB_CurrentPresetSize()
-    local commands = {}
-    local slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
-    local present = SCB_GetPresentHumanMap()
+function SCB_GetSnapshotOccupiedSlots(snapshot)
     local occupied = {}
-    local key, i, slot
-    local startBotState, survivorName
-    local groupCommands = {}
-    local groupCount = math.ceil(size / 5)
-    local g, heldG1Command, hasLater, expectedBotCount
-    local kickAllAnchorName, useKickAllAnchor
+    local groupCounts = {}
+    local i, player, groupIndex
+    if not snapshot or not snapshot.players then return occupied end
 
-    if not group or not SCB_CurrentPreset() then
-        SCB_Print("Add or select a preset before Summon.")
-        return
+    if (snapshot.size or 0) <= 5 then
+        for i = 1, table.getn(snapshot.players) do
+            player = snapshot.players[i]
+            if player.slotIndex then occupied[player.slotIndex] = true end
+        end
+    else
+        for i = 1, table.getn(snapshot.players) do
+            player = snapshot.players[i]
+            groupIndex = player.group
+            groupCounts[groupIndex] = (groupCounts[groupIndex] or 0) + 1
+            if groupCounts[groupIndex] <= 5 then
+                occupied[((groupIndex - 1) * 5) + groupCounts[groupIndex]] = true
+            end
+        end
     end
+    return occupied
+end
+
+function SCB_CalculateSnapshotRoleCounts(snapshot)
+    local counts = { tank = 0, healer = 0, meleedps = 0, rangedps = 0 }
+    local occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
+    local i, player, slot, role
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        role = player.role
+        if counts[role] ~= nil then counts[role] = counts[role] + 1 end
+    end
+    for i = 1, snapshot.size or 0 do
+        if not occupied[i] then
+            slot = snapshot.slots and snapshot.slots[i]
+            role = slot and slot.role
+            if counts[role] ~= nil then counts[role] = counts[role] + 1 end
+        end
+    end
+    return counts
+end
+
+function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
+    local validSizes = { [5] = true, [10] = true, [15] = true, [20] = true, [40] = true }
+    local seenPlayers, groupCounts, seenPartySlots = {}, {}, {}
+    local currentNames, roster = {}, nil
+    local i, slot, player, role, expected, actual, name
+
+    if type(snapshot) ~= "table" or not validSizes[snapshot.size] then
+        return false, "Preset snapshot has an unsupported size."
+    end
+    if type(snapshot.slots) ~= "table" or table.getn(snapshot.slots) ~= snapshot.size then
+        return false, "Preset snapshot is incomplete."
+    end
+    for i = 1, snapshot.size do
+        slot = snapshot.slots[i]
+        if type(slot) ~= "table" or not SCB_IsValidSpawnAssignment(slot.class, slot.role, slot.extra) then
+            return false, "Preset snapshot contains an invalid bot assignment."
+        end
+    end
+
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        if type(player) ~= "table" or type(player.name) ~= "string" or player.name == "" or seenPlayers[player.name] then
+            return false, "Preset snapshot contains invalid player assignments."
+        end
+        seenPlayers[player.name] = true
+        role = player.role
+        if role ~= "tank" and role ~= "healer" and role ~= "meleedps" and role ~= "rangedps" then
+            return false, "Preset snapshot contains an invalid player role."
+        end
+        if snapshot.size <= 5 then
+            if type(player.slotIndex) ~= "number" or player.slotIndex < 1 or player.slotIndex > snapshot.size or seenPartySlots[player.slotIndex] then
+                return false, "Preset snapshot contains invalid party player slots."
+            end
+            seenPartySlots[player.slotIndex] = true
+        else
+            if type(player.group) ~= "number" or player.group < 1 or player.group > math.ceil(snapshot.size / 5) then
+                return false, "Preset snapshot contains an invalid raid group."
+            end
+            groupCounts[player.group] = (groupCounts[player.group] or 0) + 1
+            if groupCounts[player.group] > 5 then
+                return false, "Preset snapshot assigns more than five players to one raid group."
+            end
+        end
+    end
+
+    actual = SCB_CalculateSnapshotRoleCounts(snapshot)
+    expected = snapshot.roleCounts
+    if expected then
+        if tonumber(expected.tank or -1) ~= actual.tank
+            or tonumber(expected.healer or -1) ~= actual.healer
+            or tonumber(expected.meleedps or -1) ~= actual.meleedps
+            or tonumber(expected.rangedps or -1) ~= actual.rangedps then
+            return false, "Preset snapshot role counts do not match its assignments."
+        end
+    end
+
+    if requireCurrentRoster then
+        roster = SCB_GetHumanRoster()
+        if table.getn(roster) ~= table.getn(snapshot.players or {}) then
+            return false, "The human roster changed after this preset snapshot was created."
+        end
+        for i = 1, table.getn(roster) do currentNames[roster[i].name] = true end
+        for name in pairs(seenPlayers) do
+            if not currentNames[name] then
+                return false, "The human roster changed after this preset snapshot was created."
+            end
+        end
+    end
+    return true
+end
+
+function SCB_BuildPresetExecutionSnapshot()
+    local group = SCB_CurrentPresetGroup()
+    local preset = SCB_CurrentPreset()
+    local size = SCB_CurrentPresetSize()
+    local slots, roster, partySlots, players, groupCounts = {}, {}, {}, {}, {}
+    local i, info, assignedGroup, role, extra, fallbackRole, fallbackExtra
+    local snapshot, valid, errorText
+
+    if not group or not preset then
+        return nil, "Add or select a preset first."
+    end
+
+    slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
+    for i = 1, size do
+        if not SCB_IsValidSpawnAssignment(slots[i].class, slots[i].role, slots[i].extra) then
+            return nil, "Preset contains an invalid bot assignment."
+        end
+    end
+
+    roster = SCB_GetHumanRoster()
+    if size <= 5 then partySlots = SCB_AutoPartyPlayerSlots(roster) end
+
+    for i = 1, table.getn(roster) do
+        info = roster[i]
+        if size > 5 then
+            assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
+            if not assignedGroup then
+                return nil, "Assign " .. info.name .. " to a preset group first."
+            end
+            if assignedGroup < 1 or assignedGroup > math.ceil(size / 5) then
+                return nil, "Preset contains an invalid player group assignment."
+            end
+            groupCounts[assignedGroup] = (groupCounts[assignedGroup] or 0) + 1
+            if groupCounts[assignedGroup] > 5 then
+                return nil, "Preset Group " .. assignedGroup .. " has more than five players assigned."
+            end
+        else
+            assignedGroup = 1
+            if not partySlots[info.key] then
+                return nil, "Preset could not resolve the current party layout."
+            end
+        end
+
+        if info.key == "$self" then
+            fallbackRole, fallbackExtra = SCB_GetCharacterDefaultRoleSelection()
+        else
+            fallbackRole = SCB_DefaultPlayerRole(info)
+            fallbackExtra = nil
+        end
+        role, extra = SCB_GetPlayerRoleSelection(SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[info.key] or nil, fallbackRole, fallbackExtra)
+        table.insert(players, {
+            name = info.name,
+            group = assignedGroup,
+            slotIndex = size <= 5 and partySlots[info.key] or nil,
+            role = role,
+            extra = extra,
+        })
+    end
+
+    snapshot = {
+        protocol = 1,
+        groupID = group.id,
+        groupName = group.name or "Preset Group",
+        size = size,
+        presetName = preset.name or "Preset",
+        slots = slots,
+        players = players,
+        roleCounts = SCB_CalculatePresetRoleCounts(),
+    }
+    valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
+    if not valid then return nil, errorText end
+    return snapshot
+end
+
+function SCB_StartPresetSummonSnapshot(snapshot)
+    local valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
+    local group, size, slots, commands, occupied, startBotState, survivorName
+    local groupCommands, groupCount, g, i, slot, heldG1Command, hasLater, expectedBotCount
+    local kickAllAnchorName, useKickAllAnchor, player
+
+    if not valid then return false, errorText end
     if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 or (SCB.presetCombatRetryWaitRemaining or 0) > 0 then
-        SCB_Print("Preset Summon is already in progress.")
-        return
+        return false, "Preset Summon is already in progress."
     end
+
+    group = { id = snapshot.groupID, name = snapshot.groupName, size = snapshot.size }
+    size = snapshot.size
+    slots = SCB_CopySlots(snapshot.slots)
+    commands = {}
+    occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
+    groupCommands = {}
+    groupCount = math.ceil(size / 5)
+
     SCB.presetCombatRetryWaitRemaining = 0
     SCB.presetCombatRetryFailures = 0
     SCB.presetCombatRetryResetPending = nil
@@ -3590,51 +3801,18 @@ function SCB_PresetSummonOnClick()
     SCB.presetLastBurstRequeued = nil
 
     -- Empty gate. The only permitted existing bot is the deliberate safety
-    -- survivor: exactly one bot while the player is the only human. That bot
-    -- is always treated as a temporary Group 1 member.
+    -- survivor: exactly one bot while the player is the only human.
     startBotState, survivorName = SCB_GetPresetStartBotState()
     if startBotState == "blocked" then
-        SCB_Print("Preset Summon requires an empty group, or one safety survivor with no other players.")
-        return
+        return false, "Preset Summon requires an empty group, or one safety survivor with no other players."
     end
     SCB.presetSurvivorBotName = survivorName
     kickAllAnchorName = SCB_GetKickAllAnchorForFreshBuild()
     useKickAllAnchor = startBotState == "survivor" and kickAllAnchorName and survivorName == kickAllAnchorName
 
-    SCB.presetEditorSlots = slots
-    SCB_RefreshPresetPlayers()
-
-    if size > 5 then
-        local playersPerGroup = {}
-        for key in pairs(present) do
-            local assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[key]
-            if not assignedGroup then
-                SCB_Print("Assign " .. SCB_PresetPlayerDisplayName(key) .. " to a preset group before Summon.")
-                return
-            end
-            if assignedGroup < 1 or assignedGroup > groupCount then return end
-            playersPerGroup[assignedGroup] = (playersPerGroup[assignedGroup] or 0) + 1
-            if playersPerGroup[assignedGroup] > 5 then
-                SCB_Print("Preset Group " .. assignedGroup .. " has more than five players assigned.")
-                return
-            end
-        end
-    end
-
-    -- Use the same covered-row map as the editor and blessing allocator. A
-    -- human in any group suppresses exactly the bot row displayed underneath
-    -- them; moving the human never rewrites that stored bot assignment.
-    occupied = SCB_GetPresetHumanOccupiedSlots()
-
-    -- Track both raids and five-player parties. The tracker uses Blizzard's
-    -- authoritative roster order for identity binding; preset data remains the
-    -- sole source of class/role/extra information.
-    SCB_CreateRaidRoleTracker(slots, size, occupied, group)
+    SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
 
-    -- Build the spawn plan by logical five-slot preset group. Players simply
-    -- occupy their assigned slots, so a group with one player sends four bots,
-    -- two players sends three, and so on.
     for g = 1, groupCount do groupCommands[g] = {} end
     for i = 1, size do
         if not occupied[i] then
@@ -3644,17 +3822,13 @@ function SCB_PresetSummonOnClick()
         end
     end
 
-    -- Raid presets must actually be raids before the real preset bots are sent.
-    -- If we already have a safety survivor it doubles as the raidmaker. If we
-    -- are completely solo, create one temporary Warrior tank and then use the
-    -- exact same Group 1 survivor hand-off.
     if size > 5 then
         if startBotState == "survivor" then
             if not (GetNumRaidMembers and GetNumRaidMembers() > 0) then
                 table.insert(commands, SCB_PRESET_CONVERT_NOW)
             end
         elseif GetNumRaidMembers and GetNumRaidMembers() > 0 then
-            -- Already a raid: nothing to do.
+            -- Already a raid.
         elseif ((GetNumPartyMembers and GetNumPartyMembers()) or 0) > 0 then
             table.insert(commands, SCB_PRESET_CONVERT_NOW)
         else
@@ -3668,13 +3842,11 @@ function SCB_PresetSummonOnClick()
     end
 
     if size > 5 then
-        -- Preserve the user's logical player placement in the actual Blizzard
-        -- raid subgroups. This runs after conversion/bootstrap has produced a
-        -- real raid and before any preset group burst is released.
         SCB.presetHumanGroups = {}
-        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
-            if present[key] and groupIndex >= 1 and groupIndex <= groupCount then
-                SCB.presetHumanGroups[key] = groupIndex
+        for i = 1, table.getn(snapshot.players or {}) do
+            player = snapshot.players[i]
+            if player.group and player.group >= 1 and player.group <= groupCount then
+                SCB.presetHumanGroups[player.name] = player.group
             end
         end
         table.insert(commands, SCB.PRESET_ARRANGE_PLAYERS)
@@ -3683,29 +3855,16 @@ function SCB_PresetSummonOnClick()
     end
 
     expectedBotCount = 0
-    for g = 1, groupCount do
-        expectedBotCount = expectedBotCount + table.getn(groupCommands[g])
-    end
+    for g = 1, groupCount do expectedBotCount = expectedBotCount + table.getn(groupCommands[g]) end
 
     if startBotState == "survivor" then
-        -- Keep the temporary survivor until every other required bot is present,
-        -- then replace it with the one deliberately held G1 assignment. Kick-All
-        -- anchors use G1S5; the older bootstrap survivor path keeps its proven
-        -- first-active-bot ordering. Human occupants are already omitted from
-        -- groupCommands.
         if table.getn(groupCommands[1]) == 0 then
-            SCB_Print("Preset Group 1 has no bot slot available to replace the safety survivor.")
-            return
+            return false, "Preset Group 1 has no bot slot available to replace the safety survivor."
         end
-
         if useKickAllAnchor then
-            -- Kick All means "build me a fresh composition". Keep the anchor as
-            -- temporary fifth physical G1 member, build every earlier G1 bot and
-            -- all later groups, then replace the anchor with G1S5 last.
             heldG1Command = groupCommands[1][table.getn(groupCommands[1])]
             table.remove(groupCommands[1], table.getn(groupCommands[1]))
         else
-            -- Bootstrap/legacy survivor path keeps its already-tested ordering.
             heldG1Command = groupCommands[1][1]
             table.remove(groupCommands[1], 1)
         end
@@ -3714,36 +3873,21 @@ function SCB_PresetSummonOnClick()
         SCB.presetExpectedBotCountBeforeHandoff = nil
     end
 
-    -- Finish each logical group as one same-frame LIFO burst. SoloCraft inserts
-    -- same-frame bot adds into authoritative raid order in reverse request
-    -- order, so sending the active preset assignments backwards makes the
-    -- Blizzard Raid-tab bot order match the preset. Then wait exactly 1.0
-    -- second before the next logical group that has bots to summon.
     for g = 1, groupCount do
-        if table.getn(groupCommands[g]) > 0 then
-            table.insert(commands, SCB.PRESET_CHECK_COMBAT)
-        end
-        for i = table.getn(groupCommands[g]), 1, -1 do
-            table.insert(commands, groupCommands[g][i])
-        end
+        if table.getn(groupCommands[g]) > 0 then table.insert(commands, SCB.PRESET_CHECK_COMBAT) end
+        for i = table.getn(groupCommands[g]), 1, -1 do table.insert(commands, groupCommands[g][i]) end
 
         hasLater = false
         if g < groupCount then
             local gg
             for gg = g + 1, groupCount do
-                if table.getn(groupCommands[gg]) > 0 then
-                    hasLater = true
-                    break
-                end
+                if table.getn(groupCommands[gg]) > 0 then hasLater = true break end
             end
         end
         if hasLater then table.insert(commands, SCB.PRESET_WAIT_GROUP) end
     end
 
     if heldG1Command then
-        -- Do not disturb the known-good G2+ sequencing. Wait until every other
-        -- preset bot is actually present, then perform only the final G1 hole
-        -- replacement: survivor out, deliberately held G1 bot in.
         table.insert(commands, SCB.PRESET_WAIT_FINAL_ROSTER)
         table.insert(commands, SCB.PRESET_REMOVE_SURVIVOR)
         table.insert(commands, SCB.PRESET_WAIT_SURVIVOR_GONE)
@@ -3751,12 +3895,25 @@ function SCB_PresetSummonOnClick()
         table.insert(commands, heldG1Command)
     end
 
-    -- Do not infer roles from roster arrival order. Wait until the complete
-    -- final group exists, then ordinal-map Blizzard's authoritative raid
-    -- subgroup order or party roster order onto the preset in one snapshot.
     table.insert(commands, SCB.PRESET_TRACK_ROSTER)
-
     SCB_QueuePresetSpawn(commands)
+    return true
+end
+
+function SCB_PresetSummonOnClick()
+    local snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
+    local ok
+    if not snapshot then
+        SCB_Print(errorText)
+        return
+    end
+
+    -- Preserve the old normalization side effect for the visible local editor.
+    SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
+    SCB_RefreshPresetPlayers()
+
+    ok, errorText = SCB_StartPresetSummonSnapshot(snapshot)
+    if not ok and errorText then SCB_Print(errorText) end
 end
 
 
@@ -4457,7 +4614,7 @@ function SCB_CreatePresetDropdown(parent, name, width, text, clickScript)
     return button
 end
 
-SCB_RefreshPresetCounters = function()
+function SCB_CalculatePresetRoleCounts()
     local counts = { tank = 0, healer = 0, meleedps = 0, rangedps = 0 }
     local size = SCB_CurrentPresetSize()
     local present = SCB_GetPresentHumanMap()
@@ -4476,17 +4633,27 @@ SCB_RefreshPresetCounters = function()
         for i = 1, size do
             g = math.floor((i - 1) / 5) + 1
             if math.mod(i - 1, 5) + 1 > (playersPerGroup[g] or 0) then
-                slot = SCB.presetEditorSlots[i]; role = slot and slot.role
+                slot = SCB.presetEditorSlots[i]
+                role = slot and slot.role
                 if counts[role] ~= nil then counts[role] = counts[role] + 1 end
             end
         end
     else
         for i = 1, size do
-            slot = SCB.presetEditorSlots[i]; role = slot and slot.role
+            slot = SCB.presetEditorSlots[i]
+            role = slot and slot.role
             if counts[role] ~= nil then counts[role] = counts[role] + 1 end
         end
     end
-    for key, info in pairs(SCB.presetCounterLabels or {}) do info:SetText(tostring(counts[key] or 0)) end
+    return counts
+end
+
+SCB_RefreshPresetCounters = function()
+    local counts = SCB_CalculatePresetRoleCounts()
+    local key, info
+    for key, info in pairs(SCB.presetCounterLabels or {}) do
+        info:SetText(tostring(counts[key] or 0))
+    end
 end
 
 function SCB_LayoutPresetRowGeometry()
@@ -4626,8 +4793,22 @@ SCB_LayoutPresetGroups = function()
     -- two-column strip; the role counter expands to the live group-grid width.
     if SCB.presetGroupSelector then SCB.presetGroupSelector:SetWidth(groupWidth) end
     if SCB.presetSelector then SCB.presetSelector:SetWidth(groupWidth) end
-    if SCB.presetSaveButton then SCB.presetSaveButton:SetWidth(groupWidth) end
-    if SCB.presetSummonButton then SCB.presetSummonButton:SetWidth(groupWidth) end
+    local actionGap = 3
+    local actionWidth = (twoGroupWidth - (3 * actionGap)) / 4
+    if SCB.presetSaveButton then SCB.presetSaveButton:SetWidth(actionWidth) end
+    if SCB.presetSummonButton then SCB.presetSummonButton:SetWidth(actionWidth) end
+    if SCB.presetSendButton then SCB.presetSendButton:SetWidth(actionWidth) end
+    if SCB.presetRequestButton then SCB.presetRequestButton:SetWidth(actionWidth) end
+    if SCB.presetSaveButton and SCB.presetGroupSelector then
+        SCB.presetSaveButton:ClearAllPoints()
+        SCB.presetSaveButton:SetPoint("TOPLEFT", SCB.presetGroupSelector, "BOTTOMLEFT", 0, -6)
+        SCB.presetSummonButton:ClearAllPoints()
+        SCB.presetSummonButton:SetPoint("LEFT", SCB.presetSaveButton, "RIGHT", actionGap, 0)
+        SCB.presetSendButton:ClearAllPoints()
+        SCB.presetSendButton:SetPoint("LEFT", SCB.presetSummonButton, "RIGHT", actionGap, 0)
+        SCB.presetRequestButton:ClearAllPoints()
+        SCB.presetRequestButton:SetPoint("LEFT", SCB.presetSendButton, "RIGHT", actionGap, 0)
+    end
     if SCB.presetCounterBox then SCB.presetCounterBox:SetWidth(contentWidth) end
 
     -- Open dropdown menus deliberately use the two-group span, independent of
@@ -4757,9 +4938,9 @@ function SCB_CreatePresetUI(frame)
     groupSelector:SetPoint("RIGHT", selector, "LEFT", -6, 0)
 
 
-    local save = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSave", 92, 24, "Preset Saved")
+    local save = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSave", 42, 24, SCB_L("SAVED", "Saved"))
     save:ClearAllPoints()
-    save:SetPoint("TOPRIGHT", groupSelector, "BOTTOMRIGHT", 0, -6)
+    save:SetPoint("TOPLEFT", groupSelector, "BOTTOMLEFT", 0, -6)
     save.scbTooltip = SCB_L("TIP_SAVE", "Saved when the editor matches the selected preset\nClick Unsaved to save changes")
     save:SetScript("OnClick", SCB_PresetSaveOnClick)
     save:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -4911,9 +5092,9 @@ function SCB_CreatePresetUI(frame)
     playerPoolLabel:Hide()
     SCB.presetPlayerPoolLabel = playerPoolLabel
 
-    local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 92, 24, "Summon Bots")
+    local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 42, 24, SCB_L("PRESET_SUMMON", "Summon"))
     summon:ClearAllPoints()
-    summon:SetPoint("TOPRIGHT", selector, "BOTTOMRIGHT", 0, -6)
+    summon:SetPoint("LEFT", save, "RIGHT", 3, 0)
     summon.scbTooltip = SCB_L("PRESET_SUMMON_TOOLTIP", "Summon this preset.")
     summon:SetScript("OnClick", SCB_PresetSummonOnClick)
     summon:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -4921,9 +5102,27 @@ function SCB_CreatePresetUI(frame)
     SCB.presetSummonButton = summon
     SCB_SetPresetButtonGrey(summon)
 
+    local send = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSend", 42, 24, SCB_L("PRESET_SEND", "Send"))
+    send:SetPoint("LEFT", summon, "RIGHT", 3, 0)
+    send.scbTooltip = SCB_L("PRESET_SEND_TOOLTIP", "Send this complete preset snapshot to another player.")
+    send:SetScript("OnClick", SCB_CommsSendOnClick)
+    send:SetScript("OnEnter", SCB_TooltipOnEnter)
+    send:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.presetSendButton = send
+    SCB_SetPresetButtonGrey(send)
+
+    local request = SCB_CreateTextButton(panel, "SoloCraftBotsPresetRequest", 42, 24, SCB_L("PRESET_REQUEST", "Request"))
+    request:SetPoint("LEFT", send, "RIGHT", 3, 0)
+    request.scbTooltip = SCB_L("PRESET_REQUEST_TOOLTIP", "Ask another SCB player to summon this complete preset snapshot.")
+    request:SetScript("OnClick", SCB_CommsRequestOnClick)
+    request:SetScript("OnEnter", SCB_TooltipOnEnter)
+    request:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.presetRequestButton = request
+    SCB_SetPresetButtonGrey(request)
+
     local counterBox = CreateFrame("Frame", nil, panel)
     counterBox:SetHeight(34)
-    counterBox:SetPoint("TOPRIGHT", summon, "BOTTOMRIGHT", 0, -6)
+    counterBox:SetPoint("TOPRIGHT", request, "BOTTOMRIGHT", 0, -6)
     counterBox:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
