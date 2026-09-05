@@ -1,0 +1,52 @@
+diff --git a/Commands.lua b/Commands.lua
+--- a/Commands.lua
++++ b/Commands.lua
+@@
+-    local toggleSize = 22
++    local toggleSize = 18
+ 
+     -- One always-highlighted state button. Focus is the default; clicking it
+     -- swaps between Focus and CC assignment modes.
+diff --git a/Comms.lua b/Comms.lua
+--- a/Comms.lua
++++ b/Comms.lua
+@@
+-    local roster, menu, button, count, i, info
++    local roster, menu, button, count, i, info, classInfo, classColor
+@@
+             if not button then
+                 button = SCB_CreateTextButton(menu, nil, 142, 20, "")
++                button.scbClassIcon = button:CreateTexture(nil, "ARTWORK")
++                button.scbClassIcon:SetWidth(16)
++                button.scbClassIcon:SetHeight(16)
++                button.scbClassIcon:SetPoint("LEFT", button, "LEFT", 4, 0)
++                button.label:ClearAllPoints()
++                button.label:SetPoint("LEFT", button.scbClassIcon, "RIGHT", 4, 0)
++                button.label:SetJustifyH("LEFT")
+                 button:SetScript("OnClick", SCB_CommsTargetChoiceOnClick)
+                 menu.buttons[count] = button
+             end
+             button:ClearAllPoints()
+             button:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((count - 1) * 20))
++            classInfo = info.classToken and SCB_FindClass(string.lower(info.classToken)) or nil
++            if classInfo and button.scbClassIcon then
++                button.scbClassIcon:SetTexture(SCB.assetRoot .. classInfo.icon)
++                button.scbClassIcon:Show()
++            elseif button.scbClassIcon then
++                button.scbClassIcon:Hide()
++            end
++            classColor = RAID_CLASS_COLORS and info.classToken and RAID_CLASS_COLORS[info.classToken] or nil
++            if classColor then
++                button.label:SetTextColor(classColor.r, classColor.g, classColor.b, 1)
++            else
++                button.label:SetTextColor(1, 1, 1, 1)
++            end
+             button.label:SetText(info.name)
+             button.scbTargetName = info.name
+             button:Show()
+diff --git a/SoloCraftBots.toc b/SoloCraftBots.toc
+--- a/SoloCraftBots.toc
++++ b/SoloCraftBots.toc
+@@
+-## Version: 0.5.6-dev
++## Version: 0.5.7-dev
