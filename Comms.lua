@@ -30,9 +30,10 @@ local function Escape(value)
 end
 
 local function Unescape(value)
-    return string.gsub(value or "", "%%(%x%x)", function(hex)
+    local decoded = string.gsub(value or "", "%%(%x%x)", function(hex)
         return string.char(tonumber(hex, 16))
     end)
+    return decoded
 end
 
 local function Split(text, separator)
