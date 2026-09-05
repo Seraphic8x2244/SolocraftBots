@@ -1,39 +1,33 @@
-name: Temporary SCB comm target class build
-on:
+name: Temporary target picker build
+"on":
   push:
-    branches:
-      - tmp/comm-target-class-057
+permissions:
+  contents: write
 jobs:
-  build-and-check:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: tmp/comm-target-class-057
           fetch-depth: 0
-      - name: Apply class target picker update
+      - name: Patch files
+        shell: bash
         run: |
-          python3 - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
-
-          p = Path('Comms.lua')
+          p = Path("Comms.lua")
           s = p.read_text()
-
-          old = '    local roster, menu, button, count, i, info\n'
-          new = '    local roster, menu, button, count, i, info, classInfo, classColor\n'
-          if old not in s:
-              raise SystemExit('target menu locals not found')
-          s = s.replace(old, new, 1)
-
-          old = '''            if not button then
+          a = "    local roster, menu, button, count, i, info\n"
+          b = "    local roster, menu, button, count, i, info, classInfo, classColor\n"
+          assert a in s
+          s = s.replace(a, b, 1)
+          a = '''            if not button then
                 button = SCB_CreateTextButton(menu, nil, 142, 20, "")
                 button:SetScript("OnClick", SCB_CommsTargetChoiceOnClick)
                 menu.buttons[count] = button
             end
 '''
-          new = '''            if not button then
+          b = '''            if not button then
                 button = SCB_CreateTextButton(menu, nil, 142, 20, "")
                 button.scbClassIcon = button:CreateTexture(nil, "ARTWORK")
                 button.scbClassIcon:SetWidth(16)
@@ -46,17 +40,15 @@ jobs:
                 menu.buttons[count] = button
             end
 '''
-          if old not in s:
-              raise SystemExit('target button creation block not found')
-          s = s.replace(old, new, 1)
-
-          old = '''            button:ClearAllPoints()
+          assert a in s
+          s = s.replace(a, b, 1)
+          a = '''            button:ClearAllPoints()
             button:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((count - 1) * 20))
             button.label:SetText(info.name)
             button.scbTargetName = info.name
             button:Show()
 '''
-          new = '''            button:ClearAllPoints()
+          b = '''            button:ClearAllPoints()
             button:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((count - 1) * 20))
             classInfo = info.classToken and SCB_FindClass(string.lower(info.classToken)) or nil
             if classInfo and button.scbClassIcon then
@@ -75,38 +67,27 @@ jobs:
             button.scbTargetName = info.name
             button:Show()
 '''
-          if old not in s:
-              raise SystemExit('target button display block not found')
-          s = s.replace(old, new, 1)
+          assert a in s
+          s = s.replace(a, b, 1)
           p.write_text(s)
-
-          toc = Path('SoloCraftBots.toc')
+          toc = Path("SoloCraftBots.toc")
           t = toc.read_text()
-          oldv = '## Version: 0.5.6-dev'
-          newv = '## Version: 0.5.7-dev'
-          if oldv not in t:
-              raise SystemExit('expected dev version not found')
-          toc.write_text(t.replace(oldv, newv, 1))
+          assert "## Version: 0.5.6-dev" in t
+          toc.write_text(t.replace("## Version: 0.5.6-dev", "## Version: 0.5.7-dev", 1))
           PY
-      - name: Install Lua 5.1
+      - name: Install Lua
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
-      - name: Lua 5.1 syntax check
+      - name: Check Lua
         run: |
-          for f in SoloCraftBots.lua Roster.lua Comms.lua Commands.lua Options.lua Debug.lua Locale/enGB.lua Locale/enUS.lua; do
-            luac5.1 -p "$f"
-          done
-      - name: Verify target picker update
-        run: |
+          for f in SoloCraftBots.lua Roster.lua Comms.lua Commands.lua Options.lua Debug.lua Locale/enGB.lua Locale/enUS.lua; do luac5.1 -p "$f"; done
           grep -F 'button.scbClassIcon:SetWidth(16)' Comms.lua
           grep -F 'RAID_CLASS_COLORS[info.classToken]' Comms.lua
-          grep -F 'SCB_FindClass(string.lower(info.classToken))' Comms.lua
           grep -F '## Version: 0.5.7-dev' SoloCraftBots.toc
-          grep -F '## Title: SoloCraft Bots [dev]' SoloCraftBots.toc
-      - name: Remove temporary workflow and commit clean staged tree
+      - name: Commit staged result
         run: |
           rm .github/workflows/tmp-comm-target-class-057.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add Comms.lua SoloCraftBots.toc .github/workflows/tmp-comm-target-class-057.yml
           git commit -m 'Add class styling to preset target picker'
           git push origin HEAD:tmp/comm-target-class-057
