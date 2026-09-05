@@ -4613,7 +4613,7 @@ end
 
 function SCB_CreateRaidmarkUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "assignments", SCB_L("SECTION_ASSIGNMENTS"), 34)
-    local toggleSize = 22
+    local toggleSize = 18
 
     -- One always-highlighted state button. Focus is the default; clicking it
     -- swaps between Focus and CC assignment modes.

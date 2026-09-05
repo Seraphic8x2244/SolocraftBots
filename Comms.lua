@@ -307,7 +307,7 @@ end
 
 local function OpenTargetMenu(mode)
     local snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
-    local roster, menu, button, count, i, info
+    local roster, menu, button, count, i, info, classInfo, classColor
     if not snapshot then SCB_Print(errorText) return end
     if SCB.commOutgoing[mode] then
         SCB_Print(mode == "S" and "A preset Send is already waiting for a reply." or "A preset Request is already waiting for a reply.")
@@ -324,11 +324,31 @@ local function OpenTargetMenu(mode)
             button = menu.buttons[count]
             if not button then
                 button = SCB_CreateTextButton(menu, nil, 142, 20, "")
+                button.scbClassIcon = button:CreateTexture(nil, "ARTWORK")
+                button.scbClassIcon:SetWidth(16)
+                button.scbClassIcon:SetHeight(16)
+                button.scbClassIcon:SetPoint("LEFT", button, "LEFT", 4, 0)
+                button.label:ClearAllPoints()
+                button.label:SetPoint("LEFT", button.scbClassIcon, "RIGHT", 4, 0)
+                button.label:SetJustifyH("LEFT")
                 button:SetScript("OnClick", SCB_CommsTargetChoiceOnClick)
                 menu.buttons[count] = button
             end
             button:ClearAllPoints()
             button:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - ((count - 1) * 20))
+            classInfo = info.classToken and SCB_FindClass(string.lower(info.classToken)) or nil
+            if classInfo and button.scbClassIcon then
+                button.scbClassIcon:SetTexture(SCB.assetRoot .. classInfo.icon)
+                button.scbClassIcon:Show()
+            elseif button.scbClassIcon then
+                button.scbClassIcon:Hide()
+            end
+            classColor = RAID_CLASS_COLORS and info.classToken and RAID_CLASS_COLORS[info.classToken] or nil
+            if classColor then
+                button.label:SetTextColor(classColor.r, classColor.g, classColor.b, 1)
+            else
+                button.label:SetTextColor(1, 1, 1, 1)
+            end
             button.label:SetText(info.name)
             button.scbTargetName = info.name
             button:Show()
