@@ -5359,7 +5359,7 @@ function SCB_CreateUI()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", frame, "TOP", 0, -13)
-    title:SetText(SCB_L("ADDON_TITLE") .. " [DEV]")
+    title:SetText(SCB_L("ADDON_TITLE") .. (string.find(SCB.version or "", "%-dev$") and " [dev]" or ""))
 
     local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "close.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -9)

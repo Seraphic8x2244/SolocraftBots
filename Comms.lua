@@ -4,11 +4,13 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 1
+local COMM_PROTOCOL = 2
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
+local COMM_HANDSHAKE_RETRY = 2
 
 SCB.commOutgoing = SCB.commOutgoing or { S = nil, R = nil }
+SCB.commOffers = SCB.commOffers or {}
 SCB.commAssemblies = SCB.commAssemblies or {}
 SCB.commSequence = SCB.commSequence or 0
 
@@ -28,9 +30,10 @@ local function Escape(value)
 end
 
 local function Unescape(value)
-    return string.gsub(value or "", "%%(%x%x)", function(hex)
+    local decoded = string.gsub(value or "", "%%(%x%x)", function(hex)
         return string.char(tonumber(hex, 16))
     end)
+    return decoded
 end
 
 local function Split(text, separator)
@@ -56,7 +59,7 @@ local function SendRaw(message)
 end
 
 local function SendControl(kind, tx, target, value)
-    return SendRaw(kind .. "|" .. tx .. "|" .. target .. "|" .. (value or ""))
+    return SendRaw(kind .. ":" .. tx .. ":" .. target .. ":" .. (value or ""))
 end
 
 local function SerializeSnapshot(snapshot)
@@ -173,7 +176,13 @@ local function ClearOutgoing(mode, status)
     elseif status == "ERROR" then
         SCB_Print(out.target .. " could not process the preset.")
     elseif status == "TIMEOUT" then
-        SCB_Print("No SCB reply from " .. out.target .. " within 30 seconds.")
+        if not out.handshakeDone then
+            SCB_Print("No SCB handshake reply from " .. out.target .. " within 30 seconds.")
+        elseif not out.acknowledged then
+            SCB_Print("SCB handshake with " .. out.target .. " succeeded, but preset data was not acknowledged within 30 seconds.")
+        else
+            SCB_Print(out.target .. " received the preset but did not respond within 30 seconds.")
+        end
     end
 end
 
@@ -199,6 +208,15 @@ local function BuildChunks(out)
     out.nextChunk = 1
     out.chunkElapsed = 0
     out.phase = "sending"
+end
+
+local function BeginHandshake(out)
+    if not out then return end
+    out.phase = "handshake"
+    out.handshakeElapsed = COMM_HANDSHAKE_RETRY
+    out.handshakeDone = nil
+    out.acknowledged = nil
+    out.deadline = Now() + COMM_TIMEOUT
 end
 
 local function BeginOutgoing(mode, target, snapshot)
@@ -247,7 +265,7 @@ local function BeginOutgoing(mode, target, snapshot)
             return
         end
     end
-    BuildChunks(out)
+    BeginHandshake(out)
 end
 
 function SCB_CommsHideTargetMenu()
@@ -612,14 +630,46 @@ local function CompleteAssembly(assembly)
 end
 
 function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
-    local parts, kind, tx, target, mode, seq, total, chunk, key, assembly, out
+    local parts, kind, tx, target, mode, seq, total, chunk, key, assembly, out, offer
+    local offerMode, offerProtocol, outgoingMode
     if prefix ~= COMM_PREFIX or not message or not sender then return end
     if channel ~= "RAID" and channel ~= "PARTY" then return end
-    parts = Split(message, "|")
+
+    parts = Split(message, ":")
     kind = parts[1]
     tx = parts[2]
     target = parts[3]
     if not tx or target ~= SelfName() then return end
+
+    if kind == "O" and table.getn(parts) == 4 then
+        local _, _, parsedMode, parsedProtocol = string.find(parts[4] or "", "^([SR])(%d+)$")
+        offerMode = parsedMode
+        offerProtocol = tonumber(parsedProtocol)
+        if not offerMode or offerProtocol ~= COMM_PROTOCOL then
+            SendControl("R", tx, sender, "ERROR")
+            return
+        end
+        key = sender .. "|" .. tx
+        SCB.commOffers[key] = {
+            sender = sender, tx = tx, mode = offerMode,
+            deadline = Now() + COMM_TIMEOUT,
+        }
+        SendControl("H", tx, sender, "READY")
+        return
+    end
+
+    if kind == "H" and table.getn(parts) == 4 and parts[4] == "READY" then
+        for outgoingMode, out in pairs(SCB.commOutgoing) do
+            if out and out.tx == tx and out.target == sender and out.phase == "handshake" then
+                out.handshakeDone = true
+                out.deadline = Now() + COMM_TIMEOUT
+                SCB_Print("SCB handshake with " .. out.target .. " succeeded; sending preset data.")
+                BuildChunks(out)
+                return
+            end
+        end
+        return
+    end
 
     if kind == "C" then
         if table.getn(parts) ~= 7 then return end
@@ -627,6 +677,8 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         seq = tonumber(parts[5]); total = tonumber(parts[6]); chunk = parts[7]
         if (mode ~= "S" and mode ~= "R") or not seq or not total or total < 1 or total > 50 or seq < 1 or seq > total then return end
         key = sender .. "|" .. tx
+        offer = SCB.commOffers[key]
+        if not offer or offer.mode ~= mode then return end
         assembly = SCB.commAssemblies[key]
         if not assembly then
             assembly = { sender = sender, tx = tx, mode = mode, total = total, chunks = {}, received = 0, deadline = Now() + COMM_TIMEOUT }
@@ -642,6 +694,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         assembly.deadline = Now() + COMM_TIMEOUT
         if assembly.received == assembly.total then
             SCB.commAssemblies[key] = nil
+            SCB.commOffers[key] = nil
             CompleteAssembly(assembly)
         end
         return
@@ -649,7 +702,13 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
 
     if kind == "A" and table.getn(parts) == 4 then
         for mode, out in pairs(SCB.commOutgoing) do
-            if out and out.tx == tx and out.target == sender then out.acknowledged = true end
+            if out and out.tx == tx and out.target == sender then
+                if not out.acknowledged then
+                    SCB_Print(out.target .. " received the preset data; waiting for response.")
+                end
+                out.acknowledged = true
+                out.deadline = Now() + COMM_TIMEOUT
+            end
         end
         return
     end
@@ -672,25 +731,35 @@ end)
 commFrame:SetScript("OnUpdate", function()
     local elapsed = arg1 or 0
     local now = Now()
-    local mode, out, packet, key, assembly, incoming
+    local mode, out, packet, key, assembly, incoming, offer
 
     for mode, out in pairs(SCB.commOutgoing) do
         if out then
             if now >= out.deadline then
                 ClearOutgoing(mode, "TIMEOUT")
             elseif out.phase == "promoting" then
-                if (SCB_CommsGetRaidRank(out.target) or 0) >= 1 then BuildChunks(out) end
+                if (SCB_CommsGetRaidRank(out.target) or 0) >= 1 then BeginHandshake(out) end
+            elseif out.phase == "handshake" then
+                out.handshakeElapsed = (out.handshakeElapsed or 0) + elapsed
+                if out.handshakeElapsed >= COMM_HANDSHAKE_RETRY then
+                    out.handshakeElapsed = 0
+                    SendControl("O", out.tx, out.target, out.mode .. COMM_PROTOCOL)
+                end
             elseif out.phase == "sending" then
                 out.chunkElapsed = (out.chunkElapsed or 0) + elapsed
                 if out.chunkElapsed >= 0.08 and out.nextChunk <= table.getn(out.chunks) then
                     out.chunkElapsed = 0
-                    packet = "C|" .. out.tx .. "|" .. out.target .. "|" .. out.mode .. "|" .. out.nextChunk .. "|" .. table.getn(out.chunks) .. "|" .. out.chunks[out.nextChunk]
+                    packet = "C:" .. out.tx .. ":" .. out.target .. ":" .. out.mode .. ":" .. out.nextChunk .. ":" .. table.getn(out.chunks) .. ":" .. out.chunks[out.nextChunk]
                     SendRaw(packet)
                     out.nextChunk = out.nextChunk + 1
                     if out.nextChunk > table.getn(out.chunks) then out.phase = "waiting" end
                 end
             end
         end
+    end
+
+    for key, offer in pairs(SCB.commOffers) do
+        if now >= offer.deadline then SCB.commOffers[key] = nil end
     end
 
     for key, assembly in pairs(SCB.commAssemblies) do
