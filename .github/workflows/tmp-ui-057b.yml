@@ -1,0 +1,17 @@
+name: Temporary UI validation
+on: [push]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/ui-057b
+          fetch-depth: 0
+      - run: git apply .github/tmp-ui-057.patch
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+      - run: for f in SoloCraftBots.lua Roster.lua Comms.lua Commands.lua Options.lua Debug.lua Locale/enGB.lua Locale/enUS.lua; do luac5.1 -p "$f"; done
+      - run: grep -F 'local toggleSize = 18' Commands.lua && grep -F 'button.scbClassIcon:SetWidth(16)' Comms.lua && grep -F 'RAID_CLASS_COLORS[info.classToken]' Comms.lua && grep -F '## Title: SoloCraft Bots [dev]' SoloCraftBots.toc && grep -F '## Version: 0.5.7-dev' SoloCraftBots.toc
+      - run: rm .github/tmp-ui-057.patch .github/workflows/tmp-ui-057b.yml && git config user.name 'github-actions[bot]' && git config user.email '41898282+github-actions[bot]@users.noreply.github.com' && git add Commands.lua Comms.lua SoloCraftBots.toc .github/tmp-ui-057.patch .github/workflows/tmp-ui-057b.yml && git commit -m 'Refine assignment controls and preset target picker' && git push origin HEAD:tmp/ui-057b
