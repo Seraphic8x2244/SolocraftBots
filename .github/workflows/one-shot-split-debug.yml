@@ -1,0 +1,83 @@
+name: One-shot Debug.lua split
+
+on:
+  push:
+    branches:
+      - refactor/split-debug-lua
+    paths:
+      - .github/workflows/one-shot-split-debug.yml
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/split-debug-lua
+
+      - name: Extract debug module
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          main_path = Path('SoloCraftBots.lua')
+          toc_path = Path('SoloCraftBots.toc')
+          text = main_path.read_text(encoding='utf-8')
+
+          start_marker = "-- ---------------------------------------------------------------------------\n-- Debug laboratory\n-- ---------------------------------------------------------------------------"
+          end_marker = "function SoloCraftBots_Toggle()"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate debug section boundaries')
+
+          debug_body = text[start:end].rstrip() + '\n'
+          debug_text = (
+              '-- SoloCraft Bots - Debug laboratory\n'
+              '-- Loaded after SoloCraftBots.lua; intentionally behavior-preserving.\n\n'
+              'local SCB = SoloCraftBots\n\n'
+              + debug_body
+          )
+
+          main_text = text[:start].rstrip() + '\n\n' + text[end:]
+          main_path.write_text(main_text, encoding='utf-8')
+          Path('Debug.lua').write_text(debug_text, encoding='utf-8')
+
+          toc = toc_path.read_text(encoding='utf-8')
+          old = 'SoloCraftBots.lua\nBindings.xml'
+          new = 'SoloCraftBots.lua\nDebug.lua\nBindings.xml'
+          if toc.count(old) != 1:
+              raise SystemExit('Unexpected TOC layout')
+          toc_path.write_text(toc.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Compile Lua modules
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+          luac5.1 -p SoloCraftBots.lua
+          luac5.1 -p Debug.lua
+
+      - name: Verify split boundaries
+        shell: bash
+        run: |
+          grep -q 'function SoloCraftBots_Toggle()' SoloCraftBots.lua
+          ! grep -q '^SCB.debug = ' SoloCraftBots.lua
+          grep -q '^SCB.debug = ' Debug.lua
+          grep -q '^local SCB = SoloCraftBots$' Debug.lua
+          grep -q '^Debug.lua$' SoloCraftBots.toc
+
+      - name: Remove one-shot workflow and commit split
+        shell: bash
+        run: |
+          rm .github/workflows/one-shot-split-debug.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SoloCraftBots.lua Debug.lua SoloCraftBots.toc .github/workflows/one-shot-split-debug.yml
+          git commit -m "Split debug laboratory into Debug.lua"
+          git push origin HEAD:refactor/split-debug-lua
