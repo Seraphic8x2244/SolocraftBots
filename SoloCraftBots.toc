@@ -8,4 +8,5 @@
 Locale\enGB.lua
 Locale\enUS.lua
 SoloCraftBots.lua
+Debug.lua
 Bindings.xml
