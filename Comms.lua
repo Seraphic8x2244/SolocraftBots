@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 1
+local COMM_PROTOCOL = 2
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -58,10 +58,6 @@ local function SendRaw(message)
 end
 
 local function SendControl(kind, tx, target, value)
-    return SendRaw(kind .. "|" .. tx .. "|" .. target .. "|" .. (value or ""))
-end
-
-local function SendHandshake(kind, tx, target, value)
     return SendRaw(kind .. ":" .. tx .. ":" .. target .. ":" .. (value or ""))
 end
 
@@ -638,56 +634,14 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
     if prefix ~= COMM_PREFIX or not message or not sender then return end
     if channel ~= "RAID" and channel ~= "PARTY" then return end
 
-    -- Handshake packets deliberately use ':' rather than '|'. Some private
-    -- server cores incorrectly pass addon messages through normal chat-link
-    -- validation, where a bare '|' may be rejected before CHAT_MSG_ADDON.
-    if string.sub(message, 1, 2) == "O:" or string.sub(message, 1, 2) == "H:" then
-        parts = Split(message, ":")
-        kind = parts[1]
-        tx = parts[2]
-        target = parts[3]
-        if not tx or target ~= SelfName() then return end
-
-        if kind == "O" and table.getn(parts) == 4 then
-            local _, _, parsedMode, parsedProtocol = string.find(parts[4] or "", "^([SR])(%d+)$")
-            offerMode = parsedMode
-            offerProtocol = tonumber(parsedProtocol)
-            if not offerMode or offerProtocol ~= COMM_PROTOCOL then
-                SendControl("R", tx, sender, "ERROR")
-                return
-            end
-            key = sender .. "|" .. tx
-            SCB.commOffers[key] = {
-                sender = sender, tx = tx, mode = offerMode,
-                deadline = Now() + COMM_TIMEOUT,
-            }
-            SendHandshake("H", tx, sender, "READY")
-            return
-        end
-
-        if kind == "H" and table.getn(parts) == 4 and parts[4] == "READY" then
-            for outgoingMode, out in pairs(SCB.commOutgoing) do
-                if out and out.tx == tx and out.target == sender and out.phase == "handshake" then
-                    out.handshakeDone = true
-                    out.deadline = Now() + COMM_TIMEOUT
-                    SCB_Print("SCB handshake with " .. out.target .. " succeeded; sending preset data.")
-                    BuildChunks(out)
-                    return
-                end
-            end
-            return
-        end
-        return
-    end
-
-    parts = Split(message, "|")
+    parts = Split(message, ":")
     kind = parts[1]
     tx = parts[2]
     target = parts[3]
     if not tx or target ~= SelfName() then return end
 
     if kind == "O" and table.getn(parts) == 4 then
-        local _, _, parsedMode, parsedProtocol = string.find(parts[4] or "", "^([SR]):(%d+)$")
+        local _, _, parsedMode, parsedProtocol = string.find(parts[4] or "", "^([SR])(%d+)$")
         offerMode = parsedMode
         offerProtocol = tonumber(parsedProtocol)
         if not offerMode or offerProtocol ~= COMM_PROTOCOL then
@@ -788,13 +742,13 @@ commFrame:SetScript("OnUpdate", function()
                 out.handshakeElapsed = (out.handshakeElapsed or 0) + elapsed
                 if out.handshakeElapsed >= COMM_HANDSHAKE_RETRY then
                     out.handshakeElapsed = 0
-                    SendHandshake("O", out.tx, out.target, out.mode .. COMM_PROTOCOL)
+                    SendControl("O", out.tx, out.target, out.mode .. COMM_PROTOCOL)
                 end
             elseif out.phase == "sending" then
                 out.chunkElapsed = (out.chunkElapsed or 0) + elapsed
                 if out.chunkElapsed >= 0.08 and out.nextChunk <= table.getn(out.chunks) then
                     out.chunkElapsed = 0
-                    packet = "C|" .. out.tx .. "|" .. out.target .. "|" .. out.mode .. "|" .. out.nextChunk .. "|" .. table.getn(out.chunks) .. "|" .. out.chunks[out.nextChunk]
+                    packet = "C:" .. out.tx .. ":" .. out.target .. ":" .. out.mode .. ":" .. out.nextChunk .. ":" .. table.getn(out.chunks) .. ":" .. out.chunks[out.nextChunk]
                     SendRaw(packet)
                     out.nextChunk = out.nextChunk + 1
                     if out.nextChunk > table.getn(out.chunks) then out.phase = "waiting" end
