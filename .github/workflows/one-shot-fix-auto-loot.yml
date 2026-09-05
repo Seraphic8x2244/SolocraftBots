@@ -17,160 +17,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: dev
-
-      - name: Patch Auto Loot runtime application
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          main = Path('SoloCraftBots.lua')
-          text = main.read_text(encoding='utf-8')
-
-          old = '''function SCB_ApplyAutoLootMethod()
-    local method, current
-    SCB_EnsureOptionsDB()
-    method = SoloCraftBotsDB.options.autoLootMethod or "off"
-    if method == "off" or not SetLootMethod then return end
-
-    -- Apply only after SCB has observed the requested bot enter the roster.
-    -- This matters when spawning from solo: before the first bot arrives there
-    -- is no group yet, so SetLootMethod() would have nothing to act on.
-    if GetLootMethod then
-        current = GetLootMethod()
-        if current == method and method ~= "master" then return end
-    end
-
-    if method == "master" then
-        if UnitName and UnitName("player") then
-            SetLootMethod("master", UnitName("player"))
-        end
-    else
-        SetLootMethod(method)
-    end
-end
-'''
-
-          new = '''function SCB_ApplyAutoLootMethod()
-    local method, current, partyCount, raidCount
-    SCB_EnsureOptionsDB()
-    method = SoloCraftBotsDB.options.autoLootMethod or "off"
-    if method == "off" or not SetLootMethod then return true end
-
-    -- Loot method changes only make sense once the player is actually in a
-    -- group, and only the group/raid leader can make them. The first bot join
-    -- can fire a roster event before those states have fully settled, so the
-    -- caller may retry briefly if this returns false.
-    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    if partyCount <= 0 and raidCount <= 0 then return false end
-    if IsPartyLeader and not IsPartyLeader() then return false end
-
-    if GetLootMethod then
-        current = GetLootMethod()
-        if current == method and method ~= "master" then return true end
-    end
-
-    if method == "master" then
-        if UnitName and UnitName("player") then
-            SetLootMethod("master", UnitName("player"))
-        else
-            return false
-        end
-    else
-        SetLootMethod(method)
-    end
-
-    if GetLootMethod then
-        current = GetLootMethod()
-        return current == method
-    end
-    return true
-end
-
-function SCB_QueueAutoLootApply()
-    local frame
-    if not SCB.autoLootApplyFrame then
-        frame = CreateFrame("Frame", "SoloCraftBotsAutoLootApplyFrame", UIParent)
-        frame:Hide()
-        frame:SetScript("OnUpdate", function()
-            this.scbElapsed = (this.scbElapsed or 0) + arg1
-            if this.scbElapsed < 0.25 then return end
-            this.scbElapsed = 0
-            this.scbAttempts = (this.scbAttempts or 0) + 1
-            if SCB_ApplyAutoLootMethod() or this.scbAttempts >= 4 then
-                this:Hide()
-            end
-        end)
-        SCB.autoLootApplyFrame = frame
-    end
-
-    frame = SCB.autoLootApplyFrame
-    frame.scbElapsed = 0
-    frame.scbAttempts = 0
-    frame:Show()
-end
-'''
-
-          if text.count(old) != 1:
-              raise SystemExit('Unexpected SCB_ApplyAutoLootMethod block')
-          text = text.replace(old, new, 1)
-
-          old = '''    SCB.lastRoster = current
-    if scbBotAdded then
-        SCB_ApplyAutoLootMethod()
-    end
-end
-'''
-          new = '''    SCB.lastRoster = current
-    if scbBotAdded then
-        -- Try immediately, then verify/retry for up to one second. Vanilla can
-        -- report the first solo->party roster change before leader/loot state
-        -- is fully ready for SetLootMethod().
-        SCB_ApplyAutoLootMethod()
-        SCB_QueueAutoLootApply()
-    end
-end
-'''
-          if text.count(old) != 1:
-              raise SystemExit('Unexpected roster auto-loot block')
-          main.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          options = Path('Options.lua')
-          text = options.read_text(encoding='utf-8')
-          old = '''function SCB_AutoLootOptionOnClick()
-    if not this or not this.scbLootMethod then return end
-    SCB_EnsureOptionsDB()
-    SoloCraftBotsDB.options.autoLootMethod = this.scbLootMethod
-    SCB_RefreshAutoLootSelector()
-    if SCB.optionAutoLootMenu then SCB.optionAutoLootMenu:Hide() end
-end
-'''
-          new = '''function SCB_AutoLootOptionOnClick()
-    local partyCount, raidCount
-    if not this or not this.scbLootMethod then return end
-    SCB_EnsureOptionsDB()
-    SoloCraftBotsDB.options.autoLootMethod = this.scbLootMethod
-    SCB_RefreshAutoLootSelector()
-    if SCB.optionAutoLootMenu then SCB.optionAutoLootMenu:Hide() end
-
-    -- Changing the setting while already grouped should take effect now, not
-    -- wait for another SCB bot to join.
-    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    if partyCount > 0 or raidCount > 0 then
-        SCB_ApplyAutoLootMethod()
-        SCB_QueueAutoLootApply()
-    end
-end
-'''
-          if text.count(old) != 1:
-              raise SystemExit('Unexpected Auto Loot option click block')
-          options.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-
-      - name: Compile Lua modules
-        shell: bash
+      - name: Patch files
+        run: python .github/scripts/fix_auto_loot.py
+      - name: Compile Lua
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.1
@@ -178,20 +27,17 @@ end
           luac5.1 -p Commands.lua
           luac5.1 -p Options.lua
           luac5.1 -p Debug.lua
-
-      - name: Verify Auto Loot wiring
-        shell: bash
+      - name: Verify
         run: |
           grep -q '^function SCB_QueueAutoLootApply()' SoloCraftBots.lua
           grep -q 'SCB_QueueAutoLootApply()' Options.lua
           grep -q 'IsPartyLeader and not IsPartyLeader()' SoloCraftBots.lua
-
-      - name: Remove one-shot workflow and commit
-        shell: bash
+      - name: Commit fix
         run: |
           rm .github/workflows/one-shot-fix-auto-loot.yml
+          rm .github/scripts/fix_auto_loot.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SoloCraftBots.lua Options.lua .github/workflows/one-shot-fix-auto-loot.yml
+          git add SoloCraftBots.lua Options.lua .github/workflows/one-shot-fix-auto-loot.yml .github/scripts/fix_auto_loot.py
           git commit -m "Fix Auto Loot application timing"
           git push origin HEAD:dev
