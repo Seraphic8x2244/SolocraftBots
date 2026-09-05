@@ -1666,7 +1666,7 @@ local function SCB_CopyPlayerRoles(playerRoles)
     return copy
 end
 
-local function SCB_GetPlayerRoleSelection(selection, fallbackRole, fallbackExtra)
+function SCB_GetPlayerRoleSelection(selection, fallbackRole, fallbackExtra)
     if type(selection) == "table" and type(selection.role) == "string" then
         return selection.role, selection.extra
     elseif type(selection) == "string" then
@@ -1675,11 +1675,11 @@ local function SCB_GetPlayerRoleSelection(selection, fallbackRole, fallbackExtra
     return fallbackRole, fallbackExtra
 end
 
-local function SCB_MakePlayerRoleSelection(role, extra)
+function SCB_MakePlayerRoleSelection(role, extra)
     return { role = role, extra = extra }
 end
 
-local function SCB_GetPlayerClassRoleInfo(info, selection)
+function SCB_GetPlayerClassRoleInfo(info, selection)
     local classInfo, role, extra
     if info and info.classToken then
         classInfo = SCB_FindClass(string.lower(info.classToken))
@@ -1881,7 +1881,7 @@ function SCB_GetCharacterDefaultRole()
     return role
 end
 
-local function SCB_GetCharacterDefaultRoleTable()
+function SCB_GetCharacterDefaultRoleTable()
     local role, extra = SCB_GetCharacterDefaultRoleSelection()
     return SCB_MakePlayerRoleSelection(role, extra)
 end
@@ -2503,7 +2503,7 @@ end
 -- The player overlay, hidden bot controls, blessing allocation and spawn occupancy
 -- must all agree on this map.  Human placement never mutates the bot assignment
 -- stored underneath the covered row.
-local function SCB_GetPresetHumanLayout()
+function SCB_GetPresetHumanLayout()
     local size = SCB_CurrentPresetSize()
     local roster = SCB_GetHumanRoster()
     local present, assignedPresent, playerRows, groupCounts = {}, {}, {}, {}
