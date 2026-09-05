@@ -1,0 +1,94 @@
+name: One-shot safe removal split
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/one-shot-split-removal.yml
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Extract safe bot removal block
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          main_path = Path('SoloCraftBots.lua')
+          commands_path = Path('Commands.lua')
+          toc_path = Path('SoloCraftBots.toc')
+
+          main = main_path.read_text(encoding='utf-8')
+          commands = commands_path.read_text(encoding='utf-8')
+          toc = toc_path.read_text(encoding='utf-8')
+
+          start_marker = '-- -------------------------------------------------------------------------\n-- Safe bot removal\n-- -------------------------------------------------------------------------\n'
+          end_marker = '-- -------------------------------------------------------------------------\n-- Presets\n-- -------------------------------------------------------------------------\n'
+
+          if main.count(start_marker) != 1 or main.count(end_marker) != 1:
+              raise SystemExit('Unexpected safe-removal extraction markers')
+
+          start = main.index(start_marker)
+          end = main.index(end_marker, start)
+          block = main[start:end].rstrip() + '\n'
+          main = main[:start] + main[end:]
+
+          if 'function SCB_KickBots(deadOnly)' not in block:
+              raise SystemExit('SCB_KickBots missing from extracted block')
+          if 'function SCB_KickDeadOnClick()' not in block or 'function SCB_KickAllOnClick()' not in block:
+              raise SystemExit('Kick click handlers missing from extracted block')
+          if 'Safe bot removal' in commands:
+              raise SystemExit('Commands.lua already contains safe removal block')
+
+          commands = commands.rstrip() + '\n\n' + block
+
+          old_version = '## Version: 0.4.44-dev'
+          new_version = '## Version: 0.4.45-dev'
+          if toc.count(old_version) != 1:
+              raise SystemExit('Unexpected dev version before split')
+          toc = toc.replace(old_version, new_version, 1)
+
+          main_path.write_text(main, encoding='utf-8')
+          commands_path.write_text(commands, encoding='utf-8')
+          toc_path.write_text(toc, encoding='utf-8')
+          PY
+
+      - name: Compile Lua modules
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+          luac5.1 -p SoloCraftBots.lua
+          luac5.1 -p Commands.lua
+          luac5.1 -p Options.lua
+          luac5.1 -p Debug.lua
+
+      - name: Verify split and version
+        shell: bash
+        run: |
+          grep -q '^## Version: 0.4.45-dev$' SoloCraftBots.toc
+          grep -q '^-- Safe bot removal$' Commands.lua
+          grep -q '^function SCB_KickBots(deadOnly)' Commands.lua
+          grep -q '^function SCB_KickDeadOnClick()' Commands.lua
+          grep -q '^function SCB_KickAllOnClick()' Commands.lua
+          ! grep -q '^-- Safe bot removal$' SoloCraftBots.lua
+          grep -q '^-- Presets$' SoloCraftBots.lua
+
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/one-shot-split-removal.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SoloCraftBots.lua Commands.lua SoloCraftBots.toc .github/workflows/one-shot-split-removal.yml
+          git commit -m "Split safe bot removal into Commands.lua"
+          git push origin HEAD:dev
