@@ -882,26 +882,63 @@ function SCB_GetAutoLootInfo(method)
 end
 
 function SCB_ApplyAutoLootMethod()
-    local method, current
+    local method, current, partyCount, raidCount
     SCB_EnsureOptionsDB()
     method = SoloCraftBotsDB.options.autoLootMethod or "off"
-    if method == "off" or not SetLootMethod then return end
+    if method == "off" or not SetLootMethod then return true end
 
-    -- Apply only after SCB has observed the requested bot enter the roster.
-    -- This matters when spawning from solo: before the first bot arrives there
-    -- is no group yet, so SetLootMethod() would have nothing to act on.
+    -- Loot method changes only make sense once the player is actually in a
+    -- group, and only the group/raid leader can make them. The first bot join
+    -- can fire a roster event before those states have fully settled, so the
+    -- caller may retry briefly if this returns false.
+    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if partyCount <= 0 and raidCount <= 0 then return false end
+    if IsPartyLeader and not IsPartyLeader() then return false end
+
     if GetLootMethod then
         current = GetLootMethod()
-        if current == method and method ~= "master" then return end
+        if current == method and method ~= "master" then return true end
     end
 
     if method == "master" then
         if UnitName and UnitName("player") then
             SetLootMethod("master", UnitName("player"))
+        else
+            return false
         end
     else
         SetLootMethod(method)
     end
+
+    if GetLootMethod then
+        current = GetLootMethod()
+        return current == method
+    end
+    return true
+end
+
+function SCB_QueueAutoLootApply()
+    local frame
+    if not SCB.autoLootApplyFrame then
+        frame = CreateFrame("Frame", "SoloCraftBotsAutoLootApplyFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + arg1
+            if this.scbElapsed < 0.25 then return end
+            this.scbElapsed = 0
+            this.scbAttempts = (this.scbAttempts or 0) + 1
+            if SCB_ApplyAutoLootMethod() or this.scbAttempts >= 4 then
+                this:Hide()
+            end
+        end)
+        SCB.autoLootApplyFrame = frame
+    end
+
+    frame = SCB.autoLootApplyFrame
+    frame.scbElapsed = 0
+    frame.scbAttempts = 0
+    frame:Show()
 end
 
 function SCB_HandleRosterChange()
@@ -930,7 +967,11 @@ function SCB_HandleRosterChange()
 
     SCB.lastRoster = current
     if scbBotAdded then
+        -- Try immediately, then verify/retry for up to one second. Vanilla can
+        -- report the first solo->party roster change before leader/loot state
+        -- is fully ready for SetLootMethod().
         SCB_ApplyAutoLootMethod()
+        SCB_QueueAutoLootApply()
     end
 end
 

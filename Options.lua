@@ -17,11 +17,21 @@ function SCB_RefreshAutoLootSelector()
 end
 
 function SCB_AutoLootOptionOnClick()
+    local partyCount, raidCount
     if not this or not this.scbLootMethod then return end
     SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options.autoLootMethod = this.scbLootMethod
     SCB_RefreshAutoLootSelector()
     if SCB.optionAutoLootMenu then SCB.optionAutoLootMenu:Hide() end
+
+    -- Changing the setting while already grouped should take effect now, not
+    -- wait for another SCB bot to join.
+    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if partyCount > 0 or raidCount > 0 then
+        SCB_ApplyAutoLootMethod()
+        SCB_QueueAutoLootApply()
+    end
 end
 
 function SCB_AutoLootSelectorOnClick()
