@@ -469,8 +469,8 @@ SCB.classes = {
     {
         key = "warrior", name = "Warrior", icon = "warrior.tga",
         roles = {
-            { role = "tank", label = "Tank", icon = "tank.tga" },
             { role = "meleedps", label = "Melee", icon = "melee.tga" },
+            { role = "tank", label = "Tank", icon = "tank.tga" },
         },
     },
     {
@@ -2158,33 +2158,95 @@ function SCB_PresetRoleOnClick()
         return
     end
 
-    -- A live player's role has its own overlay button.  This handler owns
-    -- only the underlying bot assignment and must never mutate playerRoles.
+    -- A live player's role has its own overlay button. This handler owns only
+    -- bot assignments and must never mutate playerRoles or hidden bot rows
+    -- currently covered by live humans.
     if SCB_IsPresetSlotHumanOccupied(slotIndex) then
         return
     end
 
     local slot = SCB.presetEditorSlots[slotIndex]
     local currentIndex, newIndex, classInfo, roleInfo
+    local groupStart, groupEnd, size, j, groupSlot, groupRoleIndex
+    local allMatch, occupied
     if not slot then return end
     classInfo = SCB_FindClass(slot.class)
     roleInfo, currentIndex = SCB_FindRoleEntry(classInfo, slot.role, slot.extra)
-    if arg1 == "RightButton" then
-        newIndex = currentIndex - 1
-        if newIndex < 1 then newIndex = table.getn(classInfo.roles) end
+    currentIndex = currentIndex or 1
+
+    if IsShiftKeyDown and IsShiftKeyDown() then
+        groupStart = (math.floor((slotIndex - 1) / 5) * 5) + 1
+        groupEnd = groupStart + 4
+        size = SCB_CurrentPresetSize()
+        if groupEnd > size then groupEnd = size end
+        occupied = SCB_GetPresetHumanOccupiedSlots()
+
+        -- First Shift-click makes every uncovered bot of the clicked class in
+        -- this logical five-slot group match the clicked bot's current role/spec.
+        -- Once they already match, subsequent Shift-clicks cycle that class set
+        -- together. Other classes and all live-human rows are untouched.
+        allMatch = true
+        for j = groupStart, groupEnd do
+            groupSlot = SCB.presetEditorSlots[j]
+            if groupSlot and groupSlot.class == slot.class and not occupied[j] then
+                local ignoredRoleInfo
+                ignoredRoleInfo, groupRoleIndex = SCB_FindRoleEntry(classInfo, groupSlot.role, groupSlot.extra)
+                groupRoleIndex = groupRoleIndex or 1
+                if groupRoleIndex ~= currentIndex then
+                    allMatch = false
+                    break
+                end
+            end
+        end
+
+        if allMatch then
+            if arg1 == "RightButton" then
+                newIndex = currentIndex - 1
+                if newIndex < 1 then newIndex = table.getn(classInfo.roles) end
+            else
+                newIndex = currentIndex + 1
+                if newIndex > table.getn(classInfo.roles) then newIndex = 1 end
+            end
+        else
+            newIndex = currentIndex
+        end
+
+        roleInfo = classInfo.roles[newIndex]
+        for j = groupStart, groupEnd do
+            groupSlot = SCB.presetEditorSlots[j]
+            if groupSlot and groupSlot.class == slot.class and not occupied[j] then
+                groupSlot.role = roleInfo.role
+                if groupSlot.class == "paladin" then
+                    -- Blessing is independent of role; preserve each Paladin's
+                    -- existing blessing while cycling healer/melee/tank.
+                    if not groupSlot.extra or groupSlot.extra == "" then groupSlot.extra = "BoK" end
+                elseif groupSlot.class == "shaman" then
+                    -- Totem package is independent of role; preserve it.
+                    if not groupSlot.extra or groupSlot.extra == "" then groupSlot.extra = SCB_DEFAULT_SHAMAN_TOTEMS end
+                else
+                    groupSlot.extra = roleInfo.extra
+                end
+            end
+        end
     else
-        newIndex = currentIndex + 1
-        if newIndex > table.getn(classInfo.roles) then newIndex = 1 end
+        if arg1 == "RightButton" then
+            newIndex = currentIndex - 1
+            if newIndex < 1 then newIndex = table.getn(classInfo.roles) end
+        else
+            newIndex = currentIndex + 1
+            if newIndex > table.getn(classInfo.roles) then newIndex = 1 end
+        end
+        roleInfo = classInfo.roles[newIndex]
+        slot.role = roleInfo.role
+        if slot.class == "paladin" then
+            if not slot.extra or slot.extra == "" then slot.extra = "BoK" end
+        elseif slot.class == "shaman" then
+            if not slot.extra or slot.extra == "" then slot.extra = SCB_DEFAULT_SHAMAN_TOTEMS end
+        else
+            slot.extra = roleInfo.extra
+        end
     end
-    roleInfo = classInfo.roles[newIndex]
-    slot.role = roleInfo.role
-    if slot.class == "paladin" then
-        if not slot.extra or slot.extra == "" then slot.extra = "BoK" end
-    elseif slot.class == "shaman" then
-        if not slot.extra or slot.extra == "" then slot.extra = SCB_DEFAULT_SHAMAN_TOTEMS end
-    else
-        slot.extra = roleInfo.extra
-    end
+
     if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() else SCB_RefreshPresetSlots() end
     SCB_SetPresetDirty(true)
 end
