@@ -22,7 +22,7 @@ jobs:
         run: |
           from pathlib import Path
 
-          p = Path('Commands.lua')
+          p = Path('SoloCraftBots.lua')
           s = p.read_text()
           assert '    local toggleSize = 22\n' in s, 'Assignments toggle size not found'
           p.write_text(s.replace('    local toggleSize = 22\n', '    local toggleSize = 18\n', 1))
@@ -62,10 +62,10 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          commands = Path('Commands.lua').read_text()
+          main = Path('SoloCraftBots.lua').read_text()
           comms = Path('Comms.lua').read_text()
           toc = Path('SoloCraftBots.toc').read_text()
-          assert 'local toggleSize = 18' in commands
+          assert 'local toggleSize = 18' in main
           assert 'button.scbClassIcon:SetWidth(16)' in comms
           assert 'RAID_CLASS_COLORS[info.classToken]' in comms
           assert 'SCB_FindClass(string.lower(info.classToken))' in comms
@@ -77,6 +77,6 @@ jobs:
           rm .github/workflows/tmp-ui-057c.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Commands.lua Comms.lua SoloCraftBots.toc .github/workflows/tmp-ui-057c.yml
+          git add SoloCraftBots.lua Comms.lua SoloCraftBots.toc .github/workflows/tmp-ui-057c.yml
           git commit -m "Refine assignment controls and preset target picker"
           git push
