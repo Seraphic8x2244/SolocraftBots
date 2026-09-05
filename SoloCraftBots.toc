@@ -1,7 +1,7 @@
 ## Interface: 11200
-## Title: SoloCraft Bots [dev]
+## Title: SoloCraft Bots
 ## Notes: Compact SoloCraft PartyBot control panel.
-## Version: 0.5.4-dev
+## Version: 0.5.5-dev
 ## SavedVariables: SoloCraftBotsDB
 ## SavedVariablesPerCharacter: SoloCraftBotsCharDB
 
