@@ -4617,30 +4617,38 @@ end
 function SCB_CalculatePresetRoleCounts()
     local counts = { tank = 0, healer = 0, meleedps = 0, rangedps = 0 }
     local size = SCB_CurrentPresetSize()
-    local present = SCB_GetPresentHumanMap()
-    local playersPerGroup = {}
-    local key, groupIndex, i, g, slot, role, info
+    local roster, present, playerRows = SCB_GetPresetHumanLayout()
+    local occupied = {}
+    local i, info, slotIndex, role, fallbackRole, fallbackExtra, slot
 
-    if size > 5 then
-        for key, groupIndex in pairs(SCB.presetEditorPlayers or {}) do
-            if present[key] and groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
-                playersPerGroup[groupIndex] = (playersPerGroup[groupIndex] or 0) + 1
-                info = present[key]
-                role = SCB_GetPlayerRoleSelection(SCB.presetEditorPlayerRoles[key], key == "$self" and SCB_GetCharacterDefaultRole() or SCB_DefaultPlayerRole(info))
-                if counts[role] ~= nil then counts[role] = counts[role] + 1 end
+    -- Count the exact live composition represented by the editor: every human
+    -- contributes their selected role, and only bot rows not covered by a human
+    -- contribute their underlying bot role. This is the same layout model used
+    -- by execution snapshots, so visible counters and transfer validation cannot
+    -- drift apart (including five-player presets).
+    for i = 1, table.getn(roster or {}) do
+        info = roster[i]
+        slotIndex = playerRows and playerRows[info.key]
+        if slotIndex and slotIndex >= 1 and slotIndex <= size then
+            occupied[slotIndex] = true
+            if info.key == "$self" then
+                fallbackRole, fallbackExtra = SCB_GetCharacterDefaultRoleSelection()
+            else
+                fallbackRole = SCB_DefaultPlayerRole(info)
+                fallbackExtra = nil
             end
+            role = SCB_GetPlayerRoleSelection(
+                SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[info.key] or nil,
+                fallbackRole,
+                fallbackExtra
+            )
+            if counts[role] ~= nil then counts[role] = counts[role] + 1 end
         end
-        for i = 1, size do
-            g = math.floor((i - 1) / 5) + 1
-            if math.mod(i - 1, 5) + 1 > (playersPerGroup[g] or 0) then
-                slot = SCB.presetEditorSlots[i]
-                role = slot and slot.role
-                if counts[role] ~= nil then counts[role] = counts[role] + 1 end
-            end
-        end
-    else
-        for i = 1, size do
-            slot = SCB.presetEditorSlots[i]
+    end
+
+    for i = 1, size do
+        if not occupied[i] then
+            slot = SCB.presetEditorSlots and SCB.presetEditorSlots[i]
             role = slot and slot.role
             if counts[role] ~= nil then counts[role] = counts[role] + 1 end
         end
