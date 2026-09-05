@@ -278,3 +278,196 @@ function SCB_RaidMarkOnClick()
     end
     SCB_SendCommand(SCB.raidMarkMode .. "mark " .. this.scbMark)
 end
+
+-- -------------------------------------------------------------------------
+-- Safe bot removal
+-- -------------------------------------------------------------------------
+
+SCB.raidZoneLocaleKeys = {
+    "GROUP_ZG", "GROUP_AQ20", "GROUP_MC", "GROUP_ONYXIA",
+    "GROUP_BWL", "GROUP_AQ40", "GROUP_NAXX",
+}
+
+function SCB_IsKnownRaidZone(zoneName)
+    local i, key
+    if not zoneName or zoneName == "" then return false end
+    for i = 1, table.getn(SCB.raidZoneLocaleKeys) do
+        key = SCB.raidZoneLocaleKeys[i]
+        if zoneName == SCB_L(key) then return true end
+    end
+    return false
+end
+
+function SCB_GetSavedRaidDecision()
+    local zoneName, count, i, savedName, savedID, reset, sawNamedMatch
+    zoneName = (GetRealZoneText and GetRealZoneText()) or ""
+
+    if not GetRealZoneText or not GetNumSavedInstances or not GetSavedInstanceInfo then
+        return false, "api", zoneName, nil, nil, 0
+    end
+    if not SCB_IsKnownRaidZone(zoneName) then
+        return false, "notraid", zoneName, nil, nil, 0
+    end
+
+    count = GetNumSavedInstances() or 0
+    for i = 1, count do
+        savedName, savedID, reset = GetSavedInstanceInfo(i)
+        if savedName == zoneName then
+            sawNamedMatch = true
+            if savedID and savedID ~= 0 and reset and reset > 0 then
+                return true, "matched", zoneName, savedID, reset, count
+            end
+        end
+    end
+
+    if sawNamedMatch then
+        return false, "invalid", zoneName, nil, nil, count
+    end
+    return false, "nomatch", zoneName, nil, nil, count
+end
+
+function SCB_CurrentRaidHasSavedID()
+    local matched = SCB_GetSavedRaidDecision()
+    return matched
+end
+
+function SCB_SurvivorSafetyRequired()
+    local matched, reason, zoneName, savedID, reset, count = SCB_GetSavedRaidDecision()
+    local zoneText = (zoneName and zoneName ~= "") and zoneName or "?"
+
+    -- Keep the debug laboratory explicit about why survivor safety was or was
+    -- not applied. This is diagnostic only; the policy itself remains
+    -- conservative for dungeons, unknown zones, and failed/invalid ID reads.
+    if SCB_DebugLog then
+        if matched then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
+        elseif reason == "api" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_API"), zoneText))
+        elseif reason == "notraid" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NOT_RAID"), zoneText))
+        elseif reason == "invalid" then
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_INVALID"), zoneText, count or 0))
+        else
+            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NO_MATCH"), zoneText, count or 0))
+        end
+    end
+
+    return not matched
+end
+
+function SCB_FindGroupOneSurvivor(members)
+    local i, fallback
+    for i = 1, table.getn(members or {}) do
+        if members[i].isBot then
+            if not fallback then fallback = members[i].name end
+            if members[i].subgroup == 1 then
+                return members[i].name
+            end
+        end
+    end
+    return fallback
+end
+
+function SCB_SafetyMessageOnUpdate()
+    local frame = this
+    frame.scbElapsed = (frame.scbElapsed or 0) + arg1
+    if frame.scbElapsed >= 2.4 then
+        frame:SetScript("OnUpdate", nil)
+        frame:Hide()
+        return
+    end
+    local pulse = 0.82 + (0.18 * math.abs(math.sin(frame.scbElapsed * math.pi * 2)))
+    local fade = 1
+    if frame.scbElapsed > 1.8 then
+        fade = 1 - ((frame.scbElapsed - 1.8) / 0.6)
+    end
+    frame:SetAlpha(pulse * fade)
+end
+
+function SCB_ShowSafetyMessage()
+    SCB_EnsureOptionsDB()
+    if not SoloCraftBotsDB.options.showSafetyMessages then return end
+    if not SCB.safetyMessageFrame then return end
+    SCB.safetyMessageFrame.scbElapsed = 0
+    SCB.safetyMessageFrame:SetAlpha(1)
+    SCB.safetyMessageFrame:Show()
+    SCB.safetyMessageFrame:SetScript("OnUpdate", SCB_SafetyMessageOnUpdate)
+end
+
+function SCB_KickBots(deadOnly)
+    local members = SCB_CollectGroupMembers()
+    local bots, candidates = {}, {}
+    local otherHumans = 0
+    local i, member, survivorName, removed, safetyApplied
+
+    if not UninviteByName then
+        SCB_Print("Native group removal is unavailable on this client.")
+        return
+    end
+
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.isBot then
+            table.insert(bots, member)
+            if not deadOnly or member.dead then
+                table.insert(candidates, member)
+            end
+        elseif not member.isSelf then
+            otherHumans = otherHumans + 1
+        end
+    end
+
+    if table.getn(bots) == 0 then
+        SCB_Print("No bots to kick.")
+        return
+    end
+    if deadOnly and table.getn(candidates) == 0 then
+        SCB_Print("No dead bots to kick.")
+        return
+    end
+
+    -- When survivor safety is required, deliberately preserve a Group 1 bot.
+    -- In a party every bot is Group 1; in a raid this prevents a random bot in
+    -- a later subgroup from becoming the survivor.
+    if otherHumans == 0 and SCB_SurvivorSafetyRequired() then
+        survivorName = SCB_FindGroupOneSurvivor(members)
+    end
+
+    removed = 0
+    safetyApplied = false
+    for i = 1, table.getn(candidates) do
+        if survivorName and candidates[i].name == survivorName then
+            safetyApplied = true
+        else
+            UninviteByName(candidates[i].name)
+            removed = removed + 1
+        end
+    end
+
+    if not deadOnly then
+        if safetyApplied and survivorName then
+            SCB_SetKickAllAnchor(survivorName)
+        else
+            SCB_ClearKickAllAnchor()
+        end
+    end
+
+    if safetyApplied then
+        SCB_Print(SCB_L("SURVIVOR_CHAT"))
+        SCB_ShowSafetyMessage()
+    elseif removed > 0 then
+        if deadOnly then
+            SCB_Print("Kicked " .. removed .. " dead bot" .. (removed == 1 and "." or "s."))
+        else
+            SCB_Print("Kicked " .. removed .. " bot" .. (removed == 1 and "." or "s."))
+        end
+    end
+end
+
+function SCB_KickDeadOnClick()
+    SCB_KickBots(true)
+end
+
+function SCB_KickAllOnClick()
+    SCB_KickBots(false)
+end
