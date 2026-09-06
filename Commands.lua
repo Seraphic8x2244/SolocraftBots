@@ -150,25 +150,14 @@ function SCB_IsFriendlyBotTarget()
     return true
 end
 
-function SCB_InvalidTargetFlashOnUpdate()
-    this.scbInvalidElapsed = (this.scbInvalidElapsed or 0) + arg1
-    if this.scbInvalidElapsed >= 0.28 then
-        this:SetScript("OnUpdate", nil)
-        this.scbInvalidElapsed = nil
-        if this.icon then this.icon:SetVertexColor(1, 1, 1) end
-        return
+function SCB_RefreshTargetCommandRow()
+    local available = SCB_IsFriendlyBotTarget()
+    local alpha = available and 1 or 0.5
+    local i, button
+    for i = 1, table.getn(SCB.targetCommandButtons or {}) do
+        button = SCB.targetCommandButtons[i]
+        if button then button:SetAlpha(alpha) end
     end
-    if this.icon then
-        local fade = this.scbInvalidElapsed / 0.28
-        this.icon:SetVertexColor(1, 0.20 + (0.80 * fade), 0.20 + (0.80 * fade))
-    end
-end
-
-function SCB_FlashInvalidTarget(button)
-    if not button or not button.icon then return end
-    button.scbInvalidElapsed = 0
-    button.icon:SetVertexColor(1, 0.20, 0.20)
-    button:SetScript("OnUpdate", SCB_InvalidTargetFlashOnUpdate)
 end
 
 function SCB_RefreshSpreadToggle(button)
@@ -207,7 +196,6 @@ function SCB_DirectCommandOnClick()
     -- SoloCraft target commands fall back to ALL when no valid bot target exists.
     -- Protect the ONE row from accidentally commanding the entire bot group.
     if this.scbRecipientKey == "target" and not SCB_IsFriendlyBotTarget() then
-        SCB_FlashInvalidTarget(this)
         return
     end
 

@@ -4522,6 +4522,7 @@ end
 function SCB_CreateCommandUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "commands", SCB_L("SECTION_COMMANDS"), 310)
     local buttonSize = 36
+    SCB.targetCommandButtons = {}
     local rows = {
         { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
@@ -4559,6 +4560,9 @@ function SCB_CreateCommandUI(frame)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
         layoutRow.recipientButton = button
+        if row.recipient == "target" then
+            table.insert(SCB.targetCommandButtons, button)
+        end
 
         for i = 1, table.getn(row.commands) do
             commandKey = row.commands[i]
@@ -4583,6 +4587,9 @@ function SCB_CreateCommandUI(frame)
             button:SetScript("OnEnter", SCB_TooltipOnEnter)
             button:SetScript("OnLeave", SCB_TooltipOnLeave)
             table.insert(layoutRow.commandButtons, button)
+            if row.recipient == "target" then
+                table.insert(SCB.targetCommandButtons, button)
+            end
         end
         table.insert(layoutRows, layoutRow)
     end
@@ -4672,6 +4679,7 @@ function SCB_CreateCommandUI(frame)
         kickAll = kickAll,
     }
     SCB_LayoutCommandUI()
+    SCB_RefreshTargetCommandRow()
 end
 
 function SCB_CreateRaidmarkUI(frame)
@@ -5528,6 +5536,7 @@ local eventFrame = CreateFrame("Frame", "SoloCraftBotsEventFrame", UIParent)
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -5544,6 +5553,10 @@ eventFrame:RegisterEvent("CHAT_MSG_RAID")
 eventFrame:RegisterEvent("CHAT_MSG_SAY")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
+    if event == "PLAYER_TARGET_CHANGED" then
+        if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
+        return
+    end
     if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.20) end
         return
