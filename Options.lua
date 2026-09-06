@@ -350,7 +350,7 @@ end
 function SCB_LayoutOptionsUI()
     local y, commandHeight, presetHeight, panelHeight
     if not SCB.optionsPanel then return end
-    y = -243
+    y = -315
     if SCB.optionCommandSection then
         commandHeight = SCB.optionCommandSection.scbExpanded and SCB.optionCommandSection.scbExpandedHeight or SCB.optionCommandSection.scbCollapsedHeight
         SCB.optionCommandSection:ClearAllPoints()
@@ -384,6 +384,9 @@ function SCB_RefreshOptionsUI()
     if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.showSafetyMessages and 1 or nil) end
     if SCB.optionBotSummonMessageCheck then SCB.optionBotSummonMessageCheck:SetChecked(options.hideBotSummonMessage and 1 or nil) end
     if SCB.optionBotGroupMessagesCheck then SCB.optionBotGroupMessagesCheck:SetChecked(options.hideBotGroupMessages and 1 or nil) end
+    if SCB.optionBotMovementMessagesCheck then SCB.optionBotMovementMessagesCheck:SetChecked(options.hideBotMovementMessages and 1 or nil) end
+    if SCB.optionBotPauseMessagesCheck then SCB.optionBotPauseMessagesCheck:SetChecked(options.hideBotPauseMessages and 1 or nil) end
+    if SCB.optionBotAttackMessagesCheck then SCB.optionBotAttackMessagesCheck:SetChecked(options.hideBotAttackMessages and 1 or nil) end
     SCB.optionsDebugMode = SCB.optionsDebugMode or { command = false, preset = false }
     if SCB.optionCommandSection and SCB.optionCommandSection.scbDebugCheck then
         SCB.optionCommandSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.command and 1 or nil)
@@ -471,13 +474,16 @@ function SCB_CreateOptionsUI(frame)
     botChatHeading:SetTextColor(1, 0.82, 0, 1)
     SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(panel, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -120)
     SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -144)
+    SCB.optionBotMovementMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotMovementMessages", "OPTION_HIDE_BOT_MOVEMENT_MESSAGES", -168)
+    SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -192)
+    SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -216)
 
     resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS", "Reset tutorials"))
-    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -180)
+    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -252)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
     layoutHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -213)
+    layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -285)
     layoutHeading:SetText(SCB_L("OPTIONS_LAYOUT_TITLE", "Layout"))
     layoutHeading:SetTextColor(1, 0.82, 0, 1)
     SCB.optionLayoutHeading = layoutHeading

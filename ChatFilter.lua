@@ -19,13 +19,36 @@ local function SCB_ShouldHideBotChatMessage(text)
         -- SoloCraft bot names are suffixed with '*'. Anchor the whole
         -- rendered line so ordinary player chat containing these words
         -- is not mistaken for a system membership message.
-        if string.find(text, "^%a+%* joins the party%.$") then return true end
-        if string.find(text, "^%a+%* leaves the party%.$") then return true end
+        if string.find(text, "^[^%s]+%* joins the party%.$") then return true end
+        if string.find(text, "^[^%s]+%* leaves the party%.$") then return true end
 
         -- Vanilla raid membership wording. These remain bot-only by
         -- requiring the SoloCraft '*' suffix and the complete line.
-        if string.find(text, "^%a+%* has joined the raid group%.?$") then return true end
-        if string.find(text, "^%a+%* has left the raid group%.?$") then return true end
+        if string.find(text, "^[^%s]+%* has joined the raid group%.?$") then return true end
+        if string.find(text, "^[^%s]+%* has left the raid group%.?$") then return true end
+    end
+
+    if options.hideBotMovementMessages then
+        local botLine = string.find(text, "^[^%s]+%* ") or string.find(string.lower(text), "party bot", 1, true)
+        if botLine then
+            if string.find(text, "are coming to your position%.$") or string.find(text, "is coming to your position%.$") then return true end
+            if string.find(text, "are moving%.$") or string.find(text, "is moving%.$") then return true end
+            if string.find(text, "are now staying%.$") or string.find(text, "is now staying%.$") then return true end
+        end
+    end
+
+    if options.hideBotPauseMessages then
+        local botLine = string.find(text, "^[^%s]+%* ") or string.find(string.lower(text), "party bot", 1, true)
+        if botLine then
+            if string.find(text, "paused for 30 seconds%.$") then return true end
+            if string.find(text, "unpaused%.$") then return true end
+        end
+    end
+
+    if options.hideBotAttackMessages then
+        if string.find(text, "^All party bots are not attacking%.?$") then return true end
+        if string.find(text, "^All party bots have stopped attacking%.?$") then return true end
+        if string.find(text, "^All party bots are casting AoE spells at") then return true end
     end
 
     return false
