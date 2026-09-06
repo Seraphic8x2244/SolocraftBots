@@ -102,7 +102,15 @@ local function SCB_LocationProbeValue(func)
 end
 
 function SCB_PrintLocationProbe()
+    local inInstance
+    if IsInInstance then
+        inInstance = IsInInstance() and "yes" or "no"
+    else
+        inInstance = "<unavailable>"
+    end
+
     SCB_Print("Location probe:")
+    SCB_Print("InInstance: " .. inInstance)
     SCB_Print("RealZone: " .. SCB_LocationProbeValue(GetRealZoneText))
     SCB_Print("Zone: " .. SCB_LocationProbeValue(GetZoneText))
     SCB_Print("SubZone: " .. SCB_LocationProbeValue(GetSubZoneText))
