@@ -61,6 +61,54 @@ function SCB_SendCommand(command)
     SendChatMessage(".partybot " .. command, "PARTY")
 end
 
+function SCB_QueueDelayedCommand(command, delay)
+    local frame
+    if not command or command == "" then return end
+
+    frame = SCB.delayedCommandFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsDelayedCommandFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            local queued
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0) then return end
+            queued = this.scbCommand
+            this.scbCommand = nil
+            this.scbDelay = nil
+            this.scbElapsed = 0
+            this:Hide()
+            if queued then SCB_SendCommand(queued) end
+        end)
+        SCB.delayedCommandFrame = frame
+    end
+
+    -- Do not restart an already-pending command when a macro is spammed; the
+    -- first press still fires after its original delay instead of being pushed
+    -- back indefinitely.
+    if frame.scbCommand then return end
+    frame.scbCommand = command
+    frame.scbDelay = delay or 0.25
+    frame.scbElapsed = 0
+    frame:Show()
+end
+
+local function SCB_LocationProbeValue(func)
+    local value
+    if not func then return "<unavailable>" end
+    value = func()
+    if not value or value == "" then return "<empty>" end
+    return tostring(value)
+end
+
+function SCB_PrintLocationProbe()
+    SCB_Print("Location probe:")
+    SCB_Print("RealZone: " .. SCB_LocationProbeValue(GetRealZoneText))
+    SCB_Print("Zone: " .. SCB_LocationProbeValue(GetZoneText))
+    SCB_Print("SubZone: " .. SCB_LocationProbeValue(GetSubZoneText))
+    SCB_Print("MinimapZone: " .. SCB_LocationProbeValue(GetMinimapZoneText))
+end
+
 function SCB_ButtonBackdrop(button)
     button:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -5435,7 +5483,13 @@ SLASH_SOLOCRAFTBOTS1 = "/scb"
 SLASH_SOLOCRAFTBOTS2 = "/solocraftbots"
 SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     local command = string.lower(string.gsub(msg or "", "^%s*(.-)%s*$", "%1"))
-    if command == "tutorialreset" then
+    if command == "attackstart" then
+        SCB_QueueDelayedCommand("attackstart", 0.25)
+        return
+    elseif command == "location" then
+        SCB_PrintLocationProbe()
+        return
+    elseif command == "tutorialreset" then
         SCB_ResetTutorialHelpers()
         return
     elseif command == "debug" then
