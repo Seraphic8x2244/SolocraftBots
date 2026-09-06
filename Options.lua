@@ -350,7 +350,7 @@ end
 function SCB_LayoutOptionsUI()
     local y, commandHeight, presetHeight, panelHeight
     if not SCB.optionsPanel then return end
-    y = -162
+    y = -243
     if SCB.optionCommandSection then
         commandHeight = SCB.optionCommandSection.scbExpanded and SCB.optionCommandSection.scbExpandedHeight or SCB.optionCommandSection.scbCollapsedHeight
         SCB.optionCommandSection:ClearAllPoints()
@@ -382,6 +382,8 @@ function SCB_RefreshOptionsUI()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
     if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.showSafetyMessages and 1 or nil) end
+    if SCB.optionBotSummonMessageCheck then SCB.optionBotSummonMessageCheck:SetChecked(options.hideBotSummonMessage and 1 or nil) end
+    if SCB.optionBotGroupMessagesCheck then SCB.optionBotGroupMessagesCheck:SetChecked(options.hideBotGroupMessages and 1 or nil) end
     SCB.optionsDebugMode = SCB.optionsDebugMode or { command = false, preset = false }
     if SCB.optionCommandSection and SCB.optionCommandSection.scbDebugCheck then
         SCB.optionCommandSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.command and 1 or nil)
@@ -436,7 +438,7 @@ end
 
 function SCB_CreateOptionsUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
-    local heading, resetTutorials, layoutHeading, commandContent, presetContent, sublabel, control
+    local heading, resetTutorials, layoutHeading, botChatHeading, commandContent, presetContent, sublabel, control
     panel:SetWidth(230)
     panel:SetHeight(220)
     panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
@@ -463,12 +465,19 @@ function SCB_CreateOptionsUI(frame)
     SCB_CreateAutoLootOption(panel)
     SCB.optionSafetyCheck = SCB_CreateOptionCheck(panel, "showSafetyMessages", "OPTION_SAFETY_MESSAGES", -70)
 
+    botChatHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    botChatHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -102)
+    botChatHeading:SetText(SCB_L("OPTIONS_BOT_CHAT_FILTER", "Bot Chat Filter"))
+    botChatHeading:SetTextColor(1, 0.82, 0, 1)
+    SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(panel, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -120)
+    SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -144)
+
     resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS", "Reset tutorials"))
-    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -99)
+    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -180)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
     layoutHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -132)
+    layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -213)
     layoutHeading:SetText(SCB_L("OPTIONS_LAYOUT_TITLE", "Layout"))
     layoutHeading:SetTextColor(1, 0.82, 0, 1)
     SCB.optionLayoutHeading = layoutHeading

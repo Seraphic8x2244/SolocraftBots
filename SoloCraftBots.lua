@@ -307,6 +307,8 @@ function SCB_EnsureOptionsDB()
     options = SoloCraftBotsDB.options
     if options.autoLootMethod == nil then options.autoLootMethod = "off" end
     if options.showSafetyMessages == nil then options.showSafetyMessages = true end
+    if options.hideBotSummonMessage == nil then options.hideBotSummonMessage = false end
+    if options.hideBotGroupMessages == nil then options.hideBotGroupMessages = false end
 
     -- Debug layout values are the raw internal baseline.  Seed command values
     -- from the old spacing settings so existing test profiles keep their exact
@@ -5557,6 +5559,7 @@ eventFrame:SetScript("OnEvent", function()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if SCB_InstallBotChatFilter then SCB_InstallBotChatFilter() end
         if RequestRaidInfo then RequestRaidInfo() end
         SCB_RefreshMainPaladinBlessingButton()
         if SCB.presetPanel then SCB_RefreshPresetPlayers() end
