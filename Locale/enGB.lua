@@ -111,4 +111,4 @@ T["PRESET_REFILL_TOOLTIP_EMPTY"] = "No tracked preset bots are missing."
 T["PRESET_REFILL_TOOLTIP_READY"] = "Refill %d missing preset bot(s)."
 T["PRESET_REFILL_SUMMON_BUSY"] = "Wait for Preset Summon to finish before refilling."
 
-SCB_LOCALE.TIP_CLEAR_MARKS = "Clear Focus/CC marks\nTarget a party bot: clear that bot\nOtherwise: clear all bots"
+T["TIP_CLEAR_MARKS"] = "Clear Focus/CC marks\nTarget a party bot: clear that bot\nOtherwise: clear all bots"
