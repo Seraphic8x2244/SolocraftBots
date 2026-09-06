@@ -49,7 +49,7 @@ local function SCB_ShouldHideBotChatMessage(text)
     end
 
     if options.hideBotAttackMessages then
-        if string.find(text, "^All bots are not attacking%.?$") then return true end
+        if string.find(text, "^All bots are attacking%.?$") then return true end
         if string.find(text, "^All bots have stopped attacking%.?$") then return true end
         if string.find(text, "^All bots are casting AoE spells at") then return true end
     end
