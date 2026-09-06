@@ -51,11 +51,11 @@ function SCB_CreateAutoLootOption(parent)
     label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, -46)
     label:SetWidth(72)
     label:SetJustifyH("LEFT")
-    label:SetText(SCB_L("OPTION_AUTO_LOOT", "Auto Loot"))
+    label:SetText(SCB_L("OPTION_AUTO_LOOT"))
     label:SetTextColor(0.90, 0.90, 0.90, 1)
     SCB.optionAutoLootLabel = label
 
-    selector = SCB_CreateTextButton(parent, "SoloCraftBotsAutoLootSelector", 118, 22, "Off")
+    selector = SCB_CreateTextButton(parent, "SoloCraftBotsAutoLootSelector", 118, 22, SCB_L("LOOT_OFF"))
     selector:SetPoint("LEFT", label, "RIGHT", 2, 0)
     selector.label:ClearAllPoints()
     selector.label:SetPoint("LEFT", selector, "LEFT", 7, 0)
@@ -276,9 +276,9 @@ function SCB_SetDeveloperDebugEnabled(enabled)
     if SCB_UpdateLayoutDebugBorders then SCB_UpdateLayoutDebugBorders() end
 
     if SCB.developerDebugEnabled then
-        SCB_Print(SCB_L("DEBUG_MODE_ENABLED", "Debug mode enabled."))
+        SCB_Print(SCB_L("DEBUG_MODE_ENABLED"))
     else
-        SCB_Print(SCB_L("DEBUG_MODE_DISABLED", "Debug mode disabled."))
+        SCB_Print(SCB_L("DEBUG_MODE_DISABLED"))
     end
 end
 
@@ -475,7 +475,7 @@ function SCB_CreateOptionsUI(frame)
 
     botChatHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     botChatHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -126)
-    botChatHeading:SetText(SCB_L("OPTIONS_BOT_CHAT_FILTER", "Bot Chat Filter"))
+    botChatHeading:SetText(SCB_L("OPTIONS_BOT_CHAT_FILTER"))
     botChatHeading:SetTextColor(1, 0.82, 0, 1)
     SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(panel, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -144)
     SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -168)
@@ -483,13 +483,13 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -216)
     SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -240)
 
-    resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS", "Reset tutorials"))
+    resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS"))
     resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -276)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
     layoutHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -309)
-    layoutHeading:SetText(SCB_L("OPTIONS_LAYOUT_TITLE", "Layout"))
+    layoutHeading:SetText(SCB_L("OPTIONS_LAYOUT_TITLE"))
     layoutHeading:SetTextColor(1, 0.82, 0, 1)
     SCB.optionLayoutHeading = layoutHeading
 

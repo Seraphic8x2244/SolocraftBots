@@ -84,7 +84,7 @@ local function SerializeSnapshot(snapshot)
     fields[2] = Escape(snapshot.groupID or "")
     fields[3] = Escape(snapshot.groupName or "")
     fields[4] = tostring(snapshot.size or 0)
-    fields[5] = Escape(snapshot.presetName or "Preset")
+    fields[5] = Escape(snapshot.presetName or SCB_L("PRESET_PLACEHOLDER"))
     fields[6] = tostring(counts.tank or 0)
     fields[7] = tostring(counts.healer or 0)
     fields[8] = tostring(counts.meleedps or 0)
@@ -153,10 +153,10 @@ function SCB_CommsSetButtonPending(mode, pending)
     if not button or not button.label then return end
     if pending then
         button:Disable()
-        button.label:SetText(mode == "S" and "Send..." or "Request...")
+        button.label:SetText(SCB_L(mode == "S" and "PRESET_SEND_PENDING" or "PRESET_REQUEST_PENDING"))
     else
         button:Enable()
-        button.label:SetText(mode == "S" and SCB_L("PRESET_SEND", "Send") or SCB_L("PRESET_REQUEST", "Request"))
+        button.label:SetText(mode == "S" and SCB_L("PRESET_SEND") or SCB_L("PRESET_REQUEST"))
     end
 end
 
@@ -166,22 +166,22 @@ local function ClearOutgoing(mode, status)
     SCB.commOutgoing[mode] = nil
     SCB_CommsSetButtonPending(mode, false)
     if status == "SAVED" then
-        SCB_Print(out.target .. " saved the preset.")
+        SCB_Print(string.format(SCB_L("COMM_SAVED"), out.target))
     elseif status == "SUMMONED" then
-        SCB_Print(out.target .. " accepted the summon request.")
+        SCB_Print(string.format(SCB_L("COMM_SUMMON_ACCEPTED"), out.target))
     elseif status == "REFUSED" then
-        SCB_Print(out.target .. " refused the preset " .. (mode == "S" and "send." or "request."))
+        SCB_Print(string.format(SCB_L(mode == "S" and "COMM_SEND_REFUSED" or "COMM_REQUEST_REFUSED"), out.target))
     elseif status == "BUSY" then
-        SCB_Print(out.target .. " already has another SCB preset prompt open.")
+        SCB_Print(string.format(SCB_L("COMM_TARGET_BUSY"), out.target))
     elseif status == "ERROR" then
-        SCB_Print(out.target .. " could not process the preset.")
+        SCB_Print(string.format(SCB_L("COMM_TARGET_ERROR"), out.target))
     elseif status == "TIMEOUT" then
         if not out.handshakeDone then
-            SCB_Print("No SCB handshake reply from " .. out.target .. " within 30 seconds.")
+            SCB_Print(string.format(SCB_L("COMM_TIMEOUT_HANDSHAKE"), out.target))
         elseif not out.acknowledged then
-            SCB_Print("SCB handshake with " .. out.target .. " succeeded, but preset data was not acknowledged within 30 seconds.")
+            SCB_Print(string.format(SCB_L("COMM_TIMEOUT_ACK"), out.target))
         else
-            SCB_Print(out.target .. " received the preset but did not respond within 30 seconds.")
+            SCB_Print(string.format(SCB_L("COMM_TIMEOUT_RESPONSE"), out.target))
         end
     end
 end
@@ -222,15 +222,15 @@ end
 local function BeginOutgoing(mode, target, snapshot)
     local out, targetRank, selfRank
     if not SendAddonMessage then
-        SCB_Print("Preset communication is unavailable on this client.")
+        SCB_Print(SCB_L("COMM_UNAVAILABLE"))
         return
     end
     if SCB.commOutgoing[mode] then
-        SCB_Print(mode == "S" and "A preset Send is already waiting for a reply." or "A preset Request is already waiting for a reply.")
+        SCB_Print(SCB_L(mode == "S" and "COMM_SEND_PENDING" or "COMM_REQUEST_PENDING"))
         return
     end
     if not SnapshotHasPlayer(snapshot, target) then
-        SCB_Print("The selected player is no longer in the validated preset snapshot.")
+        SCB_Print(SCB_L("COMM_TARGET_NOT_IN_SNAPSHOT"))
         return
     end
 
@@ -243,13 +243,13 @@ local function BeginOutgoing(mode, target, snapshot)
 
     if mode == "R" and snapshot.size > 5 then
         if not GetNumRaidMembers or GetNumRaidMembers() == 0 then
-            SCB_Print("Request requires an existing raid for presets larger than 5 players.")
+            SCB_Print(SCB_L("COMM_REQUEST_NEEDS_RAID"))
             ClearOutgoing(mode)
             return
         end
         targetRank = SCB_CommsGetRaidRank(target)
         if targetRank == nil then
-            SCB_Print(target .. " is no longer in the raid.")
+            SCB_Print(string.format(SCB_L("COMM_TARGET_LEFT_RAID"), target))
             ClearOutgoing(mode)
             return
         end
@@ -260,7 +260,7 @@ local function BeginOutgoing(mode, target, snapshot)
                 PromoteToAssistant(target)
                 return
             end
-            SCB_Print(target .. " needs Raid Assistant to summon this preset.")
+            SCB_Print(string.format(SCB_L("COMM_TARGET_NEEDS_ASSISTANT"), target))
             ClearOutgoing(mode)
             return
         end
@@ -310,7 +310,7 @@ local function OpenTargetMenu(mode)
     local roster, menu, button, count, i, info, classInfo, classColor
     if not snapshot then SCB_Print(errorText) return end
     if SCB.commOutgoing[mode] then
-        SCB_Print(mode == "S" and "A preset Send is already waiting for a reply." or "A preset Request is already waiting for a reply.")
+        SCB_Print(SCB_L(mode == "S" and "COMM_SEND_PENDING" or "COMM_REQUEST_PENDING"))
         return
     end
 
@@ -355,7 +355,7 @@ local function OpenTargetMenu(mode)
         end
     end
     for i = count + 1, table.getn(menu.buttons) do menu.buttons[i]:Hide() end
-    if count == 0 then SCB_CommsHideTargetMenu(); SCB_Print("No other human player is available for preset communication.") return end
+    if count == 0 then SCB_CommsHideTargetMenu(); SCB_Print(SCB_L("COMM_NO_TARGET")) return end
 
     SCB_HidePresetMenus()
     SCB.commTargetMode = mode
@@ -435,11 +435,11 @@ local function CreatePromptUI()
         frame.roleCounts[defs[i].key] = countText
     end
 
-    accept = SCB_CreateTextButton(frame, nil, 112, 24, "Save")
+    accept = SCB_CreateTextButton(frame, nil, 112, 24, SCB_L("BUTTON_SAVE"))
     accept:SetPoint("BOTTOMRIGHT", frame, "BOTTOM", -5, 18)
     accept:SetScript("OnClick", function() SCB_CommsPromptAccept() end)
     frame.accept = accept
-    refuse = SCB_CreateTextButton(frame, nil, 112, 24, "Refuse")
+    refuse = SCB_CreateTextButton(frame, nil, 112, 24, SCB_L("BUTTON_REFUSE"))
     refuse:SetPoint("BOTTOMLEFT", frame, "BOTTOM", 5, 18)
     refuse:SetScript("OnClick", function() SCB_CommsPromptRefuse() end)
     frame.refuse = refuse
@@ -454,13 +454,13 @@ function SCB_CommsShowPrompt(incoming)
     local counts = snapshot.roleCounts or {}
     SCB.commPromptTransaction = incoming
     if incoming.mode == "S" then
-        frame.title:SetText(incoming.sender .. " sent you a preset. Save it?")
-        frame.accept.label:SetText("Save")
+        frame.title:SetText(string.format(SCB_L("COMM_PROMPT_SEND"), incoming.sender))
+        frame.accept.label:SetText(SCB_L("BUTTON_SAVE"))
     else
-        frame.title:SetText(incoming.sender .. " wants you to summon a preset. Proceed?")
-        frame.accept.label:SetText("Summon Preset")
+        frame.title:SetText(string.format(SCB_L("COMM_PROMPT_REQUEST"), incoming.sender))
+        frame.accept.label:SetText(SCB_L("BUTTON_SUMMON_PRESET"))
     end
-    frame.subtitle:SetText((snapshot.groupName or "Preset Group") .. " - " .. (snapshot.presetName or "Preset"))
+    frame.subtitle:SetText(string.format(SCB_L("COMM_PROMPT_SUBTITLE"), snapshot.groupName or SCB_L("PRESET_GROUP_PLACEHOLDER"), snapshot.presetName or SCB_L("PRESET_PLACEHOLDER")))
     frame.roleCounts.tank:SetText(tostring(counts.tank or 0))
     frame.roleCounts.healer:SetText(tostring(counts.healer or 0))
     frame.roleCounts.meleedps:SetText(tostring(counts.meleedps or 0))
@@ -544,16 +544,16 @@ function SCB_CommsAcceptReceivedPresetName(dialog)
     if not incoming or incoming.done then return end
     if not name or name == "" then name = incoming.defaultSaveName end
     if not SaveIncomingSnapshot(incoming, name) then
-        SCB_Print("Could not match the received preset group.")
+        SCB_Print(SCB_L("COMM_GROUP_MATCH_ERROR"))
         FinishIncoming(incoming, "ERROR")
         return
     end
-    SCB_Print("Saved received preset as " .. name .. ".")
+    SCB_Print(string.format(SCB_L("COMM_SAVED_AS"), name))
     FinishIncoming(incoming, "SAVED")
 end
 
 StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
-    text = "Save received preset as",
+    text = SCB_L("COMM_SAVE_RECEIVED_AS"),
     button1 = ACCEPT,
     button2 = CANCEL,
     hasEditBox = 1,
@@ -568,7 +568,7 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
         local editBox = PopupEditBox(this)
         local incoming = SCB.pendingReceivedSave
         if editBox then
-            editBox:SetText(incoming and incoming.defaultSaveName or "Preset")
+            editBox:SetText(incoming and incoming.defaultSaveName or SCB_L("PRESET_PLACEHOLDER"))
             editBox:HighlightText(); editBox:SetFocus()
         end
     end,
@@ -602,7 +602,7 @@ function SCB_CommsPromptAccept()
     if incoming.snapshot.size > 5 then
         rank = SCB_CommsGetRaidRank(SelfName())
         if not rank or rank < 1 then
-            SCB_Print("You need Raid Assistant to summon this requested preset.")
+            SCB_Print(SCB_L("COMM_SELF_NEEDS_ASSISTANT"))
             FinishIncoming(incoming, "ERROR")
             return
         end
@@ -683,7 +683,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             if out and out.tx == tx and out.target == sender and out.phase == "handshake" then
                 out.handshakeDone = true
                 out.deadline = Now() + COMM_TIMEOUT
-                SCB_Print("SCB handshake with " .. out.target .. " succeeded; sending preset data.")
+                SCB_Print(string.format(SCB_L("COMM_HANDSHAKE_SUCCESS"), out.target))
                 BuildChunks(out)
                 return
             end
@@ -724,7 +724,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         for mode, out in pairs(SCB.commOutgoing) do
             if out and out.tx == tx and out.target == sender then
                 if not out.acknowledged then
-                    SCB_Print(out.target .. " received the preset data; waiting for response.")
+                    SCB_Print(string.format(SCB_L("COMM_DATA_RECEIVED"), out.target))
                 end
                 out.acknowledged = true
                 out.deadline = Now() + COMM_TIMEOUT

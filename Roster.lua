@@ -214,10 +214,10 @@ function SCB_RefreshDistanceButtons()
     local state = SoloCraftBotsDB.session.state.distance
     if state == "far" then
         SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance.tga", nil)
-        SCB.distanceButton.scbTooltip = "Spawn Far\n.partybot distance on\nClick to switch to Spawn Near"
+        SCB.distanceButton.scbTooltip = SCB_L("TIP_SPAWN_FAR")
     else
         SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance_off.tga", nil)
-        SCB.distanceButton.scbTooltip = "Spawn Near\n.partybot distance off\nClick to switch to Spawn Far"
+        SCB.distanceButton.scbTooltip = SCB_L("TIP_SPAWN_NEAR")
     end
     SCB_RefreshVisibleTooltip(SCB.distanceButton)
 end
@@ -257,12 +257,12 @@ function SCB_RegisterSpawnIntent()
 end
 
 SCB.AUTO_LOOT_METHODS = {
-    { key = "off", label = "Off" },
-    { key = "group", label = "Group Loot" },
-    { key = "needbeforegreed", label = "Need Before Greed" },
-    { key = "roundrobin", label = "Round Robin" },
-    { key = "freeforall", label = "Free For All" },
-    { key = "master", label = "Master Looter" },
+    { key = "off", label = SCB_L("LOOT_OFF") },
+    { key = "group", label = SCB_L("LOOT_GROUP") },
+    { key = "needbeforegreed", label = SCB_L("LOOT_NEED_BEFORE_GREED") },
+    { key = "roundrobin", label = SCB_L("LOOT_ROUND_ROBIN") },
+    { key = "freeforall", label = SCB_L("LOOT_FREE_FOR_ALL") },
+    { key = "master", label = SCB_L("LOOT_MASTER") },
 }
 
 function SCB_GetAutoLootInfo(method)

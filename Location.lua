@@ -21,23 +21,23 @@ local function LocationText(func)
 end
 
 local function ProbeValue(value, available)
-    if not available then return "<unavailable>" end
-    if not value or value == "" then return "<empty>" end
+    if not available then return SCB_L("LOCATION_UNAVAILABLE") end
+    if not value or value == "" then return SCB_L("LOCATION_EMPTY") end
     return tostring(value)
 end
 
 function SCB_GetLocationGroupName(groupID)
-    if groupID == "5man" then return SCB_L("GROUP_WORLD", "World") end
-    if groupID == "10man" then return SCB_L("GROUP_DUNGEON", "Dungeon") end
-    if groupID == "ubrs" then return SCB_L("GROUP_BRS", "Blackrock Spire") end
-    if groupID == "zg" then return SCB_L("GROUP_ZG", "Zul'Gurub") end
-    if groupID == "aq20" then return SCB_L("GROUP_AQ20", "Ruins of Ahn'Qiraj") end
-    if groupID == "mc" then return SCB_L("GROUP_MC", "Molten Core") end
-    if groupID == "onyxia" then return SCB_L("GROUP_ONYXIA", "Onyxia's Lair") end
-    if groupID == "bwl" then return SCB_L("GROUP_BWL", "Blackwing Lair") end
-    if groupID == "aq40" then return SCB_L("GROUP_AQ40", "Temple of Ahn'Qiraj") end
-    if groupID == "naxx" then return SCB_L("GROUP_NAXX", "Naxxramas") end
-    return tostring(groupID or "unknown")
+    if groupID == "5man" then return SCB_L("GROUP_WORLD") end
+    if groupID == "10man" then return SCB_L("GROUP_DUNGEON") end
+    if groupID == "ubrs" then return SCB_L("GROUP_BRS") end
+    if groupID == "zg" then return SCB_L("GROUP_ZG") end
+    if groupID == "aq20" then return SCB_L("GROUP_AQ20") end
+    if groupID == "mc" then return SCB_L("GROUP_MC") end
+    if groupID == "onyxia" then return SCB_L("GROUP_ONYXIA") end
+    if groupID == "bwl" then return SCB_L("GROUP_BWL") end
+    if groupID == "aq40" then return SCB_L("GROUP_AQ40") end
+    if groupID == "naxx" then return SCB_L("GROUP_NAXX") end
+    return groupID and tostring(groupID) or SCB_L("UNKNOWN")
 end
 
 function SCB_GetLocationContext()
@@ -104,7 +104,7 @@ function SCB_ApplyLocationPresetGroup(context)
 
     -- Never discard an unsaved editor state just because the player zoned.
     if SCB.presetDirty then
-        SCB_Print(SCB_L("AUTO_SWAP_SKIPPED_UNSAVED", "Auto Swap Preset Group skipped: current preset has unsaved changes."))
+        SCB_Print(SCB_L("AUTO_SWAP_SKIPPED_UNSAVED"))
         return false
     end
 
@@ -163,19 +163,19 @@ function SCB_PrintLocationProbe()
     local inInstance
 
     if not context.inInstanceAvailable then
-        inInstance = "<unavailable>"
+        inInstance = SCB_L("LOCATION_UNAVAILABLE")
     elseif context.inInstance then
-        inInstance = "yes"
+        inInstance = SCB_L("YES")
     else
-        inInstance = "no"
+        inInstance = SCB_L("NO")
     end
 
-    SCB_Print("Location probe:")
-    SCB_Print("InInstance: " .. inInstance)
-    SCB_Print("RealZone: " .. ProbeValue(context.realZone, GetRealZoneText ~= nil))
-    SCB_Print("Zone: " .. ProbeValue(context.zone, GetZoneText ~= nil))
-    SCB_Print("SubZone: " .. ProbeValue(context.subZone, GetSubZoneText ~= nil))
-    SCB_Print("MinimapZone: " .. ProbeValue(context.minimapZone, GetMinimapZoneText ~= nil))
-    SCB_Print("ResolvedType: " .. context.locationType)
-    SCB_Print("ResolvedGroup: " .. context.groupName .. " [" .. context.groupID .. "]")
+    SCB_Print(SCB_L("LOCATION_PROBE"))
+    SCB_Print(string.format(SCB_L("LOCATION_IN_INSTANCE"), inInstance))
+    SCB_Print(string.format(SCB_L("LOCATION_REAL_ZONE"), ProbeValue(context.realZone, GetRealZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_ZONE"), ProbeValue(context.zone, GetZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_SUB_ZONE"), ProbeValue(context.subZone, GetSubZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_MINIMAP_ZONE"), ProbeValue(context.minimapZone, GetMinimapZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_RESOLVED_TYPE"), SCB_L(context.locationType == "instance" and "LOCATION_TYPE_INSTANCE" or "LOCATION_TYPE_WORLD")))
+    SCB_Print(string.format(SCB_L("LOCATION_RESOLVED_GROUP"), context.groupName, context.groupID))
 end

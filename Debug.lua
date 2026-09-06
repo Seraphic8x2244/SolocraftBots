@@ -74,13 +74,13 @@ function SCB_DebugUnitSummary(unit, subgroup)
 
     local _, class = UnitClass(unit)
     local bot = string.sub(name, -1) == "*"
-    local status = UnitIsDeadOrGhost(unit) and "dead" or "alive"
-    local combat = UnitAffectingCombat and UnitAffectingCombat(unit) and "combat" or "clear"
+    local status = UnitIsDeadOrGhost(unit) and SCB_L("DEBUG_DEAD") or SCB_L("DEBUG_ALIVE")
+    local combat = UnitAffectingCombat and UnitAffectingCombat(unit) and SCB_L("DEBUG_COMBAT") or SCB_L("DEBUG_CLEAR")
 
     local result = name .. " [" .. (class or "?") .. "]"
-    if subgroup then result = result .. " G" .. subgroup end
+    if subgroup then result = result .. string.format(SCB_L("DEBUG_GROUP_SUFFIX"), subgroup) end
     result = result .. " " .. status .. " " .. combat
-    if bot then result = result .. " BOT" else result = result .. " PLAYER" end
+    if bot then result = result .. " " .. SCB_L("DEBUG_BOT") else result = result .. " " .. SCB_L("DEBUG_PLAYER") end
     return result
 end
 
@@ -141,7 +141,7 @@ function SCB_DebugStartPetTrace(name, class)
         combat = nil,
     }
     if SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked() then
-        SCB_DebugLog("PET TRACE", name .. " [" .. class .. "] started")
+        SCB_DebugLog(SCB_L("DEBUG_KIND_PET_TRACE"), string.format(SCB_L("DEBUG_PET_TRACE_STARTED"), name, class))
     end
 end
 
@@ -182,15 +182,15 @@ function SCB_DebugScanPetTraces()
                 local petCombat = exists and UnitAffectingCombat and UnitAffectingCombat(petUnit) and true or false
 
                 if exists and not trace.exists then
-                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] " .. petUnit .. " appeared: " .. (petName or "?") .. " " .. (petCombat and "combat" or "clear"))
+                    SCB_DebugLog(SCB_L("DEBUG_KIND_PET"), string.format(SCB_L("DEBUG_PET_APPEARED"), ownerName, trace.class, petUnit, petName or "?", petCombat and SCB_L("DEBUG_COMBAT") or SCB_L("DEBUG_CLEAR")))
                 elseif not exists and trace.exists then
-                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] pet disappeared")
+                    SCB_DebugLog(SCB_L("DEBUG_KIND_PET"), string.format(SCB_L("DEBUG_PET_DISAPPEARED"), ownerName, trace.class))
                 elseif exists and trace.petName and petName ~= trace.petName then
-                    SCB_DebugLog("PET", ownerName .. " [" .. trace.class .. "] " .. petUnit .. " changed: " .. trace.petName .. " -> " .. (petName or "?"))
+                    SCB_DebugLog(SCB_L("DEBUG_KIND_PET"), string.format(SCB_L("DEBUG_PET_CHANGED"), ownerName, trace.class, petUnit, trace.petName, petName or "?"))
                 end
 
                 if exists and trace.combat ~= nil and petCombat ~= trace.combat then
-                    SCB_DebugLog("PET COMBAT", ownerName .. " [" .. trace.class .. "] " .. (petName or "?") .. " " .. petUnit .. " -> " .. (petCombat and "IN" or "OUT"))
+                    SCB_DebugLog(SCB_L("DEBUG_KIND_PET_COMBAT"), string.format(SCB_L("DEBUG_PET_COMBAT_CHANGED"), ownerName, trace.class, petName or "?", petUnit, petCombat and SCB_L("DEBUG_IN") or SCB_L("DEBUG_OUT")))
                 end
 
                 trace.exists = exists
@@ -209,16 +209,16 @@ function SCB_DebugRosterChanged()
     if SCB.debugRosterCheck and SCB.debugRosterCheck:GetChecked() then
         for name, data in pairs(current) do
             if not SCB.debug.roster[name] then
-                SCB_DebugLog("ROSTER", "+ " .. data.summary)
+                SCB_DebugLog(SCB_L("DEBUG_KIND_ROSTER"), "+ " .. data.summary)
                 SCB_DebugStartPetTrace(name, data.class)
             elseif SCB.debug.roster[name].summary ~= data.summary then
-                SCB_DebugLog("ROSTER", "~ " .. data.summary)
+                SCB_DebugLog(SCB_L("DEBUG_KIND_ROSTER"), "~ " .. data.summary)
             end
         end
 
         for name, data in pairs(SCB.debug.roster) do
             if not current[name] then
-                SCB_DebugLog("ROSTER", "- " .. data.summary)
+                SCB_DebugLog(SCB_L("DEBUG_KIND_ROSTER"), "- " .. data.summary)
             end
         end
     end
@@ -230,9 +230,9 @@ function SCB_DebugSnapshotRoster()
     local current = SCB_DebugCollectRoster()
     local name, data
 
-    SCB_DebugLog("ROSTER", "--- snapshot ---")
+    SCB_DebugLog(SCB_L("DEBUG_KIND_ROSTER"), SCB_L("DEBUG_ROSTER_SNAPSHOT"))
     for name, data in pairs(current) do
-        SCB_DebugLog("ROSTER", data.summary)
+        SCB_DebugLog(SCB_L("DEBUG_KIND_ROSTER"), data.summary)
     end
     SCB.debug.roster = current
 end
@@ -266,7 +266,7 @@ function SCB_DebugPollCombat()
     if SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked() then
         for name, state in pairs(current) do
             if SCB.debug.combatStates[name] ~= nil and SCB.debug.combatStates[name] ~= state then
-                SCB_DebugLog("COMBAT POLL", name .. " -> " .. (state and "IN" or "OUT"))
+                SCB_DebugLog(SCB_L("DEBUG_KIND_COMBAT_POLL"), name .. " -> " .. (state and SCB_L("DEBUG_IN") or SCB_L("DEBUG_OUT")))
             end
         end
     end
@@ -297,7 +297,7 @@ end
 function SCB_DebugSendLine(line)
     if not line or line == "" then return end
 
-    SCB_DebugLog("SEND", ".partybot " .. line)
+    SCB_DebugLog(SCB_L("DEBUG_KIND_SEND"), ".partybot " .. line)
 
     if string.sub(string.lower(line), 1, 4) == "add " then
         SendChatMessage(".partybot " .. line, "SAY")
@@ -321,16 +321,16 @@ function SCB_DebugStartBatch()
     SCB.debug.batchRunning = table.getn(SCB.debug.batch) > 0
 
     if SCB.debug.batchRunning then
-        SCB_DebugLog("BATCH", "start " .. table.getn(SCB.debug.batch) .. " commands @ " .. string.format("%.2fs", delay))
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), string.format(SCB_L("DEBUG_BATCH_START"), table.getn(SCB.debug.batch), delay))
     else
-        SCB_DebugLog("BATCH", "no commands")
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), SCB_L("DEBUG_BATCH_NONE"))
     end
 end
 
 function SCB_DebugStopBatch()
     if SCB.debug.batchRunning then
         SCB.debug.batchRunning = false
-        SCB_DebugLog("BATCH", "stopped")
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), SCB_L("DEBUG_BATCH_STOPPED"))
     end
 end
 
@@ -338,7 +338,7 @@ function SCB_DebugProcessNextBatchLine()
     local line = SCB.debug.batch[SCB.debug.batchIndex]
     if not line then
         SCB.debug.batchRunning = false
-        SCB_DebugLog("BATCH", "complete")
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), SCB_L("DEBUG_BATCH_COMPLETE"))
         return false
     end
 
@@ -349,7 +349,7 @@ function SCB_DebugProcessNextBatchLine()
         if waitSeconds > 30 then waitSeconds = 30 end
         SCB.debug.batchIndex = SCB.debug.batchIndex + 1
         SCB.debug.batchWaitRemaining = waitSeconds
-        SCB_DebugLog("BATCH", "wait " .. string.format("%.2fs", waitSeconds))
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), string.format(SCB_L("DEBUG_BATCH_WAIT"), waitSeconds))
         return false
     end
 
@@ -377,7 +377,7 @@ function SCB_DebugOnUpdate()
         if SCB.debug.batchWaitRemaining > 0 then return end
         SCB.debug.batchWaitRemaining = nil
         SCB.debug.batchElapsed = SCB.debug.batchDelay
-        SCB_DebugLog("BATCH", "wait complete")
+        SCB_DebugLog(SCB_L("DEBUG_KIND_BATCH"), SCB_L("DEBUG_BATCH_WAIT_COMPLETE"))
     end
 
     -- A true 0.00 delay is an intentional stress-test mode: consume commands
@@ -428,16 +428,16 @@ function SCB_CreateDebugUI()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -12)
-    title:SetText("SoloCraftBots Debug")
+    title:SetText(SCB_L("DEBUG_TITLE"))
     title:SetTextColor(1, 0.82, 0, 1)
 
-    local close = SCB_CreateTextButton(frame, nil, 24, 22, "X")
+    local close = SCB_CreateTextButton(frame, nil, 24, 22, SCB_L("DEBUG_CLOSE"))
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
     close:SetScript("OnClick", function() frame:Hide() end)
 
     local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     inputLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -42)
-    inputLabel:SetText("Batch commands")
+    inputLabel:SetText(SCB_L("DEBUG_BATCH_COMMANDS"))
     inputLabel:SetTextColor(0.9, 0.9, 0.9, 1)
 
     local inputScroll = CreateFrame("ScrollFrame", "SoloCraftBotsDebugInputScroll", frame, "UIPanelScrollFrameTemplate")
@@ -470,7 +470,7 @@ function SCB_CreateDebugUI()
 
     local delayLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     delayLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -134)
-    delayLabel:SetText("Delay")
+    delayLabel:SetText(SCB_L("DEBUG_DELAY"))
     delayLabel:SetTextColor(0.9, 0.9, 0.9, 1)
 
     local delay = CreateFrame("EditBox", nil, frame)
@@ -485,33 +485,33 @@ function SCB_CreateDebugUI()
     SCB_ButtonBackdrop(delay)
     SCB.debugDelay = delay
 
-    local send = SCB_CreateTextButton(frame, nil, 82, 22, "Send Batch")
+    local send = SCB_CreateTextButton(frame, nil, 82, 22, SCB_L("DEBUG_SEND_BATCH"))
     send:SetPoint("LEFT", delay, "RIGHT", 8, 0)
     send:SetScript("OnClick", SCB_DebugStartBatch)
 
-    local stop = SCB_CreateTextButton(frame, nil, 48, 22, "Stop")
+    local stop = SCB_CreateTextButton(frame, nil, 48, 22, SCB_L("DEBUG_STOP"))
     stop:SetPoint("LEFT", send, "RIGHT", 6, 0)
     stop:SetScript("OnClick", SCB_DebugStopBatch)
 
-    local snapshot = SCB_CreateTextButton(frame, nil, 92, 22, "Roster Now")
+    local snapshot = SCB_CreateTextButton(frame, nil, 92, 22, SCB_L("DEBUG_ROSTER_NOW"))
     snapshot:SetPoint("LEFT", stop, "RIGHT", 6, 0)
     snapshot:SetScript("OnClick", SCB_DebugSnapshotRoster)
 
-    local rosterCheck = SCB_DebugMakeCheck(frame, "Roster")
+    local rosterCheck = SCB_DebugMakeCheck(frame, SCB_L("DEBUG_CHECK_ROSTER"))
     rosterCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -158)
     SCB.debugRosterCheck = rosterCheck
 
-    local combatCheck = SCB_DebugMakeCheck(frame, "Combat")
+    local combatCheck = SCB_DebugMakeCheck(frame, SCB_L("DEBUG_CHECK_COMBAT"))
     combatCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 100, -158)
     SCB.debugCombatCheck = combatCheck
 
-    local serverCheck = SCB_DebugMakeCheck(frame, "Server")
+    local serverCheck = SCB_DebugMakeCheck(frame, SCB_L("DEBUG_CHECK_SERVER"))
     serverCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 188, -158)
     SCB.debugServerCheck = serverCheck
 
     local logLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     logLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -188)
-    logLabel:SetText("Result log")
+    logLabel:SetText(SCB_L("DEBUG_RESULT_LOG"))
     logLabel:SetTextColor(0.9, 0.9, 0.9, 1)
 
     local scroll = CreateFrame("ScrollFrame", "SoloCraftBotsDebugScroll", frame, "UIPanelScrollFrameTemplate")
@@ -532,17 +532,17 @@ function SCB_CreateDebugUI()
     scroll:SetScrollChild(log)
     SCB.debugLogEditBox = log
 
-    local selectAll = SCB_CreateTextButton(frame, nil, 74, 22, "Select All")
+    local selectAll = SCB_CreateTextButton(frame, nil, 74, 22, SCB_L("DEBUG_SELECT_ALL"))
     selectAll:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, 14)
     selectAll:SetScript("OnClick", SCB_DebugSelectAll)
 
-    local clear = SCB_CreateTextButton(frame, nil, 54, 22, "Clear")
+    local clear = SCB_CreateTextButton(frame, nil, 54, 22, SCB_L("DEBUG_CLEAR_BUTTON"))
     clear:SetPoint("LEFT", selectAll, "RIGHT", 6, 0)
     clear:SetScript("OnClick", SCB_DebugClear)
 
     local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -14, 18)
-    hint:SetText("Select All, then Ctrl+C")
+    hint:SetText(SCB_L("DEBUG_COPY_HINT"))
     hint:SetTextColor(0.6, 0.6, 0.6, 1)
 
     frame:SetScript("OnShow", function()
@@ -574,7 +574,7 @@ function SCB_DebugDescribeEventUnit(unit)
         local ownerUnit = string.gsub(unit, "pet$", "")
         local ownerName = UnitName(ownerUnit) or "?"
         local _, ownerClass = UnitClass(ownerUnit)
-        return name .. " [PET of " .. ownerName .. " " .. (ownerClass or "?") .. "] " .. unit
+        return name .. string.format(SCB_L("DEBUG_PET_OWNER"), ownerName, ownerClass or "?") .. " " .. unit
     end
     return name .. " [" .. (class or "?") .. "] " .. unit
 end
@@ -589,7 +589,7 @@ function SCB_DebugUnitFlags(unit)
     local name = UnitName(unit)
     local oldState = SCB.debug.combatStates[name]
     if oldState ~= nil and oldState ~= state then
-        SCB_DebugLog("COMBAT EVENT", SCB_DebugDescribeEventUnit(unit) .. " -> " .. (state and "IN" or "OUT"))
+        SCB_DebugLog(SCB_L("DEBUG_KIND_COMBAT_EVENT"), SCB_DebugDescribeEventUnit(unit) .. " -> " .. (state and SCB_L("DEBUG_IN") or SCB_L("DEBUG_OUT")))
     end
     SCB.debug.combatStates[name] = state
 end
@@ -605,7 +605,7 @@ function SCB_DebugUnitCombat(unit, action, critical, amount, damageType)
     if critical ~= nil then table.insert(parts, "crit=" .. tostring(critical)) end
     if amount ~= nil then table.insert(parts, "amount=" .. tostring(amount)) end
     if damageType ~= nil then table.insert(parts, "type=" .. tostring(damageType)) end
-    SCB_DebugLog("UNIT_COMBAT", table.concat(parts, " "))
+    SCB_DebugLog(SCB_L("DEBUG_KIND_UNIT_COMBAT"), table.concat(parts, " "))
 end
 
 function SCB_DebugToggle()

@@ -8,12 +8,12 @@ local SCB = SoloCraftBots
 -- -------------------------------------------------------------------------
 
 SCB.recipients = {
-    { key = "all", label = "All", icon = "all.tga", highlightIcon = "all_h.tga" },
-    { key = "target", label = "Target", icon = "one.tga", highlightIcon = "one_h.tga" },
-    { key = "tank", label = "Tanks", icon = "tank.tga", highlightIcon = "tank_h.tga" },
-    { key = "melee", label = "Melee", icon = "melee.tga", highlightIcon = "melee_h.tga" },
-    { key = "ranged", label = "Ranged", icon = "ranged.tga", highlightIcon = "ranged_h.tga" },
-    { key = "healer", label = "Healers", icon = "healer.tga", highlightIcon = "healer_h.tga" },
+    { key = "all", label = SCB_L("RECIPIENT_ALL"), icon = "all.tga", highlightIcon = "all_h.tga" },
+    { key = "target", label = SCB_L("RECIPIENT_ONE"), icon = "one.tga", highlightIcon = "one_h.tga" },
+    { key = "tank", label = SCB_L("RECIPIENT_TANKS"), icon = "tank.tga", highlightIcon = "tank_h.tga" },
+    { key = "melee", label = SCB_L("RECIPIENT_MELEE"), icon = "melee.tga", highlightIcon = "melee_h.tga" },
+    { key = "ranged", label = SCB_L("RECIPIENT_RANGED"), icon = "ranged.tga", highlightIcon = "ranged_h.tga" },
+    { key = "healer", label = SCB_L("RECIPIENT_HEALERS"), icon = "healer.tga", highlightIcon = "healer_h.tga" },
 }
 
 SCB.commandOrder = {
@@ -23,7 +23,7 @@ SCB.commandOrder = {
 
 SCB.commands = {
     play = {
-        label = "Play",
+        label = SCB_L("COMMAND_PLAY"),
         icon = "unpause.tga",
         highlightIcon = "unpause_h.tga",
         routes = {
@@ -32,7 +32,7 @@ SCB.commands = {
         },
     },
     move = {
-        label = "Move",
+        label = SCB_L("COMMAND_MOVE"),
         icon = "move.tga",
         highlightIcon = "move_h.tga",
         routes = {
@@ -48,7 +48,7 @@ SCB.commands = {
         },
     },
     come = {
-        label = "Come",
+        label = SCB_L("COMMAND_COME"),
         icon = "come.tga",
         highlightIcon = "come_h.tga",
         routes = {
@@ -64,7 +64,7 @@ SCB.commands = {
         },
     },
     stay = {
-        label = "Stay",
+        label = SCB_L("COMMAND_STAY"),
         icon = "stay.tga",
         highlightIcon = "stay_h.tga",
         routes = {
@@ -77,7 +77,7 @@ SCB.commands = {
         },
     },
     pause = {
-        label = "Pause",
+        label = SCB_L("COMMAND_PAUSE"),
         icon = "pause.tga",
         highlightIcon = "pause_h.tga",
         routes = {
@@ -86,49 +86,49 @@ SCB.commands = {
         },
     },
     pull = {
-        label = "Pull",
+        label = SCB_L("COMMAND_PULL"),
         icon = "pull.tga",
         highlightIcon = "pull_h.tga",
         routes = { tank = { "pull" } },
     },
     spread = {
-        label = "Spread",
+        label = SCB_L("COMMAND_SPREAD"),
         icon = "spread.tga",
         highlightIcon = "spread_h.tga",
         routes = { ranged = { "spread" } },
     },
     hug = {
-        label = "Hug",
+        label = SCB_L("COMMAND_HUG"),
         icon = "unspread.tga",
         highlightIcon = "unspread_h.tga",
         routes = { ranged = { "spreadoff" } },
     },
     spreadtoggle = {
-        label = "Spread",
+        label = SCB_L("COMMAND_SPREAD"),
         icon = "spread.tga",
         highlightIcon = "spread_h.tga",
         routes = { ranged = { "spread" } },
     },
     object = {
-        label = "Object",
+        label = SCB_L("COMMAND_OBJECT"),
         icon = "object.tga",
         highlightIcon = "object_h.tga",
         routes = { all = { "usegobject" } },
     },
     aoe = {
-        label = "AoE",
+        label = SCB_L("COMMAND_AOE"),
         icon = "aoe.tga",
         highlightIcon = "aoe_h.tga",
         routes = { all = { "aoe" } },
     },
     attackstart = {
-        label = "Attack Start",
+        label = SCB_L("COMMAND_ATTACK_START"),
         icon = "attackstart.tga",
         highlightIcon = "attackstart_h.tga",
         routes = { all = { "attackstart" } },
     },
     attackstop = {
-        label = "Attack Stop",
+        label = SCB_L("COMMAND_ATTACK_STOP"),
         icon = "attackstop.tga",
         highlightIcon = "attackstop_h.tga",
         routes = { all = { "attackstop" } },
@@ -164,10 +164,10 @@ function SCB_RefreshSpreadToggle(button)
     if not button then return end
     if SCB.rangedSpreadOn then
         SCB_SetArtButtonTexture(button, SCB.assetRoot .. "unspread.tga", SCB.assetRoot .. "unspread_h.tga")
-        button.scbTooltip = "Ranged - Spread Off"
+        button.scbTooltip = SCB_L("TIP_RANGED_SPREAD_OFF")
     else
         SCB_SetArtButtonTexture(button, SCB.assetRoot .. "spread.tga", SCB.assetRoot .. "spread_h.tga")
-        button.scbTooltip = "Ranged - Spread"
+        button.scbTooltip = SCB_L("TIP_RANGED_SPREAD")
     end
     SCB_RefreshVisibleTooltip(button)
 end
@@ -201,7 +201,7 @@ function SCB_DirectCommandOnClick()
 
     route = commandInfo.routes[this.scbRecipientKey]
     if not route then
-        SCB_Print(commandInfo.label .. " is not available for " .. this.scbRecipientLabel .. ".")
+        SCB_Print(string.format(SCB_L("COMMAND_NOT_AVAILABLE"), commandInfo.label, this.scbRecipientLabel))
         return
     end
 
@@ -226,14 +226,14 @@ end
 -- -------------------------------------------------------------------------
 
 SCB.raidMarks = {
-    { key = "skull", name = "Skull" },
-    { key = "cross", name = "Cross" },
-    { key = "square", name = "Square" },
-    { key = "moon", name = "Moon" },
-    { key = "triangle", name = "Triangle" },
-    { key = "diamond", name = "Diamond" },
-    { key = "circle", name = "Circle" },
-    { key = "star", name = "Star" },
+    { key = "skull", name = SCB_L("MARK_SKULL") },
+    { key = "cross", name = SCB_L("MARK_CROSS") },
+    { key = "square", name = SCB_L("MARK_SQUARE") },
+    { key = "moon", name = SCB_L("MARK_MOON") },
+    { key = "triangle", name = SCB_L("MARK_TRIANGLE") },
+    { key = "diamond", name = SCB_L("MARK_DIAMOND") },
+    { key = "circle", name = SCB_L("MARK_CIRCLE") },
+    { key = "star", name = SCB_L("MARK_STAR") },
 }
 
 function SCB_RefreshRaidmarkModeButton()
@@ -242,11 +242,11 @@ function SCB_RefreshRaidmarkModeButton()
     end
     if SCB.raidMarkMode == "cc" then
         SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "cc_h.tga", nil)
-        SCB.assignmentModeButton.scbTooltip = "CC assignments\nClick to switch to Focus assignments"
+        SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_CC")
     else
         SCB.raidMarkMode = "focus"
         SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "focus_h.tga", nil)
-        SCB.assignmentModeButton.scbTooltip = "Focus assignments\nClick to switch to CC assignments"
+        SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_FOCUS")
     end
     SCB_RefreshVisibleTooltip(SCB.assignmentModeButton)
 end
@@ -328,15 +328,15 @@ function SCB_SurvivorSafetyRequired()
     -- conservative for dungeons, unknown zones, and failed/invalid ID reads.
     if SCB_DebugLog then
         if matched then
-            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
+            SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
         elseif reason == "api" then
-            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_API"), zoneText))
+            SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_API"), zoneText))
         elseif reason == "notraid" then
-            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NOT_RAID"), zoneText))
+            SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_NOT_RAID"), zoneText))
         elseif reason == "invalid" then
-            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_INVALID"), zoneText, count or 0))
+            SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_INVALID"), zoneText, count or 0))
         else
-            SCB_DebugLog("RAID ID", string.format(SCB_L("DEBUG_RAID_ID_NO_MATCH"), zoneText, count or 0))
+            SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_NO_MATCH"), zoneText, count or 0))
         end
     end
 
@@ -389,7 +389,7 @@ function SCB_KickBots(deadOnly)
     local i, member, survivorName, removed, safetyApplied
 
     if not UninviteByName then
-        SCB_Print("Native group removal is unavailable on this client.")
+        SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
         return
     end
 
@@ -406,11 +406,11 @@ function SCB_KickBots(deadOnly)
     end
 
     if table.getn(bots) == 0 then
-        SCB_Print("No bots to kick.")
+        SCB_Print(SCB_L("KICK_NONE"))
         return
     end
     if deadOnly and table.getn(candidates) == 0 then
-        SCB_Print("No dead bots to kick.")
+        SCB_Print(SCB_L("KICK_NONE_DEAD"))
         return
     end
 
@@ -445,9 +445,9 @@ function SCB_KickBots(deadOnly)
         SCB_ShowSafetyMessage()
     elseif removed > 0 then
         if deadOnly then
-            SCB_Print("Kicked " .. removed .. " dead bot" .. (removed == 1 and "." or "s."))
+            SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_DEAD_ONE" or "KICKED_DEAD_MANY"), removed))
         else
-            SCB_Print("Kicked " .. removed .. " bot" .. (removed == 1 and "." or "s."))
+            SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_ONE" or "KICKED_MANY"), removed))
         end
     end
 end
