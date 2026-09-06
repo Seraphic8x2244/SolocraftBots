@@ -67,20 +67,18 @@ function SCB_GetLocationContext()
 end
 
 function SCB_GetLocationSignature(context)
-    local state
     context = context or SCB_GetLocationContext()
 
-    if not context.inInstanceAvailable then
-        state = "?"
-    elseif context.inInstance then
-        state = "1"
-    else
-        state = "0"
-    end
+    if not context.inInstanceAvailable then return "?" end
 
-    -- Deliberately ignore subzone/minimap changes. A meaningful transition is
-    -- world/instance state or the real zone changing.
-    return state .. "\031" .. (context.resolvedZone or "")
+    -- World zone changes are not Preset Group transitions. This deliberately
+    -- keeps a manually-selected raid preset open while travelling outdoors.
+    if not context.inInstance then return "world" end
+
+    -- Inside instances, preserve the resolved zone so direct instance-to-
+    -- instance transitions still auto-swap correctly (for example BRD -> MC,
+    -- BRS -> BWL, or Stratholme -> Naxxramas).
+    return "instance\031" .. (context.resolvedZone or "")
 end
 
 function SCB_FindDefaultPresetGroupIndex(groupID)
