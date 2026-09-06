@@ -4511,7 +4511,7 @@ function SCB_CreateCommandUI(frame)
     local layoutRows = {}
     local pairedComeButtons = {}
     local standaloneButtons = {}
-    local i, r, row, recipient, commandKey, commandInfo, button, layoutRow
+    local i, r, row, recipient, commandKey, commandInfo, button, layoutRow, comeRecipientLabel
 
     for i = 1, table.getn(SCB.recipients) do
         recipientByKey[SCB.recipients[i].key] = SCB.recipients[i]
@@ -4531,7 +4531,8 @@ function SCB_CreateCommandUI(frame)
         button.scbCommandKey = "come"
         button.scbRecipientKey = row.recipient
         button.scbRecipientLabel = recipient.label
-        button.scbTooltip = string.format(SCB_L("COMMAND_TOOLTIP_WITH_HINT"), recipient.label, SCB.commands.come.label, SCB_L("TIP_CTRL_COME"))
+        comeRecipientLabel = row.recipient == "target" and SCB_L("RECIPIENT_TARGET") or recipient.label
+        button.scbTooltip = string.format(SCB_L("TIP_COME_RECIPIENT"), comeRecipientLabel, comeRecipientLabel)
         button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
