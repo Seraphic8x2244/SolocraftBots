@@ -312,6 +312,7 @@ function SCB_EnsureOptionsDB()
     if options.hideBotMovementMessages == nil then options.hideBotMovementMessages = false end
     if options.hideBotPauseMessages == nil then options.hideBotPauseMessages = false end
     if options.hideBotAttackMessages == nil then options.hideBotAttackMessages = false end
+    if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
 
     -- Debug layout values are the raw internal baseline.  Seed command values
     -- from the old spacing settings so existing test profiles keep their exact
@@ -3671,7 +3672,7 @@ function SCB_QueuePresetSpawn(commands)
 end
 
 
-local SCB_RAID_ZONE_BY_GROUP = {
+SCB.INSTANCE_ZONE_BY_GROUP = {
     ubrs = "Blackrock Spire",
     zg = "Zul'Gurub",
     aq20 = "Ruins of Ahn'Qiraj",
@@ -3681,6 +3682,7 @@ local SCB_RAID_ZONE_BY_GROUP = {
     aq40 = "Temple of Ahn'Qiraj",
     naxx = "Naxxramas",
 }
+local SCB_RAID_ZONE_BY_GROUP = SCB.INSTANCE_ZONE_BY_GROUP
 
 function SCB_PresetExpectedToSummon()
     local group = SCB_CurrentPresetGroup()
@@ -5526,6 +5528,9 @@ local eventFrame = CreateFrame("Frame", "SoloCraftBotsEventFrame", UIParent)
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("ZONE_CHANGED")
+eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
+eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 eventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 eventFrame:RegisterEvent("PLAYER_CONTROL_LOST")
 eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
@@ -5539,6 +5544,10 @@ eventFrame:RegisterEvent("CHAT_MSG_RAID")
 eventFrame:RegisterEvent("CHAT_MSG_SAY")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
+    if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
+        if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.20) end
+        return
+    end
     if event == "ADDON_LOADED" and arg1 == "SoloCraftBots" then
         SoloCraftBotsDB = SoloCraftBotsDB or {}
         SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
@@ -5562,6 +5571,7 @@ eventFrame:SetScript("OnEvent", function()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.25) end
         if SCB_InstallBotChatFilter then SCB_InstallBotChatFilter() end
         if RequestRaidInfo then RequestRaidInfo() end
         SCB_RefreshMainPaladinBlessingButton()
