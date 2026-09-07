@@ -475,6 +475,9 @@ function SCB_CreateOptionsUI(frame)
 
     SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
     miscContent = SCB.optionMiscSection.scbContent
+    miscContent:ClearAllPoints()
+    miscContent:SetPoint("TOPLEFT", SCB.optionMiscSection, "TOPLEFT", 12, -26)
+    miscContent:SetWidth(panel:GetWidth() - 12)
     SCB_CreateAutoLootOption(miscContent)
     SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
     SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
@@ -483,7 +486,11 @@ function SCB_CreateOptionsUI(frame)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
     SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)
+    SCB.optionChatSection.scbExpanded = false
     chatContent = SCB.optionChatSection.scbContent
+    chatContent:ClearAllPoints()
+    chatContent:SetPoint("TOPLEFT", SCB.optionChatSection, "TOPLEFT", 12, -26)
+    chatContent:SetWidth(panel:GetWidth() - 12)
     SCB.optionSCBChatCheck = SCB_CreateOptionCheck(chatContent, "hideSCBChatMessages", "OPTION_HIDE_SCB_CHAT_MESSAGES", -2)
     SCB.optionSCBScreenCheck = SCB_CreateOptionCheck(chatContent, "hideSCBScreenWarnings", "OPTION_HIDE_SCB_SCREEN_WARNINGS", -26)
     SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(chatContent, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -50)
@@ -493,6 +500,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -146)
 
     SCB.optionLayoutSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_LAYOUT_TITLE", 78)
+    SCB.optionLayoutSection.scbExpanded = false
     layoutContent = SCB.optionLayoutSection.scbContent
     layoutContent:ClearAllPoints()
     layoutContent:SetPoint("TOPLEFT", SCB.optionLayoutSection, "TOPLEFT", 12, -26)

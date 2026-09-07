@@ -320,12 +320,15 @@ function SCB_CurrentRaidHasSavedID()
 end
 
 function SCB_SurvivorSafetyRequired()
+    local context = SCB_GetLocationContext()
+    if not context.inInstance then return false end
+
     local matched, reason, zoneName, savedID, reset, count = SCB_GetSavedRaidDecision()
     local zoneText = (zoneName and zoneName ~= "") and zoneName or "?"
 
     -- Keep the debug laboratory explicit about why survivor safety was or was
     -- not applied. This is diagnostic only; the policy itself remains
-    -- conservative for dungeons, unknown zones, and failed/invalid ID reads.
+    -- conservative inside instances for dungeons, unknown zones, and invalid ID reads.
     if SCB_DebugLog then
         if matched then
             SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
