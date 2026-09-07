@@ -66,6 +66,61 @@ function SCB_GetLocationContext()
     return context
 end
 
+-- Location capacity answers only how large a maintained group may be here.
+-- It never manufactures expected bots: the Active Roster contains only bot
+-- occupants the player actually had. Dungeons and Blackrock Spire deliberately
+-- expose smaller challenge tiers; raid locations keep their normal raid cap.
+function SCB_GetLocationCapacityTiers(context)
+    context = context or SCB_GetLocationContext()
+    if not context.inInstance then return { 5 } end
+    if context.groupID == "10man" then return { 5, 10 } end
+    if context.groupID == "ubrs" then return { 5, 10, 15 } end
+    if context.groupID == "zg" or context.groupID == "aq20" then return { 20 } end
+    if context.groupID == "mc" or context.groupID == "onyxia" or context.groupID == "bwl"
+        or context.groupID == "aq40" or context.groupID == "naxx" then
+        return { 40 }
+    end
+    return { 5, 10 }
+end
+
+function SCB_GetLocationMaxCapacity(context)
+    local tiers = SCB_GetLocationCapacityTiers(context)
+    return tiers[table.getn(tiers)] or 5
+end
+
+-- previousCap makes normal observation sticky upward. explicitSize is the one
+-- deliberate shrink path: pressing Summon with a smaller preset is the user's
+-- authoritative statement that the maintained roster should become smaller.
+function SCB_ResolveLocationExpectedCap(context, currentCount, previousCap, explicitSize)
+    local tiers, resolved, i
+    context = context or SCB_GetLocationContext()
+    currentCount = tonumber(currentCount) or 0
+
+    if explicitSize and tonumber(explicitSize) and tonumber(explicitSize) > 0 then
+        return tonumber(explicitSize)
+    end
+
+    tiers = SCB_GetLocationCapacityTiers(context)
+    resolved = tiers[table.getn(tiers)] or 5
+
+    if not context.inInstance or context.groupID == "10man" or context.groupID == "ubrs" then
+        for i = 1, table.getn(tiers) do
+            if currentCount <= tiers[i] then
+                resolved = tiers[i]
+                break
+            end
+        end
+    end
+
+    if previousCap and tonumber(previousCap) and tonumber(previousCap) > resolved then
+        resolved = tonumber(previousCap)
+    end
+    -- A currently-existing group is never described as smaller than itself,
+    -- even during an unusual transition that exceeds the local summon cap.
+    if currentCount > resolved then resolved = currentCount end
+    return resolved
+end
+
 function SCB_GetLocationSignature(context)
     context = context or SCB_GetLocationContext()
 

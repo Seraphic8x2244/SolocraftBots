@@ -252,40 +252,459 @@ function SCB_GetLiveGroup(group, refresh)
     return roster.groups[group]
 end
 
--- Snapshot the replacement facts from the bot that is actually in the live
--- roster now. The selected Preset UI is deliberately irrelevant here. Class
--- comes from UnitClass (observed live); role/extra use confirmed observation
--- when available and otherwise the assumption inherited when this bot joined.
--- currentGroup is the replacement destination, so manual raid-group tweaks are
--- preserved rather than snapping a replacement back to the original preset.
-function SCB_BuildLiveReplacementRecord(member)
-    local class, role, extra
-    if not member or not member.isBot then return nil end
+-- -------------------------------------------------------------------------
+-- Persistent Active Roster
+-- -------------------------------------------------------------------------
+-- SCB.liveRoster is the observed WoW snapshot. SoloCraftBotsCharDB.activeRoster
+-- is the sticky roster the player has actually chosen to maintain. A bot may
+-- disappear from the observed roster while its Active Roster slot survives as
+-- "missing", which is what makes Replace Missing possible without consulting a
+-- preset. Human players are deliberately not represented as replaceable slots.
 
-    class = member.classFile and string.lower(member.classFile) or member.assumedClass
-    role = member.confirmedRole or member.assumedRole
-    if member.confirmedExtraKnown then
-        extra = member.confirmedExtra
-    else
-        extra = member.assumedExtra
+function SCB_EnsureActiveRosterDB()
+    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
+    if type(SoloCraftBotsCharDB.activeRoster) ~= "table"
+        or SoloCraftBotsCharDB.activeRoster.version ~= 1 then
+        SoloCraftBotsCharDB.activeRoster = {
+            version = 1,
+            active = false,
+            suppressed = false,
+            expectedCap = 0,
+            slots = {},
+        }
+    end
+    local roster = SoloCraftBotsCharDB.activeRoster
+    roster.slots = roster.slots or {}
+    if roster.active == nil then roster.active = false end
+    if roster.suppressed == nil then roster.suppressed = false end
+    roster.expectedCap = tonumber(roster.expectedCap) or 0
+    return roster
+end
+
+function SCB_GetActiveRoster()
+    return SCB_EnsureActiveRosterDB()
+end
+
+function SCB_CountActiveBotSlots(roster)
+    local count = 0
+    local _, slot
+    roster = roster or SCB_EnsureActiveRosterDB()
+    for _, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected then count = count + 1 end
+    end
+    return count
+end
+
+function SCB_GetActiveSlot(slotID)
+    local roster = SCB_EnsureActiveRosterDB()
+    return slotID and roster.slots and roster.slots[slotID] or nil
+end
+
+function SCB_GetActiveSlotByName(name)
+    local roster = SCB_EnsureActiveRosterDB()
+    local id, slot
+    if not name then return nil, nil end
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected and slot.currentName == name then return slot, id end
+    end
+    return nil, nil
+end
+
+function SCB_UpdateActiveRosterLocation(roster, explicitSize, observedCount)
+    local context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    local signature = SCB_GetLocationSignature and SCB_GetLocationSignature(context) or "?"
+    local previousCap
+    roster = roster or SCB_EnsureActiveRosterDB()
+    observedCount = tonumber(observedCount) or table.getn(SCB_CollectGroupMembers())
+
+    if roster.locationSignature == signature then previousCap = roster.expectedCap end
+    if SCB_ResolveLocationExpectedCap then
+        roster.expectedCap = SCB_ResolveLocationExpectedCap(context, observedCount, previousCap, explicitSize)
+    elseif explicitSize then
+        roster.expectedCap = explicitSize
+    elseif observedCount > (roster.expectedCap or 0) then
+        roster.expectedCap = observedCount
+    end
+    roster.locationSignature = signature
+    roster.locationGroupID = context and context.groupID or nil
+    roster.locationZone = context and context.resolvedZone or nil
+    roster.locationMax = SCB_GetLocationMaxCapacity and SCB_GetLocationMaxCapacity(context) or roster.expectedCap
+    roster.updatedAt = GetTime and GetTime() or 0
+    return roster.expectedCap
+end
+
+function SCB_ClearActiveRoster(reason, suppress)
+    local roster = SCB_EnsureActiveRosterDB()
+    roster.active = false
+    roster.suppressed = suppress and true or false
+    roster.expectedCap = 0
+    roster.slots = {}
+    roster.clearedReason = reason
+    roster.updatedAt = GetTime and GetTime() or 0
+    if reason ~= "preset-transition" then SCB.activeRosterTransition = nil end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+end
+
+function SCB_BeginActiveRosterPresetTransition(size)
+    local roster
+    SCB_ClearActiveRoster("preset-transition", true)
+    roster = SCB_EnsureActiveRosterDB()
+    roster.expectedCap = tonumber(size) or 0
+    SCB_UpdateActiveRosterLocation(roster, tonumber(size), table.getn(SCB_CollectGroupMembers()))
+    SCB.activeRosterTransition = {
+        kind = "preset",
+        expectedCap = tonumber(size) or 0,
+        startedAt = GetTime and GetTime() or 0,
+    }
+end
+
+function SCB_CancelActiveRosterPresetTransition()
+    SCB.activeRosterTransition = nil
+    local roster = SCB_EnsureActiveRosterDB()
+    if not roster.active then roster.suppressed = false end
+end
+
+function SCB_AllowActiveRosterAdoption()
+    local roster = SCB_EnsureActiveRosterDB()
+    roster.suppressed = false
+end
+
+local function SCB_ActiveObservedClass(member)
+    if member and member.classFile then return string.lower(member.classFile) end
+    return nil
+end
+
+function SCB_EstablishActiveRosterFromTracker(tracker)
+    local roster, observed, i, assignment, member, slot
+    if not tracker or not tracker.ready or not tracker.assignments then return false end
+
+    roster = SCB_EnsureActiveRosterDB()
+    observed = SCB_GetLiveRoster(true)
+    roster.active = true
+    roster.suppressed = false
+    roster.slots = {}
+    SCB_UpdateActiveRosterLocation(roster, tracker.size, observed and observed.count or 0)
+
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.botName then
+            member = observed and observed.byName and observed.byName[assignment.botName] or nil
+            slot = {
+                id = assignment.slotIndex,
+                expected = true,
+                currentName = assignment.botName,
+                class = SCB_ActiveObservedClass(member) or assignment.class,
+                role = assignment.role,
+                extra = assignment.extra,
+                currentGroup = member and member.currentGroup or assignment.group or 1,
+                intendedGroup = assignment.group,
+                source = "preset",
+                trackerSlotIndex = assignment.slotIndex,
+                state = member and member.dead and "dead" or "alive",
+                lastSeenAt = GetTime and GetTime() or 0,
+            }
+            roster.slots[assignment.slotIndex] = slot
+        end
     end
 
-    if not class or not role or not SCB_IsValidSpawnAssignment(class, role, extra) then
+    roster.updatedAt = GetTime and GetTime() or 0
+    SCB.activeRosterTransition = nil
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    return true
+end
+
+local function SCB_FindFreeActiveSlotID(roster)
+    local i
+    local limit = tonumber(roster.expectedCap) or 0
+    for i = 1, limit do
+        if not roster.slots[i] then return i end
+    end
+    i = limit + 1
+    while roster.slots[i] do i = i + 1 end
+    return i
+end
+
+local function SCB_FindMissingActiveSlot(roster, preferredGroup)
+    local id, slot, fallbackID, fallback
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected and slot.state == "missing" then
+            if not fallback then fallback, fallbackID = slot, id end
+            if preferredGroup and slot.currentGroup == preferredGroup then return slot, id end
+        end
+    end
+    return fallback, fallbackID
+end
+
+-- Unbound observed bots are player choices, not mistakes to correct back toward
+-- a preset. They may occupy a previously-missing slot, but their old occupant's
+-- role/extra are deliberately discarded. Detection.lua can enrich the new bot
+-- later through SCB_UpdateActiveBotDetection().
+function SCB_AdoptObservedBotIntoActiveRoster(member, roster)
+    local slot, slotID, now
+    if not member or not member.isBot then return nil end
+    roster = roster or SCB_EnsureActiveRosterDB()
+    now = GetTime and GetTime() or 0
+
+    slot, slotID = SCB_FindMissingActiveSlot(roster, member.currentGroup)
+    if not slot then
+        slotID = SCB_FindFreeActiveSlotID(roster)
+        slot = { id = slotID, expected = true }
+        roster.slots[slotID] = slot
+    end
+
+    slot.expected = true
+    slot.currentName = member.name
+    slot.class = SCB_ActiveObservedClass(member)
+    slot.role = member.confirmedRole
+    if member.confirmedExtraKnown then slot.extra = member.confirmedExtra else slot.extra = nil end
+    slot.currentGroup = member.currentGroup or 1
+    slot.intendedGroup = nil
+    slot.source = "manual"
+    slot.trackerSlotIndex = nil
+    slot.state = member.dead and "dead" or "alive"
+    slot.missingSince = nil
+    slot.lastSeenAt = now
+    return slot
+end
+
+function SCB_InitializeActiveRosterFromObserved(observed)
+    local roster, i, member
+    observed = observed or SCB_GetLiveRoster(true)
+    if not observed or (observed.botCount or 0) <= 0 then return false end
+    roster = SCB_EnsureActiveRosterDB()
+    if roster.suppressed or SCB.activeRosterTransition then return false end
+
+    roster.active = true
+    roster.slots = {}
+    SCB_UpdateActiveRosterLocation(roster, nil, observed.count or 0)
+    for i = 1, table.getn(observed.members or {}) do
+        member = observed.members[i]
+        if member and member.isBot then SCB_AdoptObservedBotIntoActiveRoster(member, roster) end
+    end
+    roster.updatedAt = GetTime and GetTime() or 0
+    return true
+end
+
+-- Normal roster events never resurrect a missing slot merely because a later
+-- bot happens to receive the same name. Name matching across a load boundary is
+-- allowed only by SCB_ReconcileSavedActiveRoster(), where it means continuity.
+function SCB_SyncActiveRosterFromObserved()
+    local roster, observed, now, id, slot, member, bound, i
+    if SCB.activeRosterReconcilePending or SCB.activeRosterTransition then return end
+
+    roster = SCB_EnsureActiveRosterDB()
+    observed = SCB_GetLiveRoster(true)
+    if not roster.active then
+        if not roster.suppressed then SCB_InitializeActiveRosterFromObserved(observed) end
+        return
+    end
+
+    now = GetTime and GetTime() or 0
+    SCB_UpdateActiveRosterLocation(roster, nil, observed and observed.count or 0)
+    bound = {}
+
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected then
+            member = nil
+            if slot.state ~= "missing" and slot.currentName and observed and observed.byName then
+                member = observed.byName[slot.currentName]
+            end
+            if member and member.isBot then
+                slot.class = SCB_ActiveObservedClass(member) or slot.class
+                slot.currentGroup = member.currentGroup or slot.currentGroup or 1
+                slot.state = member.dead and "dead" or "alive"
+                slot.missingSince = nil
+                slot.lastSeenAt = now
+                bound[member.name] = true
+            else
+                if slot.state ~= "missing" then slot.missingSince = now end
+                slot.state = "missing"
+            end
+        end
+    end
+
+    -- The refill state binds its own newly-created names to exact slots. Do not
+    -- race that authoritative binding by auto-adopting the same arrivals here.
+    if not (SCB.refillState and SCB.refillState.active)
+        and not (SCB.replaceDeadState and SCB.replaceDeadState.active) then
+        for i = 1, table.getn(observed and observed.members or {}) do
+            member = observed.members[i]
+            if member and member.isBot and not bound[member.name] then
+                SCB_AdoptObservedBotIntoActiveRoster(member, roster)
+                bound[member.name] = true
+            end
+        end
+    end
+
+    roster.updatedAt = now
+end
+
+function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
+    local slot = SCB_GetActiveSlotByName(name)
+    if not slot then return false end
+    if role then slot.role = role end
+    if extraKnown then slot.extra = extra end
+    slot.detected = true
+    slot.updatedAt = GetTime and GetTime() or 0
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    return true
+end
+
+function SCB_BuildActiveReplacementRecord(slot)
+    if not slot or not slot.expected then return nil end
+    if not slot.class or not slot.role or not SCB_IsValidSpawnAssignment(slot.class, slot.role, slot.extra) then
         return nil
     end
-
     return {
-        source = "live",
-        sourceName = member.name,
-        slotIndex = member.presetSlotIndex,
-        group = member.currentGroup or 1,
-        intendedGroup = member.intendedGroup,
-        class = class,
-        role = role,
-        extra = extra,
-        command = SCB_BuildSpawnCommand(class, role, extra),
-        bindAssignment = member.trackerAssignment,
+        source = "active",
+        sourceName = slot.currentName,
+        activeSlotID = slot.id,
+        slotIndex = slot.id,
+        group = slot.currentGroup or 1,
+        class = slot.class,
+        role = slot.role,
+        extra = slot.extra,
+        command = SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra),
+        missingSince = slot.missingSince,
     }
+end
+
+function SCB_BindReplacementToActiveSlot(slotID, newName, group)
+    local roster = SCB_EnsureActiveRosterDB()
+    local slot = roster.slots and roster.slots[slotID]
+    local tracker, i, assignment
+    if not slot or not newName then return false end
+
+    slot.currentName = newName
+    slot.currentGroup = group or slot.currentGroup or 1
+    slot.state = "alive"
+    slot.missingSince = nil
+    slot.lastSeenAt = GetTime and GetTime() or 0
+    roster.active = true
+    roster.suppressed = false
+    roster.updatedAt = slot.lastSeenAt
+
+    if slot.trackerSlotIndex and SoloCraftBotsCharDB then
+        tracker = SoloCraftBotsCharDB.raidRoleTracker
+        if tracker and tracker.assignments then
+            for i = 1, table.getn(tracker.assignments) do
+                assignment = tracker.assignments[i]
+                if assignment and assignment.slotIndex == slot.trackerSlotIndex then
+                    assignment.botName = newName
+                    break
+                end
+            end
+        end
+    end
+    return true
+end
+
+function SCB_GetActiveMaintenanceRecords()
+    local roster = SCB_EnsureActiveRosterDB()
+    local observed, missing, dead, unavailableMissing, unavailableDead = nil, {}, {}, {}, {}
+    local id, slot, member, replacement
+    if not roster.active or SCB.activeRosterTransition then
+        return missing, dead, unavailableMissing, unavailableDead
+    end
+
+    SCB_SyncActiveRosterFromObserved()
+    observed = SCB_GetLiveRoster(false)
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected then
+            replacement = SCB_BuildActiveReplacementRecord(slot)
+            if slot.state == "missing" then
+                if replacement then table.insert(missing, slot) else table.insert(unavailableMissing, slot) end
+            else
+                member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
+                if member and member.isBot and member.dead then
+                    if replacement then table.insert(dead, slot) else table.insert(unavailableDead, slot) end
+                end
+            end
+        end
+    end
+    return missing, dead, unavailableMissing, unavailableDead
+end
+
+-- Reconcile SavedVariables only after the post-loading-screen roster has had a
+-- chance to settle. All saved names absent means the SoloCraft bot session has
+-- ended (relog/DC); any surviving name proves continuity and absent peers become
+-- genuine Missing slots. This is the sole path allowed to reconnect by name.
+function SCB_ReconcileSavedActiveRoster()
+    local roster = SCB_EnsureActiveRosterDB()
+    local observed = SCB_GetLiveRoster(true)
+    local expectedCount, presentCount = 0, 0
+    local id, slot, member, now
+    now = GetTime and GetTime() or 0
+
+    if SCB.activeRosterTransition then
+        SCB.activeRosterReconcilePending = false
+        return
+    end
+
+    if not roster.active then
+        SCB.activeRosterReconcilePending = false
+        if not roster.suppressed then SCB_InitializeActiveRosterFromObserved(observed) end
+        if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
+        if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+        return
+    end
+
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected and slot.currentName then
+            expectedCount = expectedCount + 1
+            member = observed and observed.byName and observed.byName[slot.currentName] or nil
+            if member and member.isBot then presentCount = presentCount + 1 end
+        end
+    end
+
+    if expectedCount > 0 and presentCount == 0 then
+        SCB.activeRosterReconcilePending = false
+        SCB_ClearActiveRoster("session-ended", false)
+        if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
+        return
+    end
+
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected then
+            member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
+            if member and member.isBot then
+                slot.class = SCB_ActiveObservedClass(member) or slot.class
+                slot.currentGroup = member.currentGroup or slot.currentGroup or 1
+                slot.state = member.dead and "dead" or "alive"
+                slot.missingSince = nil
+                slot.lastSeenAt = now
+            else
+                slot.state = "missing"
+                if not slot.missingSince then slot.missingSince = now end
+            end
+        end
+    end
+
+    SCB_UpdateActiveRosterLocation(roster, nil, observed and observed.count or 0)
+    SCB.activeRosterReconcilePending = false
+    SCB_SyncActiveRosterFromObserved()
+    if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+end
+
+function SCB_QueueActiveRosterWorldReconcile(delay)
+    local frame = SCB.activeRosterReconcileFrame
+    SCB.activeRosterReconcilePending = true
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsActiveRosterReconcileFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.75) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_ReconcileSavedActiveRoster()
+        end)
+        SCB.activeRosterReconcileFrame = frame
+    end
+    frame.scbDelay = delay or 0.75
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 function SCB_GroupHasBots()
@@ -567,5 +986,7 @@ function SCB_HandleRosterChange()
     end
 
     SCB_RefreshLiveRoster()
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
 end
 

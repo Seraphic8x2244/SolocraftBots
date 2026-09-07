@@ -40,6 +40,7 @@ SCB.presetCombatRetryWaitRemaining = 0
 SCB.presetCombatRetryFailures = 0
 SCB.presetCombatRetryResetPending = nil
 SCB.initialSessionValidationPending = false
+SCB.activeRosterReconcilePending = true
 SCB.lastRoster = nil
 SCB.refillState = nil
 
@@ -767,6 +768,7 @@ function SCB_SpawnOnClick()
     if this.scbClass == "paladin" then
         extra = SCB.mainPaladinBlessing or "BoK"
     end
+    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
     SCB_SendSpawnCommand(SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra))
 end
 
@@ -1217,10 +1219,11 @@ function SCB_CreateCommandUI(frame)
         table.insert(standaloneButtons, button)
     end
 
-    -- Replace Dead captures exact tracked dead slots before removal.
+    -- One maintenance button changes meaning from live Active Roster state:
+    -- Dead-only -> Replace Dead; any absent expected bot -> Replace Missing.
     local replaceDead = SCB_CreateTextButton(content, "SoloCraftBotsReplaceDead", 96, 24, SCB_L("REPLACE_DEAD"))
     replaceDead.scbTooltip = SCB_L("REPLACE_DEAD_NONE")
-    replaceDead:SetScript("OnClick", SCB_ReplaceDeadOnClick)
+    replaceDead:SetScript("OnClick", SCB_MaintenanceReplaceOnClick)
     replaceDead:SetScript("OnEnter", SCB_TooltipOnEnter)
     replaceDead:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB.replaceDeadButton = replaceDead
@@ -1505,6 +1508,11 @@ eventFrame:SetScript("OnEvent", function()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        -- Freeze normal Active Roster sync from the first frame of a loading-
+        -- screen completion. Roster events/UI refreshes may fire before WoW has
+        -- repopulated every unit; only the delayed reconciliation is allowed to
+        -- decide reload continuity versus a vanished relog/DC session.
+        SCB.activeRosterReconcilePending = true
         if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.25) end
         if SCB_InstallBotChatFilter then SCB_InstallBotChatFilter() end
         if RequestRaidInfo then RequestRaidInfo() end
@@ -1513,8 +1521,13 @@ eventFrame:SetScript("OnEvent", function()
         SCB_TryFinalizeRaidRoleTracking()
         SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
         SCB_RefreshRefillButton()
-        if SCB.initialSessionValidationPending then
-            SCB.initialSessionValidationPending = false
+        -- Loading-screen completion is our continuity boundary. Reconcile the
+        -- persisted Active Roster only after roster APIs have settled: surviving
+        -- saved names mean reload/zone continuity; zero survivors means relog/DC.
+        SCB.initialSessionValidationPending = false
+        if SCB_QueueActiveRosterWorldReconcile then
+            SCB_QueueActiveRosterWorldReconcile(0.75)
+        else
             SCB_ValidateSavedSession()
         end
     elseif event == "PLAYER_LEVEL_UP" then
@@ -1586,6 +1599,7 @@ eventFrame:SetScript("OnEvent", function()
                 SCB.presetLastBurstRequeued = nil
                 SCB.presetCombatRetryFailures = 0
                 SCB.presetCombatRetryResetPending = nil
+                if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
                 SCB_Print(SCB_L("PRESET_SUMMON_COMBAT_ABORT"))
             end
         end
