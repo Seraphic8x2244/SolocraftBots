@@ -952,6 +952,33 @@ function SCB_QueueAutoLootApply()
     frame:Show()
 end
 
+-- Promote human raid members only. Rank 0 is a regular member; assistants
+-- and the leader already have the required permissions.
+function SCB_ApplyAutoPromotePlayers()
+    local count, i, name, rank, playerName
+    if not SoloCraftBotsDB or not SoloCraftBotsDB.options
+        or not SoloCraftBotsDB.options.autoPromotePlayers then return end
+    if not GetNumRaidMembers or not GetRaidRosterInfo or not PromoteToAssistant then return end
+    count = GetNumRaidMembers()
+    if count == 0 then return end
+    playerName = UnitName("player")
+    if not playerName then return end
+
+    local isLeader = false
+    for i = 1, count do
+        name, rank = GetRaidRosterInfo(i)
+        if name == playerName and rank == 2 then isLeader = true; break end
+    end
+    if not isLeader then return end
+
+    for i = 1, count do
+        name, rank = GetRaidRosterInfo(i)
+        if name and name ~= playerName and rank == 0 and not SCB_IsBotName(name) then
+            PromoteToAssistant(name)
+        end
+    end
+end
+
 function SCB_HandleRosterChange()
     local current = SCB_GetRosterNames()
     local name, scbBotAdded
@@ -976,6 +1003,7 @@ function SCB_HandleRosterChange()
         end
     end
 
+    SCB_ApplyAutoPromotePlayers()
     SCB.lastRoster = current
     if scbBotAdded then
         -- Try immediately, then verify/retry for up to one second. Vanilla can

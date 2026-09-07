@@ -368,3 +368,5 @@ T["ERR_SUMMON_BUSY"] = "Preset Summon is already in progress."
 T["ERR_SUMMON_GROUP_NOT_EMPTY"] = "Preset Summon requires an empty group, or one safety survivor with no other players."
 T["ERR_SURVIVOR_NO_SLOT"] = "Preset Group 1 has no bot slot available to replace the safety survivor."
 T["PRESET_NUMBER"] = "Preset %d"
+
+T["OPTION_AUTO_PROMOTE_PLAYERS"] = "Auto-promote players"

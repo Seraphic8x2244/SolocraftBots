@@ -289,6 +289,7 @@ function SCB_EnsureOptionsDB()
     if options.hideBotMovementMessages == nil then options.hideBotMovementMessages = false end
     if options.hideBotPauseMessages == nil then options.hideBotPauseMessages = false end
     if options.hideBotAttackMessages == nil then options.hideBotAttackMessages = false end
+    if options.autoPromotePlayers == nil then options.autoPromotePlayers = false end
     if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
 
     -- Debug layout values are the raw internal baseline.  Seed command values
@@ -1469,6 +1470,7 @@ eventFrame:RegisterEvent("PLAYER_CONTROL_LOST")
 eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
 eventFrame:RegisterEvent("UNIT_FLAGS")
 eventFrame:RegisterEvent("UNIT_COMBAT")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
@@ -1508,6 +1510,7 @@ eventFrame:SetScript("OnEvent", function()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        SCB_ApplyAutoPromotePlayers()
         -- Freeze normal Active Roster sync from the first frame of a loading-
         -- screen completion. Roster events/UI refreshes may fire before WoW has
         -- repopulated every unit; only the delayed reconciliation is allowed to
@@ -1542,6 +1545,8 @@ eventFrame:SetScript("OnEvent", function()
         if SCB.frame and SCB.frame:IsShown() then
             SCB_SetEscapeProxyShown(true)
         end
+    elseif event == "PARTY_LEADER_CHANGED" then
+        SCB_ApplyAutoPromotePlayers()
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
         SCB_HandleRosterChange()
         if SCB.presetPanel then
