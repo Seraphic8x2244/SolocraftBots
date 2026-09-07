@@ -3332,6 +3332,46 @@ function SCB_BuildPresetExecutionSnapshot()
     return snapshot
 end
 
+function SCB_HasBotSpawnOperation()
+    return (SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0)
+        or (SCB.presetGroupWaitRemaining or 0) > 0
+        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
+        or (SCB.refillState and SCB.refillState.active)
+        or (SCB.replaceDeadState and SCB.replaceDeadState.active)
+        or (SCB.presetRebuildState and SCB.presetRebuildState.active)
+        or (SCB.activeRosterTransition and SCB.activeRosterTransition.kind == "preset")
+end
+
+function SCB_AbortBotSpawnOperations()
+    -- Explicit recovery path for server-side rejection or a user-forced retry.
+    -- Never leave a consumed spawn burst parked behind a roster barrier that can
+    -- no longer succeed. Any bots that really did spawn are observed/adopted
+    -- normally after the unfinished preset tracker is discarded.
+    SCB.presetSpawnQueue = {}
+    SCB.presetSpawnElapsed = 0
+    SCB.presetGroupWaitRemaining = 0
+    SCB.presetCombatRetryWaitRemaining = 0
+    SCB.presetCombatPollRemaining = nil
+    SCB.presetCombatRetryFailures = 0
+    SCB.presetCombatRetryResetPending = nil
+    SCB.presetLastBurstCommands = nil
+    SCB.presetLastBurstRequeued = nil
+    SCB.presetHumanGroups = nil
+    SCB.presetExpectedBotCountBeforeHandoff = nil
+    SCB.presetSurvivorProbeRemaining = nil
+    SCB.presetBootstrapBotName = nil
+    SCB.presetSurvivorBotName = nil
+    SCB.presetRebuildState = nil
+    SCB.refillState = nil
+    SCB.replaceDeadState = nil
+
+    if SoloCraftBotsCharDB then SoloCraftBotsCharDB.raidRoleTracker = nil end
+    if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
+    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+end
+
 function SCB_StartPresetSummonSnapshot(snapshot)
     local valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
     local group, size, slots, commands, occupied, startBotState, survivorName
@@ -3500,8 +3540,17 @@ function SCB_PresetRebuildOnUpdate()
 end
 
 function SCB_PresetSummonOnClick()
-    local snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
+    local snapshot, errorText
     local ok
+
+    -- Ctrl-click is an explicit user override for stale internal spawn state.
+    -- It cancels SCB's current operation only; the retry still passes every
+    -- normal roster, survivor, raid-ID, location and combat safety check.
+    if IsControlKeyDown and IsControlKeyDown() and SCB_HasBotSpawnOperation() then
+        SCB_AbortBotSpawnOperations()
+    end
+
+    snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
     if not snapshot then
         SCB_Print(errorText)
         return

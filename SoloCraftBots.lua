@@ -1555,6 +1555,14 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "UNIT_COMBAT" then
         SCB_DebugUnitCombat(arg1, arg2, arg3, arg4, arg5)
     elseif event == "CHAT_MSG_SYSTEM" then
+        if arg1 == "Cannot add more bots. Instance is full."
+            and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation()
+            and SCB_AbortBotSpawnOperations then
+            -- Spawn commands are consumed optimistically. If the server rejects
+            -- one because the instance is still physically full, later roster
+            -- barriers can never succeed. Abort immediately so Summon is usable.
+            SCB_AbortBotSpawnOperations()
+        end
         if arg1 and string.find(arg1, "Cannot add bots while any party member is in combat", 1, true)
             and SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0
             and SCB.presetLastBurstCommands and table.getn(SCB.presetLastBurstCommands) > 0
