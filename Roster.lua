@@ -91,6 +91,165 @@ function SCB_CollectGroupMembers()
     return members
 end
 
+-- -------------------------------------------------------------------------
+-- Live roster
+-- -------------------------------------------------------------------------
+
+-- Preset intent and live WoW state are deliberately kept separate. The
+-- tracker tells us what SCB intended when a preset was built; the roster tells
+-- us where that member actually is now. Manual/unknown bots simply have no
+-- preset association until another system (for example Detection.lua) learns
+-- more about them.
+function SCB_GetTrackedRosterAssociation(name, isBot)
+    local tracker, list, i, entry
+    if not name or not SoloCraftBotsCharDB then return nil end
+
+    tracker = SoloCraftBotsCharDB.raidRoleTracker
+    if not tracker then return nil end
+
+    if isBot then
+        list = tracker.assignments or {}
+        for i = 1, table.getn(list) do
+            entry = list[i]
+            if entry and entry.botName == name then
+                return {
+                    source = "preset",
+                    presetSlotIndex = entry.slotIndex,
+                    intendedGroup = entry.group,
+                    assumedClass = entry.class,
+                    assumedRole = entry.role,
+                    assumedExtra = entry.extra,
+                }
+            end
+        end
+    else
+        list = tracker.players or {}
+        for i = 1, table.getn(list) do
+            entry = list[i]
+            if entry and entry.name == name then
+                return {
+                    source = "preset",
+                    presetSlotIndex = entry.slotIndex,
+                    intendedGroup = entry.group,
+                    assumedRole = entry.role,
+                    assumedExtra = entry.extra,
+                }
+            end
+        end
+    end
+
+    return nil
+end
+
+function SCB_BuildLiveRoster()
+    local rawMembers = SCB_CollectGroupMembers()
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local previousRevision = SCB.liveRoster and SCB.liveRoster.revision or 0
+    local roster = {
+        version = 1,
+        revision = previousRevision + 1,
+        mode = raidCount > 0 and "raid" or (partyCount > 0 and "party" or "solo"),
+        updatedAt = GetTime and GetTime() or 0,
+        members = {},
+        byName = {},
+        botsByName = {},
+        humansByName = {},
+        groups = {},
+        count = 0,
+        botCount = 0,
+        humanCount = 0,
+    }
+    local i, member, className, classFile, association, knownBots
+
+    for i = 1, 8 do
+        roster.groups[i] = {}
+    end
+
+    if SoloCraftBotsDB and SoloCraftBotsDB.session then
+        knownBots = SoloCraftBotsDB.session.knownBots
+    end
+
+    for i = 1, table.getn(rawMembers) do
+        member = rawMembers[i]
+        className, classFile = UnitClass and UnitClass(member.unit)
+        association = SCB_GetTrackedRosterAssociation(member.name, member.isBot)
+
+        member.class = className
+        member.classFile = classFile
+        member.currentGroup = member.subgroup or 1
+        member.isHuman = not member.isBot
+        member.isKnownSCBBot = member.isBot and knownBots and knownBots[member.name] and true or false
+        member.isPresetMember = association and true or false
+
+        if association then
+            member.associationSource = association.source
+            member.presetSlotIndex = association.presetSlotIndex
+            member.intendedGroup = association.intendedGroup
+            member.assumedClass = association.assumedClass
+            member.assumedRole = association.assumedRole
+            member.assumedExtra = association.assumedExtra
+            if member.intendedGroup then
+                member.groupMatchesIntent = member.currentGroup == member.intendedGroup
+            end
+        end
+
+        if member.isPresetMember then
+            member.origin = "preset"
+        elseif member.isKnownSCBBot then
+            member.origin = "scb"
+        elseif member.isBot then
+            member.origin = "unknown"
+        else
+            member.origin = "player"
+        end
+
+        table.insert(roster.members, member)
+        roster.byName[member.name] = member
+        roster.count = roster.count + 1
+
+        if not roster.groups[member.currentGroup] then
+            roster.groups[member.currentGroup] = {}
+        end
+        table.insert(roster.groups[member.currentGroup], member)
+
+        if member.isBot then
+            roster.botsByName[member.name] = member
+            roster.botCount = roster.botCount + 1
+        else
+            roster.humansByName[member.name] = member
+            roster.humanCount = roster.humanCount + 1
+        end
+    end
+
+    return roster
+end
+
+function SCB_RefreshLiveRoster()
+    SCB.liveRoster = SCB_BuildLiveRoster()
+    return SCB.liveRoster
+end
+
+function SCB_GetLiveRoster(refresh)
+    if refresh or not SCB.liveRoster then
+        return SCB_RefreshLiveRoster()
+    end
+    return SCB.liveRoster
+end
+
+function SCB_GetLiveMember(name, refresh)
+    local roster
+    if not name then return nil end
+    roster = SCB_GetLiveRoster(refresh)
+    return roster and roster.byName[name] or nil
+end
+
+function SCB_GetLiveGroup(group, refresh)
+    local roster = SCB_GetLiveRoster(refresh)
+    if not roster then return nil end
+    return roster.groups[group]
+end
+
 function SCB_GroupHasBots()
     local members = SCB_CollectGroupMembers()
     local i
@@ -247,6 +406,7 @@ function SCB_ValidateSavedSession()
     SCB.pendingBotAdds = 0
     SCB.pendingBotAddsExpires = 0
     SCB_RefreshDistanceButtons()
+    SCB_RefreshLiveRoster()
 end
 
 function SCB_RegisterSpawnIntent()
@@ -367,5 +527,7 @@ function SCB_HandleRosterChange()
         SCB_ApplyAutoLootMethod()
         SCB_QueueAutoLootApply()
     end
+
+    SCB_RefreshLiveRoster()
 end
 
