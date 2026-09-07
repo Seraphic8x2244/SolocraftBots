@@ -374,7 +374,7 @@ end
 
 function SCB_ShowSafetyMessage()
     SCB_EnsureOptionsDB()
-    if SoloCraftBotsDB.options.hideSCBMessages then return end
+    if SoloCraftBotsDB.options.hideSCBScreenWarnings then return end
     if not SCB.safetyMessageFrame then return end
     SCB.safetyMessageFrame.scbElapsed = 0
     SCB.safetyMessageFrame:SetAlpha(1)

@@ -101,7 +101,7 @@ function SCB_OptionCheckOnClick()
     if not this or not this.scbOptionKey then return end
     SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options[this.scbOptionKey] = this:GetChecked() and true or false
-    if this.scbOptionKey == "hideSCBMessages" and SoloCraftBotsDB.options.hideSCBMessages
+    if this.scbOptionKey == "hideSCBScreenWarnings" and SoloCraftBotsDB.options.hideSCBScreenWarnings
         and SCB.safetyMessageFrame then SCB.safetyMessageFrame:Hide() end
     if this.scbOptionKey == "autoPromotePlayers" then SCB_ApplyAutoPromotePlayers() end
     if this.scbOptionKey == "autoSwapPresetGroup" and SoloCraftBotsDB.options.autoSwapPresetGroup and SCB_ApplyCurrentLocationPresetGroup then
@@ -387,7 +387,8 @@ function SCB_RefreshOptionsUI()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
     if SCB.optionAutoPromotePlayersCheck then SCB.optionAutoPromotePlayersCheck:SetChecked(options.autoPromotePlayers and 1 or nil) end
-    if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.hideSCBMessages and 1 or nil) end
+    if SCB.optionSCBChatCheck then SCB.optionSCBChatCheck:SetChecked(options.hideSCBChatMessages and 1 or nil) end
+    if SCB.optionSCBScreenCheck then SCB.optionSCBScreenCheck:SetChecked(options.hideSCBScreenWarnings and 1 or nil) end
     if SCB.optionAutoSwapPresetGroupCheck then SCB.optionAutoSwapPresetGroupCheck:SetChecked(options.autoSwapPresetGroup and 1 or nil) end
     if SCB.optionBotSummonMessageCheck then SCB.optionBotSummonMessageCheck:SetChecked(options.hideBotSummonMessage and 1 or nil) end
     if SCB.optionBotGroupMessagesCheck then SCB.optionBotGroupMessagesCheck:SetChecked(options.hideBotGroupMessages and 1 or nil) end
@@ -481,14 +482,15 @@ function SCB_CreateOptionsUI(frame)
     resetTutorials:SetPoint("TOPLEFT", miscContent, "TOPLEFT", 16, -84)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
-    SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 178)
+    SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)
     chatContent = SCB.optionChatSection.scbContent
-    SCB.optionSafetyCheck = SCB_CreateOptionCheck(chatContent, "hideSCBMessages", "OPTION_HIDE_SCB_MESSAGES", -2)
-    SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(chatContent, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -26)
-    SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -50)
-    SCB.optionBotMovementMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotMovementMessages", "OPTION_HIDE_BOT_MOVEMENT_MESSAGES", -74)
-    SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -98)
-    SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -122)
+    SCB.optionSCBChatCheck = SCB_CreateOptionCheck(chatContent, "hideSCBChatMessages", "OPTION_HIDE_SCB_CHAT_MESSAGES", -2)
+    SCB.optionSCBScreenCheck = SCB_CreateOptionCheck(chatContent, "hideSCBScreenWarnings", "OPTION_HIDE_SCB_SCREEN_WARNINGS", -26)
+    SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(chatContent, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -50)
+    SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -74)
+    SCB.optionBotMovementMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotMovementMessages", "OPTION_HIDE_BOT_MOVEMENT_MESSAGES", -98)
+    SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -122)
+    SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -146)
 
     SCB.optionLayoutSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_LAYOUT_TITLE", 78)
     layoutContent = SCB.optionLayoutSection.scbContent

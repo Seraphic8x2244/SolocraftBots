@@ -48,7 +48,7 @@ BINDING_HEADER_SOLOCRAFTBOTS = SCB_L("BINDING_HEADER")
 BINDING_NAME_SOLOCRAFTBOTS_TOGGLE = SCB_L("BINDING_TOGGLE")
 
 function SCB_Print(text)
-    if SoloCraftBotsDB.options and SoloCraftBotsDB.options.hideSCBMessages then return end
+    if SoloCraftBotsDB.options and SoloCraftBotsDB.options.hideSCBChatMessages then return end
     if DEFAULT_CHAT_FRAME then
         DEFAULT_CHAT_FRAME:AddMessage(SCB.prefix .. text)
     end
@@ -284,9 +284,18 @@ function SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
     options = SoloCraftBotsDB.options
     if options.autoLootMethod == nil then options.autoLootMethod = "off" end
-    if options.hideSCBMessages == nil then
-        options.hideSCBMessages = options.showSafetyMessages == false
+    -- Split the old combined filter without overwriting either new preference.
+    if options.hideSCBChatMessages == nil then
+        options.hideSCBChatMessages = options.hideSCBMessages == true
     end
+    if options.hideSCBScreenWarnings == nil then
+        if options.hideSCBMessages ~= nil then
+            options.hideSCBScreenWarnings = options.hideSCBMessages == true
+        else
+            options.hideSCBScreenWarnings = options.showSafetyMessages == false
+        end
+    end
+    options.hideSCBMessages = nil
     options.showSafetyMessages = nil
     if options.hideBotSummonMessage == nil then options.hideBotSummonMessage = false end
     if options.hideBotGroupMessages == nil then options.hideBotGroupMessages = false end
