@@ -2389,18 +2389,28 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
 
     subgroupCounts = {}
     for i = 1, 8 do subgroupCounts[i] = 0 end
+    presentHumans = {}
     for i = 1, table.getn(members) do
         member = members[i]
         if member.subgroup then subgroupCounts[member.subgroup] = (subgroupCounts[member.subgroup] or 0) + 1 end
+        if not member.isBot then presentHumans[member.name] = true end
     end
-    humanCounts = SCB_GetTrackedHumanCounts(tracker)
+
+    -- Raid refill must preserve the exact logical preset slots occupied by
+    -- humans. Counting humans per subgroup and pretending they occupy the
+    -- first N rows can shift every later bot assignment and respawn the wrong
+    -- class/role. The tracker already stores each player's exact slotIndex, so
+    -- use it just as the party refill path does.
+    occupiedSlots = {}
+    for i = 1, table.getn(tracker.players or {}) do
+        if tracker.players[i].name and presentHumans[tracker.players[i].name] and tracker.players[i].slotIndex then
+            occupiedSlots[tracker.players[i].slotIndex] = true
+        end
+    end
 
     for i = 1, table.getn(tracker.assignments) do
         assignment = tracker.assignments[i]
-        localIndex = math.mod(assignment.slotIndex - 1, 5) + 1
-        -- Live assigned humans consume the front N logical rows of their group.
-        -- A human leaving therefore exposes the underlying bot assignment again.
-        if assignment.slotIndex ~= delayedSlotIndex and localIndex > (humanCounts[assignment.group] or 0) then
+        if assignment.slotIndex ~= delayedSlotIndex and not occupiedSlots[assignment.slotIndex] then
             if (not assignment.botName or not currentNames[assignment.botName]) and (subgroupCounts[assignment.group] or 0) < 5 then
                 table.insert(missing, assignment)
                 subgroupCounts[assignment.group] = subgroupCounts[assignment.group] + 1
