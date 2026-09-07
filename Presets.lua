@@ -2420,23 +2420,25 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     return missing
 end
 
-function SCB_GetDeadTrackedAssignments()
-    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
+function SCB_GetDeadLiveReplacementRecords()
     local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
     local result = {}
-    local i, assignment, member
-    if not tracker or not tracker.ready or not tracker.assignments or not roster then return result end
-    for i = 1, table.getn(tracker.assignments) do
-        assignment = tracker.assignments[i]
-        member = assignment and assignment.botName and roster.byName[assignment.botName] or nil
-        if member and member.isBot and member.dead then table.insert(result, assignment) end
+    local i, member, replacement
+    if not roster or not roster.members then return result end
+
+    for i = 1, table.getn(roster.members) do
+        member = roster.members[i]
+        if member and member.isBot and member.dead then
+            replacement = SCB_BuildLiveReplacementRecord and SCB_BuildLiveReplacementRecord(member) or nil
+            if replacement then table.insert(result, replacement) end
+        end
     end
     return result
 end
 
 function SCB_RefreshReplaceDeadButton()
     local button = SCB.replaceDeadButton
-    local dead = SCB_GetDeadTrackedAssignments()
+    local dead = SCB_GetDeadLiveReplacementRecords()
     if not button then return end
     if table.getn(dead) > 0 then
         if button.scbPulseMode ~= "greenloop" then SCB_StartPresetButtonPulse(button, "greenloop") end
@@ -2498,17 +2500,6 @@ function SCB_GetNewRefillBots(beforeNames)
     return result
 end
 
-function SCB_FindAssignmentByBotName(name)
-    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
-    local i, assignment
-    if not name or not tracker or not tracker.assignments then return nil end
-    for i = 1, table.getn(tracker.assignments) do
-        assignment = tracker.assignments[i]
-        if assignment and assignment.botName == name then return assignment end
-    end
-    return nil
-end
-
 function SCB_ReplaceDeadNamesGone(names)
     local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
     local name
@@ -2518,7 +2509,7 @@ function SCB_ReplaceDeadNamesGone(names)
 end
 
 function SCB_ReplaceDeadOnClick()
-    local dead = SCB_GetDeadTrackedAssignments()
+    local dead = SCB_GetDeadLiveReplacementRecords()
     local members = SCB_CollectGroupMembers()
     local botCount, otherHumans = 0, 0
     local survivorName, survivorAssignment
@@ -2540,10 +2531,15 @@ function SCB_ReplaceDeadOnClick()
     end
     if otherHumans == 0 and table.getn(dead) == botCount and SCB_SurvivorSafetyRequired() then
         survivorName = SCB_FindGroupOneSurvivor(members)
-        survivorAssignment = SCB_FindAssignmentByBotName(survivorName)
+        for i = 1, table.getn(dead) do
+            if dead[i].sourceName == survivorName then
+                survivorAssignment = dead[i]
+                break
+            end
+        end
     end
     for i = 1, table.getn(dead) do
-        assignment = dead[i]; name = assignment.botName
+        assignment = dead[i]; name = assignment.sourceName
         if assignment ~= survivorAssignment then
             table.insert(initialAssignments, assignment)
             removedNames[name] = true
@@ -2555,7 +2551,11 @@ function SCB_ReplaceDeadOnClick()
     end
     SCB.replaceDeadState = {
         active = true, phase = "waitremoved", assignments = initialAssignments,
-        removedNames = removedNames, earliestAt = (GetTime and GetTime() or 0) + 1.0,
+        removedNames = removedNames,
+        -- Roster removal can happen before the bot has disappeared from the
+        -- server world. Keep a hard one-second floor after the kick even when
+        -- the roster has already updated.
+        earliestAt = (GetTime and GetTime() or 0) + 1.0,
         survivorAssignment = survivorAssignment, survivorName = survivorName,
     }
     SCB_RefreshReplaceDeadButton()
@@ -2716,6 +2716,9 @@ function SCB_RefillOnUpdate(elapsed)
         -- missing assignments in ascending preset-slot order.
         for i = 1, table.getn(state.assignments) do
             state.assignments[i].botName = newBots[i].name
+            if state.assignments[i].bindAssignment then
+                state.assignments[i].bindAssignment.botName = newBots[i].name
+            end
         end
         SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
 

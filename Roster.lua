@@ -119,6 +119,7 @@ function SCB_GetTrackedRosterAssociation(name, isBot)
                     assumedClass = entry.class,
                     assumedRole = entry.role,
                     assumedExtra = entry.extra,
+                    trackerEntry = entry,
                 }
             end
         end
@@ -189,6 +190,7 @@ function SCB_BuildLiveRoster()
             member.assumedClass = association.assumedClass
             member.assumedRole = association.assumedRole
             member.assumedExtra = association.assumedExtra
+            member.trackerAssignment = association.trackerEntry
             if member.intendedGroup then
                 member.groupMatchesIntent = member.currentGroup == member.intendedGroup
             end
@@ -248,6 +250,42 @@ function SCB_GetLiveGroup(group, refresh)
     local roster = SCB_GetLiveRoster(refresh)
     if not roster then return nil end
     return roster.groups[group]
+end
+
+-- Snapshot the replacement facts from the bot that is actually in the live
+-- roster now. The selected Preset UI is deliberately irrelevant here. Class
+-- comes from UnitClass (observed live); role/extra use confirmed observation
+-- when available and otherwise the assumption inherited when this bot joined.
+-- currentGroup is the replacement destination, so manual raid-group tweaks are
+-- preserved rather than snapping a replacement back to the original preset.
+function SCB_BuildLiveReplacementRecord(member)
+    local class, role, extra
+    if not member or not member.isBot then return nil end
+
+    class = member.classFile and string.lower(member.classFile) or member.assumedClass
+    role = member.confirmedRole or member.assumedRole
+    if member.confirmedExtraKnown then
+        extra = member.confirmedExtra
+    else
+        extra = member.assumedExtra
+    end
+
+    if not class or not role or not SCB_IsValidSpawnAssignment(class, role, extra) then
+        return nil
+    end
+
+    return {
+        source = "live",
+        sourceName = member.name,
+        slotIndex = member.presetSlotIndex,
+        group = member.currentGroup or 1,
+        intendedGroup = member.intendedGroup,
+        class = class,
+        role = role,
+        extra = extra,
+        command = SCB_BuildSpawnCommand(class, role, extra),
+        bindAssignment = member.trackerAssignment,
+    }
 end
 
 function SCB_GroupHasBots()
