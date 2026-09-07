@@ -2420,44 +2420,58 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     return missing
 end
 
-function SCB_RefreshRefillButton()
-    local button = SCB.presetRefillButton
+function SCB_GetDeadTrackedAssignments()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
-    local activeRefill = SCB.refillState and SCB.refillState.active and SCB.refillState or nil
-    local anchorName = activeRefill and activeRefill.anchorName or SCB_GetKickAllAnchorForFreshBuild()
-    local delayed = activeRefill and activeRefill.delayedAssignment or (anchorName and tracker and tracker.assignments and tracker.assignments[5] or nil)
-    local missing
-    local count
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    local result = {}
+    local i, assignment, member
+    if not tracker or not tracker.ready or not tracker.assignments or not roster then return result end
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        member = assignment and assignment.botName and roster.byName[assignment.botName] or nil
+        if member and member.isBot and member.dead then table.insert(result, assignment) end
+    end
+    return result
+end
+
+function SCB_RefreshReplaceDeadButton()
+    local button = SCB.replaceDeadButton
+    local dead = SCB_GetDeadTrackedAssignments()
     if not button then return end
-    missing = SCB_GetMissingRaidAssignments(anchorName, delayed and delayed.slotIndex or nil)
-    count = table.getn(missing) + (delayed and 1 or 0)
-    if count > 0 then
+    if table.getn(dead) > 0 then
         if button.scbPulseMode ~= "greenloop" then SCB_StartPresetButtonPulse(button, "greenloop") end
-        button.scbTooltip = string.format(SCB_L("PRESET_REFILL_TOOLTIP_READY"), count)
+        button.scbTooltip = SCB_L("TIP_REPLACE_DEAD")
     else
         SCB_StopPresetButtonPulse(button)
-        button.scbTooltip = SCB_L("PRESET_REFILL_TOOLTIP_EMPTY")
+        button.scbTooltip = SCB_L("REPLACE_DEAD_NONE")
     end
 end
 
-function SCB_RefillPresetOnClick()
-    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
-    local anchorName = SCB_GetKickAllAnchorForFreshBuild()
-    local delayed = anchorName and tracker and tracker.assignments and tracker.assignments[5] or nil
-    local missing = SCB_GetMissingRaidAssignments(anchorName, delayed and delayed.slotIndex or nil)
-    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 then
-        SCB_Print(SCB_L("PRESET_REFILL_SUMMON_BUSY"))
-        return
+function SCB_RefreshRefillButton()
+    SCB_RefreshReplaceDeadButton()
+end
+
+function SCB_StartRefillAssignments(assignments)
+    local remaining = {}
+    local i
+    if not assignments or table.getn(assignments) == 0 then return false end
+    if table.getn(SCB.presetSpawnQueue) > 0
+        or (SCB.presetGroupWaitRemaining or 0) > 0
+        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
+        or (SCB.refillState and SCB.refillState.active) then
+        return false, SCB_L("REPLACE_DEAD_BUSY")
     end
-    if SCB.refillState and SCB.refillState.active then return end
-    if table.getn(missing) == 0 and not delayed then return end
-    SCB.refillState = {
-        active = true,
-        phase = "nextgroup",
-        cooldown = 0,
-        anchorName = anchorName,
-        delayedAssignment = delayed,
-    }
+    for i = 1, table.getn(assignments) do table.insert(remaining, assignments[i]) end
+    SCB.refillState = { active = true, phase = "nextgroup", cooldown = 0, fixedAssignments = remaining }
+    return true
+end
+
+function SCB_RefillPresetOnClick()
+    local missing = SCB_GetMissingRaidAssignments(nil, nil)
+    local ok, errorText
+    if table.getn(missing) == 0 then return end
+    ok, errorText = SCB_StartRefillAssignments(missing)
+    if not ok and errorText then SCB_Print(errorText) end
 end
 
 function SCB_GetNewRefillBots(beforeNames)
@@ -2484,6 +2498,103 @@ function SCB_GetNewRefillBots(beforeNames)
     return result
 end
 
+function SCB_FindAssignmentByBotName(name)
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
+    local i, assignment
+    if not name or not tracker or not tracker.assignments then return nil end
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.botName == name then return assignment end
+    end
+    return nil
+end
+
+function SCB_ReplaceDeadNamesGone(names)
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    local name
+    if not roster then return false end
+    for name in pairs(names or {}) do if roster.byName[name] then return false end end
+    return true
+end
+
+function SCB_ReplaceDeadOnClick()
+    local dead = SCB_GetDeadTrackedAssignments()
+    local members = SCB_CollectGroupMembers()
+    local botCount, otherHumans = 0, 0
+    local survivorName, survivorAssignment
+    local initialAssignments, removedNames = {}, {}
+    local i, member, assignment, name
+    if table.getn(SCB.presetSpawnQueue) > 0
+        or (SCB.presetGroupWaitRemaining or 0) > 0
+        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
+        or (SCB.refillState and SCB.refillState.active)
+        or (SCB.replaceDeadState and SCB.replaceDeadState.active)
+        or (SCB.presetRebuildState and SCB.presetRebuildState.active) then
+        SCB_Print(SCB_L("REPLACE_DEAD_BUSY")); return
+    end
+    if table.getn(dead) == 0 then SCB_Print(SCB_L("REPLACE_DEAD_NONE")); return end
+    if not UninviteByName then SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE")); return end
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.isBot then botCount = botCount + 1 elseif not member.isSelf then otherHumans = otherHumans + 1 end
+    end
+    if otherHumans == 0 and table.getn(dead) == botCount and SCB_SurvivorSafetyRequired() then
+        survivorName = SCB_FindGroupOneSurvivor(members)
+        survivorAssignment = SCB_FindAssignmentByBotName(survivorName)
+    end
+    for i = 1, table.getn(dead) do
+        assignment = dead[i]; name = assignment.botName
+        if assignment ~= survivorAssignment then
+            table.insert(initialAssignments, assignment)
+            removedNames[name] = true
+            UninviteByName(name)
+        end
+    end
+    if table.getn(initialAssignments) == 0 and survivorAssignment then
+        SCB_Print(SCB_L("REPLACE_DEAD_LAST_UNSAFE")); return
+    end
+    SCB.replaceDeadState = {
+        active = true, phase = "waitremoved", assignments = initialAssignments,
+        removedNames = removedNames, earliestAt = (GetTime and GetTime() or 0) + 1.0,
+        survivorAssignment = survivorAssignment, survivorName = survivorName,
+    }
+    SCB_RefreshReplaceDeadButton()
+end
+
+function SCB_ReplaceDeadOnUpdate()
+    local state = SCB.replaceDeadState
+    local now = GetTime and GetTime() or 0
+    local ok, errorText
+    if not state or not state.active then return end
+    if state.phase == "waitremoved" then
+        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
+        ok, errorText = SCB_StartRefillAssignments(state.assignments)
+        if not ok then if errorText then SCB_Print(errorText) end state.active=false SCB_RefreshReplaceDeadButton(); return end
+        state.phase = "waitrefill"; return
+    end
+    if state.phase == "waitrefill" then
+        if SCB.refillState and SCB.refillState.active then return end
+        if state.survivorAssignment and state.survivorName then
+            if SCB_CountGroupBots() <= 1 then SCB_Print(SCB_L("REPLACE_DEAD_LAST_UNSAFE")); state.active=false; SCB_RefreshReplaceDeadButton(); return end
+            if SCB_GroupHasName(state.survivorName) then UninviteByName(state.survivorName) end
+            state.removedNames = { [state.survivorName] = true }
+            state.earliestAt = now + 1.0
+            state.phase = "waitsurvivorremoved"; return
+        end
+        state.active=false; SCB_RefreshReplaceDeadButton(); return
+    end
+    if state.phase == "waitsurvivorremoved" then
+        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
+        ok, errorText = SCB_StartRefillAssignments({ state.survivorAssignment })
+        if not ok then if errorText then SCB_Print(errorText) end state.active=false; SCB_RefreshReplaceDeadButton(); return end
+        state.phase = "waitsurvivorrefill"; return
+    end
+    if state.phase == "waitsurvivorrefill" then
+        if SCB.refillState and SCB.refillState.active then return end
+        state.active=false; SCB_RefreshReplaceDeadButton()
+    end
+end
+
 function SCB_RefillOnUpdate(elapsed)
     local state = SCB.refillState
     local missing, groupMissing, assignment, members, beforeNames, newBots
@@ -2497,7 +2608,11 @@ function SCB_RefillOnUpdate(elapsed)
     end
 
     if state.phase == "nextgroup" or state.phase == "combat" then
-        missing = SCB_GetMissingRaidAssignments(state.anchorName, state.delayedAssignment and state.delayedAssignment.slotIndex or nil)
+        if state.fixedAssignments then
+            missing = state.fixedAssignments
+        else
+            missing = SCB_GetMissingRaidAssignments(state.anchorName, state.delayedAssignment and state.delayedAssignment.slotIndex or nil)
+        end
         if table.getn(missing) == 0 then
             if state.anchorName and state.delayedAssignment then
                 state.phase = "removeanchor"
@@ -2604,6 +2719,20 @@ function SCB_RefillOnUpdate(elapsed)
         end
         SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
 
+        if state.fixedAssignments then
+            local remainingAssignments = {}
+            local candidate, matched
+            for i = 1, table.getn(state.fixedAssignments) do
+                candidate = state.fixedAssignments[i]
+                matched = false
+                for j = 1, table.getn(state.assignments) do
+                    if candidate == state.assignments[j] then matched = true break end
+                end
+                if not matched then table.insert(remainingAssignments, candidate) end
+            end
+            state.fixedAssignments = remainingAssignments
+        end
+
         state.phase = "nextgroup"
         state.group = nil
         state.assignments = nil
@@ -2687,6 +2816,8 @@ function SCB_PresetSpawnQueueOnUpdate()
     local nextItem, bootstrapName
     local elapsed = arg1 or 0
 
+    SCB_PresetRebuildOnUpdate()
+    SCB_ReplaceDeadOnUpdate()
     SCB_RefillOnUpdate(elapsed)
 
     -- A logical preset group is a single same-frame burst. The only timed
@@ -3230,6 +3361,37 @@ function SCB_StartPresetSummonSnapshot(snapshot)
     return true
 end
 
+function SCB_StartPresetRebuild(snapshot)
+    if table.getn(SCB.presetSpawnQueue) > 0
+        or (SCB.presetGroupWaitRemaining or 0) > 0
+        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
+        or (SCB.refillState and SCB.refillState.active)
+        or (SCB.replaceDeadState and SCB.replaceDeadState.active)
+        or (SCB.presetRebuildState and SCB.presetRebuildState.active) then
+        return false, SCB_L("ERR_SUMMON_BUSY")
+    end
+    if SCB_CountGroupBots() == 0 then return SCB_StartPresetSummonSnapshot(snapshot) end
+    SCB.presetRebuildState = { active = true, snapshot = snapshot, readySeenAt = nil }
+    SCB_KickBots(false)
+    return true
+end
+
+function SCB_PresetRebuildOnUpdate()
+    local state = SCB.presetRebuildState
+    local now = GetTime and GetTime() or 0
+    local anchorName, ready, ok, errorText
+    if not state or not state.active then return end
+    anchorName = SCB_GetKickAllAnchorForFreshBuild()
+    ready = SCB_CountGroupBots() == 0 or anchorName ~= nil
+    if not ready then state.readySeenAt=nil; return end
+    if not state.readySeenAt then state.readySeenAt=now; return end
+    if now - state.readySeenAt < 1.0 then return end
+    state.active=false
+    ok, errorText = SCB_StartPresetSummonSnapshot(state.snapshot)
+    if not ok and errorText then SCB_Print(errorText) end
+    SCB.presetRebuildState=nil
+end
+
 function SCB_PresetSummonOnClick()
     local snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
     local ok
@@ -3242,7 +3404,7 @@ function SCB_PresetSummonOnClick()
     SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
     SCB_RefreshPresetPlayers()
 
-    ok, errorText = SCB_StartPresetSummonSnapshot(snapshot)
+    ok, errorText = SCB_StartPresetRebuild(snapshot)
     if not ok and errorText then SCB_Print(errorText) end
 end
 

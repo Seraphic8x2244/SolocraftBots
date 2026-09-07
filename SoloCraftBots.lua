@@ -1065,22 +1065,19 @@ function SCB_LayoutCommandUI()
     end
 
     y = y - buttonSize - 6
-    -- Refill shares the removal row with Kick Dead / Kick All. Keep the three
-    -- utility buttons equal-width and centred as one compact strip.
-    local utilityWidth = 72
+    -- Explicit maintenance actions: Replace Dead preserves the tracked preset
+    -- assignment, while Kick All is the manual safe-clear action.
+    local utilityWidth = 96
     local utilityGap = 6
-    local utilityTotal = (3 * utilityWidth) + (2 * utilityGap)
+    local utilityTotal = (2 * utilityWidth) + utilityGap
     local utilityLeft = math.floor((SCB.frame:GetWidth() - utilityTotal) / 2)
 
-    layout.refill:ClearAllPoints()
-    layout.refill:SetWidth(utilityWidth)
-    layout.refill:SetPoint("TOPLEFT", layout.content, "TOPLEFT", utilityLeft, y)
-    layout.kickDead:ClearAllPoints()
-    layout.kickDead:SetWidth(utilityWidth)
-    layout.kickDead:SetPoint("LEFT", layout.refill, "RIGHT", utilityGap, 0)
+    layout.replaceDead:ClearAllPoints()
+    layout.replaceDead:SetWidth(utilityWidth)
+    layout.replaceDead:SetPoint("TOPLEFT", layout.content, "TOPLEFT", utilityLeft, y)
     layout.kickAll:ClearAllPoints()
     layout.kickAll:SetWidth(utilityWidth)
-    layout.kickAll:SetPoint("LEFT", layout.kickDead, "RIGHT", utilityGap, 0)
+    layout.kickAll:SetPoint("LEFT", layout.replaceDead, "RIGHT", utilityGap, 0)
 
     -- Positive spacing can make the command block taller than its original
     -- fixed content area. Grow the section only when needed; negative spacing
@@ -1220,27 +1217,16 @@ function SCB_CreateCommandUI(frame)
         table.insert(standaloneButtons, button)
     end
 
-    -- Refill belongs with the raid-maintenance actions rather than inside the
-    -- Presets drawer. Its tracker/state remains preset-backed; this is only a
-    -- UI relocation.
-    local refill = SCB_CreateTextButton(content, "SoloCraftBotsPresetRefill", 72, 24, SCB_L("PRESET_REFILL"))
-    refill.scbTooltip = SCB_L("PRESET_REFILL_TOOLTIP_EMPTY")
-    refill:SetScript("OnClick", SCB_RefillPresetOnClick)
-    refill:SetScript("OnEnter", SCB_TooltipOnEnter)
-    refill:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.presetRefillButton = refill
-    SCB_SetPresetButtonGrey(refill)
+    -- Replace Dead captures exact tracked dead slots before removal.
+    local replaceDead = SCB_CreateTextButton(content, "SoloCraftBotsReplaceDead", 96, 24, SCB_L("REPLACE_DEAD"))
+    replaceDead.scbTooltip = SCB_L("REPLACE_DEAD_NONE")
+    replaceDead:SetScript("OnClick", SCB_ReplaceDeadOnClick)
+    replaceDead:SetScript("OnEnter", SCB_TooltipOnEnter)
+    replaceDead:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.replaceDeadButton = replaceDead
+    SCB_SetPresetButtonGrey(replaceDead)
 
-    -- Native removals deliberately do not use .partybot remove. Both routes
-    -- share survivor safety so the last bot is retained when the player is
-    -- the only human in the group.
-    local kickDead = SCB_CreateTextButton(content, "SoloCraftBotsKickDead", 72, 24, SCB_L("KICK_DEAD"))
-    kickDead.scbTooltip = SCB_L("TIP_KICK_DEAD")
-    kickDead:SetScript("OnClick", SCB_KickDeadOnClick)
-    kickDead:SetScript("OnEnter", SCB_TooltipOnEnter)
-    kickDead:SetScript("OnLeave", SCB_TooltipOnLeave)
-
-    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 72, 24, SCB_L("KICK_ALL"))
+    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 96, 24, SCB_L("KICK_ALL"))
     kickAll.scbTooltip = SCB_L("TIP_KICK_ALL")
     kickAll:SetScript("OnClick", SCB_KickAllOnClick)
     kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1253,8 +1239,7 @@ function SCB_CreateCommandUI(frame)
         rows = layoutRows,
         pairedComeButtons = pairedComeButtons,
         standaloneButtons = standaloneButtons,
-        refill = refill,
-        kickDead = kickDead,
+        replaceDead = replaceDead,
         kickAll = kickAll,
     }
     SCB_LayoutCommandUI()
