@@ -48,8 +48,8 @@ function SCB_CreateAutoLootOption(parent)
     local label, selector, arrow, menu, i, info, button
 
     label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, -46)
-    label:SetWidth(72)
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, -8)
+    label:SetWidth(118)
     label:SetJustifyH("LEFT")
     label:SetText(SCB_L("OPTION_AUTO_LOOT"))
     label:SetTextColor(0.90, 0.90, 0.90, 1)
@@ -101,6 +101,8 @@ function SCB_OptionCheckOnClick()
     if not this or not this.scbOptionKey then return end
     SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options[this.scbOptionKey] = this:GetChecked() and true or false
+    if this.scbOptionKey == "hideSCBMessages" and SoloCraftBotsDB.options.hideSCBMessages
+        and SCB.safetyMessageFrame then SCB.safetyMessageFrame:Hide() end
     if this.scbOptionKey == "autoPromotePlayers" then SCB_ApplyAutoPromotePlayers() end
     if this.scbOptionKey == "autoSwapPresetGroup" and SoloCraftBotsDB.options.autoSwapPresetGroup and SCB_ApplyCurrentLocationPresetGroup then
         SCB_ApplyCurrentLocationPresetGroup()
@@ -300,9 +302,9 @@ end
 
 function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeight)
     local section = CreateFrame("Frame", nil, parent)
-    local toggle, title, debugCheck, debugLabel, content
+    local toggle, debugCheck, debugLabel, content
     section:SetWidth(parent:GetWidth())
-    section.scbExpanded = false
+    section.scbExpanded = sectionKey == nil
     section.scbCollapsedHeight = 26
     section.scbExpandedHeight = expandedHeight
 
@@ -312,25 +314,26 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     toggle:SetScript("OnClick", SCB_OptionsSubsectionToggleOnClick)
     section.scbToggle = toggle
 
-    title = section:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", section, "TOPLEFT", 36, -5)
-    title:SetText(SCB_L(labelKey))
-    title:SetTextColor(0.82, 0.82, 0.82, 1)
-    section.scbTitle = title
+    section.scbTitle = SCB_CreateSectionTitle(section, SCB_L(labelKey), 36, -4)
+    toggle.scbTooltip = string.format(SCB_L("TIP_COLLAPSE_EXPAND"), SCB_L(labelKey))
+    toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
+    toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    debugCheck = CreateFrame("CheckButton", nil, section, "UICheckButtonTemplate")
-    debugCheck:SetWidth(20)
-    debugCheck:SetHeight(20)
-    debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
-    debugCheck.scbLayoutSection = sectionKey
-    debugCheck:SetScript("OnClick", SCB_OptionsDebugOnClick)
-    section.scbDebugCheck = debugCheck
+    if sectionKey then
+        debugCheck = CreateFrame("CheckButton", nil, section, "UICheckButtonTemplate")
+        debugCheck:SetWidth(20)
+        debugCheck:SetHeight(20)
+        debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
+        debugCheck.scbLayoutSection = sectionKey
+        debugCheck:SetScript("OnClick", SCB_OptionsDebugOnClick)
+        section.scbDebugCheck = debugCheck
 
-    debugLabel = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    debugLabel:SetPoint("RIGHT", debugCheck, "LEFT", -2, 0)
-    debugLabel:SetText(SCB_L("OPTION_DEBUG"))
-    debugLabel:SetTextColor(0.65, 0.65, 0.65, 1)
-    section.scbDebugLabel = debugLabel
+        debugLabel = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        debugLabel:SetPoint("RIGHT", debugCheck, "LEFT", -2, 0)
+        debugLabel:SetText(SCB_L("OPTION_DEBUG"))
+        debugLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+        section.scbDebugLabel = debugLabel
+    end
 
     content = CreateFrame("Frame", nil, section)
     content:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -26)
@@ -351,29 +354,27 @@ function SCB_RefreshOptionsSectionArrow(section)
     end
 end
 
+local function SCB_LayoutOptionsSection(section, parent, y)
+    local height = section.scbExpanded and section.scbExpandedHeight or section.scbCollapsedHeight
+    section:ClearAllPoints()
+    section:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+    section:SetHeight(height)
+    SCB_RefreshOptionsSectionArrow(section)
+    return y - height
+end
+
 function SCB_LayoutOptionsUI()
-    local y, commandHeight, presetHeight, panelHeight
+    local y, layoutY
     if not SCB.optionsPanel then return end
-    y = -363
-    if SCB.optionCommandSection then
-        commandHeight = SCB.optionCommandSection.scbExpanded and SCB.optionCommandSection.scbExpandedHeight or SCB.optionCommandSection.scbCollapsedHeight
-        SCB.optionCommandSection:ClearAllPoints()
-        SCB.optionCommandSection:SetPoint("TOPLEFT", SCB.optionsPanel, "TOPLEFT", 0, y)
-        SCB.optionCommandSection:SetHeight(commandHeight)
-        SCB_RefreshOptionsSectionArrow(SCB.optionCommandSection)
-        y = y - commandHeight
-    end
-    if SCB.optionPresetSection then
-        presetHeight = SCB.optionPresetSection.scbExpanded and SCB.optionPresetSection.scbExpandedHeight or SCB.optionPresetSection.scbCollapsedHeight
-        SCB.optionPresetSection:ClearAllPoints()
-        SCB.optionPresetSection:SetPoint("TOPLEFT", SCB.optionsPanel, "TOPLEFT", 0, y)
-        SCB.optionPresetSection:SetHeight(presetHeight)
-        SCB_RefreshOptionsSectionArrow(SCB.optionPresetSection)
-        y = y - presetHeight
-    end
-    panelHeight = (-y) + 38
-    if panelHeight < 280 then panelHeight = 280 end
-    SCB.optionsPanel:SetHeight(panelHeight)
+    layoutY = SCB_LayoutOptionsSection(SCB.optionCommandSection, SCB.optionLayoutSection.scbContent, 0)
+    layoutY = SCB_LayoutOptionsSection(SCB.optionPresetSection, SCB.optionLayoutSection.scbContent, layoutY)
+    SCB.optionLayoutSection.scbContent:SetHeight(-layoutY)
+    SCB.optionLayoutSection.scbExpandedHeight = 26 - layoutY
+
+    y = SCB_LayoutOptionsSection(SCB.optionMiscSection, SCB.optionsPanel, -40)
+    y = SCB_LayoutOptionsSection(SCB.optionChatSection, SCB.optionsPanel, y)
+    y = SCB_LayoutOptionsSection(SCB.optionLayoutSection, SCB.optionsPanel, y)
+    SCB.optionsPanel:SetHeight(-y + 38)
     if SCB.optionVersion then
         SCB.optionVersion:ClearAllPoints()
         SCB.optionVersion:SetPoint("BOTTOMLEFT", SCB.optionsPanel, "BOTTOMLEFT", 16, 14)
@@ -386,7 +387,7 @@ function SCB_RefreshOptionsUI()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
     if SCB.optionAutoPromotePlayersCheck then SCB.optionAutoPromotePlayersCheck:SetChecked(options.autoPromotePlayers and 1 or nil) end
-    if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.showSafetyMessages and 1 or nil) end
+    if SCB.optionSafetyCheck then SCB.optionSafetyCheck:SetChecked(options.hideSCBMessages and 1 or nil) end
     if SCB.optionAutoSwapPresetGroupCheck then SCB.optionAutoSwapPresetGroupCheck:SetChecked(options.autoSwapPresetGroup and 1 or nil) end
     if SCB.optionBotSummonMessageCheck then SCB.optionBotSummonMessageCheck:SetChecked(options.hideBotSummonMessage and 1 or nil) end
     if SCB.optionBotGroupMessagesCheck then SCB.optionBotGroupMessagesCheck:SetChecked(options.hideBotGroupMessages and 1 or nil) end
@@ -447,8 +448,8 @@ end
 
 function SCB_CreateOptionsUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
-    local heading, resetTutorials, layoutHeading, botChatHeading, commandContent, presetContent, sublabel, control
-    panel:SetWidth(230)
+    local heading, resetTutorials, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control
+    panel:SetWidth(290)
     panel:SetHeight(220)
     panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
     panel:SetBackdrop({
@@ -471,39 +472,36 @@ function SCB_CreateOptionsUI(frame)
     heading:SetText(SCB_L("OPTIONS_TITLE"))
     heading:SetTextColor(1, 0.82, 0, 1)
 
-    SCB_CreateAutoLootOption(panel)
-    SCB.optionSafetyCheck = SCB_CreateOptionCheck(panel, "showSafetyMessages", "OPTION_SAFETY_MESSAGES", -70)
-    SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(panel, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -94)
-
-    SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(panel, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -118)
-
-    botChatHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    botChatHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -150)
-    botChatHeading:SetText(SCB_L("OPTIONS_BOT_CHAT_FILTER"))
-    botChatHeading:SetTextColor(1, 0.82, 0, 1)
-    SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(panel, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -168)
-    SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -192)
-    SCB.optionBotMovementMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotMovementMessages", "OPTION_HIDE_BOT_MOVEMENT_MESSAGES", -216)
-    SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -240)
-    SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(panel, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -264)
-
-    resetTutorials = SCB_CreateTextButton(panel, nil, 112, 22, SCB_L("RESET_TUTORIALS"))
-    resetTutorials:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -300)
+    SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
+    miscContent = SCB.optionMiscSection.scbContent
+    SCB_CreateAutoLootOption(miscContent)
+    SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
+    SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
+    resetTutorials = SCB_CreateTextButton(miscContent, nil, 112, 22, SCB_L("RESET_TUTORIALS"))
+    resetTutorials:SetPoint("TOPLEFT", miscContent, "TOPLEFT", 16, -84)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
-    layoutHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    layoutHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -333)
-    layoutHeading:SetText(SCB_L("OPTIONS_LAYOUT_TITLE"))
-    layoutHeading:SetTextColor(1, 0.82, 0, 1)
-    SCB.optionLayoutHeading = layoutHeading
+    SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 178)
+    chatContent = SCB.optionChatSection.scbContent
+    SCB.optionSafetyCheck = SCB_CreateOptionCheck(chatContent, "hideSCBMessages", "OPTION_HIDE_SCB_MESSAGES", -2)
+    SCB.optionBotSummonMessageCheck = SCB_CreateOptionCheck(chatContent, "hideBotSummonMessage", "OPTION_HIDE_BOT_SUMMON_MESSAGE", -26)
+    SCB.optionBotGroupMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotGroupMessages", "OPTION_HIDE_BOT_GROUP_MESSAGES", -50)
+    SCB.optionBotMovementMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotMovementMessages", "OPTION_HIDE_BOT_MOVEMENT_MESSAGES", -74)
+    SCB.optionBotPauseMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotPauseMessages", "OPTION_HIDE_BOT_PAUSE_MESSAGES", -98)
+    SCB.optionBotAttackMessagesCheck = SCB_CreateOptionCheck(chatContent, "hideBotAttackMessages", "OPTION_HIDE_BOT_ATTACK_MESSAGES", -122)
 
-    SCB.optionCommandSection = SCB_CreateOptionsSubsection(panel, "command", "OPTION_COMMAND_BUTTONS", 104)
+    SCB.optionLayoutSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_LAYOUT_TITLE", 78)
+    layoutContent = SCB.optionLayoutSection.scbContent
+    layoutContent:ClearAllPoints()
+    layoutContent:SetPoint("TOPLEFT", SCB.optionLayoutSection, "TOPLEFT", 12, -26)
+    layoutContent:SetWidth(panel:GetWidth() - 12)
+    SCB.optionCommandSection = SCB_CreateOptionsSubsection(layoutContent, "command", "OPTION_COMMAND_BUTTONS", 104)
     commandContent = SCB.optionCommandSection.scbContent
     control = SCB_CreateLayoutControl(commandContent, "command", "horizontalSpacing", "OPTION_COMMAND_H_SPACING", -2, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "verticalSpacing", "OPTION_COMMAND_V_SPACING", -28, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "groupVerticalSpacing", "OPTION_COMMAND_GROUP_SPACING", -54, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
 
-    SCB.optionPresetSection = SCB_CreateOptionsSubsection(panel, "preset", "OPTION_PRESET_GROUPS", 286)
+    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 286)
     presetContent = SCB.optionPresetSection.scbContent
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupWidth", "OPTION_GROUP_WIDTH", -2, 60, 160, -30, 30); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupHeight", "OPTION_GROUP_HEIGHT", -26, 100, 240, -50, 50); table.insert(SCB.optionLayoutControls, control)

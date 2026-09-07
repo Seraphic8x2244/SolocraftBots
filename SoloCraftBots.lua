@@ -48,6 +48,7 @@ BINDING_HEADER_SOLOCRAFTBOTS = SCB_L("BINDING_HEADER")
 BINDING_NAME_SOLOCRAFTBOTS_TOGGLE = SCB_L("BINDING_TOGGLE")
 
 function SCB_Print(text)
+    if SoloCraftBotsDB.options and SoloCraftBotsDB.options.hideSCBMessages then return end
     if DEFAULT_CHAT_FRAME then
         DEFAULT_CHAT_FRAME:AddMessage(SCB.prefix .. text)
     end
@@ -283,7 +284,10 @@ function SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
     options = SoloCraftBotsDB.options
     if options.autoLootMethod == nil then options.autoLootMethod = "off" end
-    if options.showSafetyMessages == nil then options.showSafetyMessages = true end
+    if options.hideSCBMessages == nil then
+        options.hideSCBMessages = options.showSafetyMessages == false
+    end
+    options.showSafetyMessages = nil
     if options.hideBotSummonMessage == nil then options.hideBotSummonMessage = false end
     if options.hideBotGroupMessages == nil then options.hideBotGroupMessages = false end
     if options.hideBotMovementMessages == nil then options.hideBotMovementMessages = false end
