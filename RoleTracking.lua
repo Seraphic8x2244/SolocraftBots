@@ -10,8 +10,28 @@ local SCB = SoloCraftBots
 
 SCB.pendingAssumedSpawns = SCB.pendingAssumedSpawns or {}
 SCB.assumedRolesByName = SCB.assumedRolesByName or {}
+SCB.PRESET_WAIT_REAL_RAID_START = "__SCB_WAIT_REAL_RAID_START__"
 
-local function SCB_ParseSpawnAssumption(command)
+-- SoloCraft upgrades newly-spawned bots to T3 only when both conditions are
+-- already true: the player is inside one of these 20/40-player raid zones and
+-- the player is already in a raid group. A temporary bootstrap is therefore
+-- useful only for a solo start in these locations.
+local SCB_T3_RAID_GROUPS = {
+    zg = true,
+    aq20 = true,
+    mc = true,
+    onyxia = true,
+    bwl = true,
+    aq40 = true,
+    naxx = true,
+}
+
+function SCB_IsT3RaidLocation()
+    local context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    return context and context.inInstance and SCB_T3_RAID_GROUPS[context.groupID] == true
+end
+
+local function SCB_ParseSpawnAssumption(command, spawnKind)
     local _, _, classKey, role, extra
     if not command or command == "" then return nil end
     _, _, classKey, role, extra = string.find(command, "^add%s+(%S+)%s+(%S+)%s*(.*)$")
@@ -22,6 +42,7 @@ local function SCB_ParseSpawnAssumption(command)
         class = classKey,
         role = role,
         extra = extra,
+        spawnKind = spawnKind or "preset",
         queuedAt = GetTime and GetTime() or 0,
     }
 end
@@ -35,7 +56,17 @@ function SCB_GetResolvedLiveRole(member)
     return member.confirmedRole or member.assumedRole
 end
 
-local function SCB_QueueAssumedSpawn(command)
+local function SCB_CurrentManagedSpawnKind()
+    -- The legacy preset scheduler sends its temporary warrior immediately
+    -- before WAIT_BOOTSTRAP. Detect that exact lifecycle position rather than
+    -- inferring "bootstrap" from warrior+tank, which is also a valid real slot.
+    if SCB.presetSpawnQueue and SCB.presetSpawnQueue[2] == "__SCB_WAIT_BOOTSTRAP__" then
+        return "bootstrap"
+    end
+    return "preset"
+end
+
+local function SCB_QueueAssumedSpawn(command, spawnKind)
     local intent
 
     -- Manual one-off spawns are intentionally left for the future detector.
@@ -50,7 +81,7 @@ local function SCB_QueueAssumedSpawn(command)
         return
     end
 
-    intent = SCB_ParseSpawnAssumption(command)
+    intent = SCB_ParseSpawnAssumption(command, spawnKind)
     if not intent then return end
     table.insert(SCB.pendingAssumedSpawns, intent)
 end
@@ -176,6 +207,7 @@ if SCB_OriginalBuildLiveRoster then
                 member.assumedExtra = assumption.extra
                 member.assumedClass = assumption.class or member.assumedClass
                 member.assumedRoleSource = "spawn"
+                member.spawnKind = assumption.spawnKind
             elseif member and member.isBot and SCB_GetActiveSlotByName then
                 slot = SCB_GetActiveSlotByName(member.name)
                 if slot and slot.role then
@@ -195,7 +227,8 @@ end
 
 -- The Live Roster is now the one controller of SCB-applied pfUI tank flags.
 -- Manual pfUI tank assignments remain untouched because we remove only names
--- previously written by SCB itself.
+-- previously written by SCB itself. Bootstrap is lifecycle infrastructure, not
+-- a real preset member, so it never receives a persistent SCB tank mark.
 function SCB_ApplyLivePfUITankRoles()
     local roles, roster, i, member, name, frame
     if not pfUI or not pfUI.uf or not pfUI.uf.raid
@@ -210,7 +243,8 @@ function SCB_ApplyLivePfUITankRoles()
 
     for i = 1, table.getn(roster and roster.members or {}) do
         member = roster.members[i]
-        if member and member.name and SCB_GetResolvedLiveRole(member) == "tank" then
+        if member and member.name and member.spawnKind ~= "bootstrap"
+            and SCB_GetResolvedLiveRole(member) == "tank" then
             roles[member.name] = true
             SCB.pfuiAutoTanks[member.name] = true
         end
@@ -239,7 +273,8 @@ end
 -- Reconcile the legacy preset tracker after it reaches its normal full-roster
 -- barrier. The old ordinal map may have been wrong; exact spawn-command identity
 -- plus the live subgroup lets us replace it with the summoner-linked name.
--- Identical requests are interchangeable by definition.
+-- Identical requests are interchangeable by definition. Bootstrap can never
+-- satisfy a preset assignment even if its warrior+tank command happens to match.
 function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     local roster, used, replacements = nil, {}, {}
     local i, j, assignment, member, assumption, wantedGroup, matchedName
@@ -262,7 +297,8 @@ function SCB_ReconcileTrackerFromAssumedRoles(tracker)
                 assumption = member and SCB.assumedRolesByName[member.name] or nil
                 if member and member.isBot and member.name and not used[member.name]
                     and (member.currentGroup or 1) == wantedGroup
-                    and assumption and assumption.command == assignment.command then
+                    and assumption and assumption.spawnKind ~= "bootstrap"
+                    and assumption.command == assignment.command then
                     matchedName = member.name
                     break
                 end
@@ -305,8 +341,20 @@ end
 local SCB_OriginalSendSpawnCommand = SCB_SendSpawnCommand
 if SCB_OriginalSendSpawnCommand then
     function SCB_SendSpawnCommand(command)
-        SCB_QueueAssumedSpawn(command)
+        SCB_QueueAssumedSpawn(command, SCB_CurrentManagedSpawnKind())
         return SCB_OriginalSendSpawnCommand(command)
+    end
+end
+
+-- A bootstrap should never be adopted as a desired maintained slot. Normally
+-- the preset transition already suppresses adoption while it exists; this guard
+-- makes the lifecycle rule explicit and protects future callers as well.
+local SCB_OriginalAdoptObservedBotIntoActiveRoster = SCB_AdoptObservedBotIntoActiveRoster
+if SCB_OriginalAdoptObservedBotIntoActiveRoster then
+    function SCB_AdoptObservedBotIntoActiveRoster(member, roster)
+        local assumption = member and member.name and SCB.assumedRolesByName[member.name] or nil
+        if assumption and assumption.spawnKind == "bootstrap" then return nil end
+        return SCB_OriginalAdoptObservedBotIntoActiveRoster(member, roster)
     end
 end
 
@@ -321,6 +369,99 @@ if SCB_OriginalHandleRosterChange then
         SCB_OriginalHandleRosterChange()
         SCB_PruneAssumedRolesToCurrentRoster()
         SCB_ApplyLivePfUITankRoles()
+    end
+end
+
+-- The existing Presets.lua solo >5 scheduler was deliberately built around one
+-- temporary warrior: [check] [warrior tank] [wait bootstrap] ... [handoff real
+-- G1 bot]. Outside T3 raid zones that temporary member is unnecessary. Reuse the
+-- already-held real Group 1 command as the party creator, convert that real bot
+-- to raid with the player, and delete the later temporary-survivor handoff.
+local function SCB_RewriteSoloRaidQueueWithoutBootstrap()
+    local queue = SCB.presetSpawnQueue or {}
+    local bootstrapWaitIndex, handoffIndex, heldCommand, i
+
+    for i = 1, table.getn(queue) do
+        if queue[i] == "__SCB_WAIT_BOOTSTRAP__" and not bootstrapWaitIndex then
+            bootstrapWaitIndex = i
+        elseif queue[i] == SCB.PRESET_WAIT_FINAL_ROSTER and not handoffIndex then
+            handoffIndex = i
+        end
+    end
+
+    if not bootstrapWaitIndex or bootstrapWaitIndex <= 1 or not handoffIndex then return false end
+    if queue[handoffIndex + 1] ~= SCB.PRESET_REMOVE_SURVIVOR
+        or queue[handoffIndex + 2] ~= SCB.PRESET_WAIT_SURVIVOR_GONE
+        or queue[handoffIndex + 3] ~= SCB.PRESET_CHECK_COMBAT then
+        return false
+    end
+
+    heldCommand = queue[handoffIndex + 4]
+    if type(heldCommand) ~= "string" or string.find(heldCommand, "^__SCB_") then return false end
+
+    -- Replace only the temporary add command; preserve its preceding combat gate.
+    queue[bootstrapWaitIndex - 1] = heldCommand
+    queue[bootstrapWaitIndex] = SCB.PRESET_WAIT_REAL_RAID_START
+
+    -- The real bot is already present, so there is no temporary survivor to
+    -- wait for/remove/re-spawn at the end. Remove the complete handoff sequence.
+    for i = 1, 5 do table.remove(queue, handoffIndex) end
+
+    SCB.presetExpectedBotCountBeforeHandoff = nil
+    SCB.presetBootstrapBotName = nil
+    SCB.presetSurvivorBotName = nil
+    return true
+end
+
+local SCB_OriginalStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
+if SCB_OriginalStartPresetSummonSnapshot then
+    function SCB_StartPresetSummonSnapshot(snapshot)
+        local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+        local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+        local soloRaidStart = snapshot and (snapshot.size or 0) > 5 and raidCount == 0 and partyCount == 0
+        local needsBootstrap = soloRaidStart and SCB_IsT3RaidLocation()
+        local ok, errorText = SCB_OriginalStartPresetSummonSnapshot(snapshot)
+
+        if ok and soloRaidStart and not needsBootstrap then
+            if not SCB_RewriteSoloRaidQueueWithoutBootstrap() then
+                if SCB_AbortBotSpawnOperations then SCB_AbortBotSpawnOperations() end
+                return false, SCB_L("ERR_SUMMON_BUSY")
+            end
+        end
+        return ok, errorText
+    end
+end
+
+-- Custom barrier used only by the non-T3 solo >5 path. The first member is a
+-- real preset bot, so retain it: wait for its party membership, convert to raid,
+-- then hand control straight back to the normal WAIT_RAID/arrange/spawn queue.
+local SCB_OriginalPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
+if SCB_OriginalPresetSpawnQueueOnUpdate then
+    function SCB_PresetSpawnQueueOnUpdate()
+        local queue = SCB.presetSpawnQueue or {}
+        local head = queue[1]
+        local partyCount, raidCount
+
+        if head == SCB.PRESET_WAIT_REAL_RAID_START then
+            if not SCB_FindFirstGroupBotName or not SCB_FindFirstGroupBotName() then return end
+
+            raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+            if raidCount > 0 then
+                table.remove(queue, 1)
+                SCB.presetSpawnElapsed = 0
+                return
+            end
+
+            partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            if partyCount > 0 and ConvertToRaid then
+                ConvertToRaid()
+                queue[1] = "__SCB_WAIT_RAID__"
+                SCB.presetSpawnElapsed = 0
+            end
+            return
+        end
+
+        return SCB_OriginalPresetSpawnQueueOnUpdate()
     end
 end
 
