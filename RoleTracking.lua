@@ -1,7 +1,7 @@
 -- SoloCraft Bots - live role identity and pfUI tank-role integration.
 --
 -- 0.6.x has one reliable role source immediately after an SCB spawn: the role
--- SCB itself requested.  Keep that as assumedRole on the named live member.
+-- SCB itself requested. Keep that as assumedRole on the named live member.
 -- confirmedRole is deliberately a separate, higher-priority observation layer;
 -- 0.7.0 can populate it without changing the consumers defined here.
 
@@ -43,7 +43,7 @@ local function SCB_QueueAssumedSpawn(command)
     -- assumed role because SCB owns both the requested command and its lifecycle.
     if not SCB_HasBotSpawnOperation or not SCB_HasBotSpawnOperation() then return end
 
-    -- A server combat rejection re-sends the exact same burst.  The original
+    -- A server combat rejection re-sends the exact same burst. The original
     -- unmatched intents already describe that retry, so do not enqueue copies.
     if (SCB.presetCombatRetryFailures or 0) > 0
         and table.getn(SCB.pendingAssumedSpawns or {}) > 0 then
@@ -71,8 +71,19 @@ function SCB_BindNextAssumedSpawnName(name)
     return SCB_BindAssumedSpawnName(name, intent)
 end
 
+-- Keep name-linked assumptions session-local and live-only. A kicked bot can be
+-- given the same random name by a later summon, and that later spawn must be free
+-- to acquire a new assumed role rather than inheriting stale identity.
+local function SCB_PruneAssumedRolesToCurrentRoster()
+    local current = SCB_GetRosterNames and SCB_GetRosterNames() or {}
+    local name
+    for name in pairs(SCB.assumedRolesByName or {}) do
+        if not current[name] then SCB.assumedRolesByName[name] = nil end
+    end
+end
+
 -- Primary identity path: SoloCraft's membership messages arrive in the same
--- server processing order as the add commands.  This preserves the summoner's
+-- server processing order as the add commands. This preserves the summoner's
 -- role identity even when Blizzard later presents the subgroup in another order.
 function SCB_HandleAssumedRoleSystemMessage(text)
     local _, _, name
@@ -91,9 +102,9 @@ function SCB_HandleAssumedRoleSystemMessage(text)
 end
 
 -- Fallback for server builds that do not emit one of the membership strings
--- above.  Most roster events expose one newly-added bot; if several arrive in
+-- above. Most roster events expose one newly-added bot; if several arrive in
 -- one event, match requested class first, then preserve live roster order only
--- for genuinely ambiguous same-class additions.  Class is identity evidence
+-- for genuinely ambiguous same-class additions. Class is identity evidence
 -- here, never a restriction on which role a class is allowed to have.
 local function SCB_BindAssumptionsFromRosterDelta(previousNames)
     local newMembers, used, consumed = {}, {}, {}
@@ -147,8 +158,8 @@ local function SCB_BindAssumptionsFromRosterDelta(previousNames)
     end
 end
 
--- Enrich the canonical Live Roster.  A fresh name-linked spawn assumption wins
--- over the legacy preset ordinal association.  Once the Active Roster exists,
+-- Enrich the canonical Live Roster. A fresh name-linked spawn assumption wins
+-- over the legacy preset ordinal association. Once the Active Roster exists,
 -- its maintained role is the durable fallback across zoning/reload boundaries.
 local SCB_OriginalBuildLiveRoster = SCB_BuildLiveRoster
 if SCB_OriginalBuildLiveRoster then
@@ -176,9 +187,7 @@ if SCB_OriginalBuildLiveRoster then
                 member.assumedRoleSource = member.assumedRoleSource or "preset"
             end
 
-            if member then
-                member.resolvedRole = SCB_GetResolvedLiveRole(member)
-            end
+            if member then member.resolvedRole = SCB_GetResolvedLiveRole(member) end
         end
         return roster
     end
@@ -196,9 +205,7 @@ function SCB_ApplyLivePfUITankRoles()
     roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
     SCB.pfuiAutoTanks = SCB.pfuiAutoTanks or {}
 
-    for name in pairs(SCB.pfuiAutoTanks) do
-        roles[name] = nil
-    end
+    for name in pairs(SCB.pfuiAutoTanks) do roles[name] = nil end
     SCB.pfuiAutoTanks = {}
 
     for i = 1, table.getn(roster and roster.members or {}) do
@@ -230,9 +237,9 @@ function SCB_ApplyTrackedPfUITankRoles(tracker)
 end
 
 -- Reconcile the legacy preset tracker after it reaches its normal full-roster
--- barrier.  The old ordinal map may have been wrong; exact spawn-command
--- identity plus the live subgroup lets us replace it with the summoner-linked
--- name. Identical requests are interchangeable by definition.
+-- barrier. The old ordinal map may have been wrong; exact spawn-command identity
+-- plus the live subgroup lets us replace it with the summoner-linked name.
+-- Identical requests are interchangeable by definition.
 function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     local roster, used, replacements = nil, {}, {}
     local i, j, assignment, member, assumption, wantedGroup, matchedName
@@ -304,14 +311,15 @@ if SCB_OriginalSendSpawnCommand then
 end
 
 -- Bind a roster-delta fallback before the normal roster handler overwrites
--- SCB.lastRoster, then let the canonical handler refresh Live/Active Roster and
--- finally apply tank flags from the settled live role state.
+-- SCB.lastRoster, then let the canonical handler refresh Live/Active Roster.
+-- Finally prune departed names and apply tank flags from settled live role state.
 local SCB_OriginalHandleRosterChange = SCB_HandleRosterChange
 if SCB_OriginalHandleRosterChange then
     function SCB_HandleRosterChange()
         local previousNames = SCB.lastRoster
         SCB_BindAssumptionsFromRosterDelta(previousNames)
         SCB_OriginalHandleRosterChange()
+        SCB_PruneAssumedRolesToCurrentRoster()
         SCB_ApplyLivePfUITankRoles()
     end
 end
@@ -356,7 +364,5 @@ end
 local roleEventFrame = CreateFrame("Frame", "SoloCraftBotsRoleTrackingEventFrame", UIParent)
 roleEventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 roleEventFrame:SetScript("OnEvent", function()
-    if event == "CHAT_MSG_SYSTEM" then
-        SCB_HandleAssumedRoleSystemMessage(arg1)
-    end
+    if event == "CHAT_MSG_SYSTEM" then SCB_HandleAssumedRoleSystemMessage(arg1) end
 end)
