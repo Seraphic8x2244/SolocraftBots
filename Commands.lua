@@ -396,13 +396,9 @@ function SCB_KickBots(deadOnly)
         return
     end
 
-    -- Kick All is the explicit full-wipe action. It intentionally destroys the
-    -- maintained bot expectation before removals begin, so a safety survivor or
-    -- asynchronously disappearing bot can never light up Replace Missing.
-    if not deadOnly then
-        if SCB_ClearActiveRoster then SCB_ClearActiveRoster("kickall", true) end
-        if SoloCraftBotsCharDB then SoloCraftBotsCharDB.raidRoleTracker = nil end
-    end
+    -- Kick All changes the live group only. Keep the Active Roster and preset
+    -- tracker intact so normal roster events mark removed bots as missing and
+    -- Replace Missing can restore the same maintained composition.
 
     for i = 1, table.getn(members) do
         member = members[i]
