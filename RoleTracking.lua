@@ -1,9 +1,8 @@
 -- SoloCraft Bots - live role identity and pfUI tank-role integration.
 --
--- 0.6.x has one reliable role source immediately after an SCB spawn: the role
--- SCB itself requested. Keep that as assumedRole on the named live member.
--- confirmedRole is deliberately a separate, higher-priority observation layer;
--- 0.7.0 can populate it without changing the consumers defined here.
+-- Spawn ordering and preset scheduling are owned by the explicit Spawn/Raid
+-- runtime. This module only consumes already-planned spawn identities, enriches
+-- the live roster, and exposes resolved role state to pfUI/maintenance.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
@@ -31,22 +30,6 @@ function SCB_IsT3RaidLocation()
     return context and context.inInstance and SCB_T3_RAID_GROUPS[context.groupID] == true
 end
 
-local function SCB_ParseSpawnAssumption(command, spawnKind)
-    local _, _, classKey, role, extra
-    if not command or command == "" then return nil end
-    _, _, classKey, role, extra = string.find(command, "^add%s+(%S+)%s+(%S+)%s*(.*)$")
-    if not classKey or not role then return nil end
-    if extra == "" then extra = nil end
-    return {
-        command = command,
-        class = classKey,
-        role = role,
-        extra = extra,
-        spawnKind = spawnKind or "preset",
-        queuedAt = GetTime and GetTime() or 0,
-    }
-end
-
 function SCB_ClearPendingAssumedSpawns()
     SCB.pendingAssumedSpawns = {}
 end
@@ -54,49 +37,6 @@ end
 function SCB_GetResolvedLiveRole(member)
     if not member then return nil end
     return member.confirmedRole or member.assumedRole
-end
-
-local function SCB_CurrentManagedSpawnKind()
-    -- The legacy preset scheduler sends its temporary warrior immediately
-    -- before WAIT_BOOTSTRAP. Detect that exact lifecycle position rather than
-    -- inferring "bootstrap" from warrior+tank, which is also a valid real slot.
-    if SCB.presetSpawnQueue and SCB.presetSpawnQueue[2] == "__SCB_WAIT_BOOTSTRAP__" then
-        return "bootstrap"
-    end
-    return "preset"
-end
-
-local function SCB_QueueAssumedSpawn(command, spawnKind)
-    local intent, count, insertAt
-
-    -- Manual one-off spawns are intentionally left for the future detector.
-    -- The automated preset/refill machinery is the authoritative source of an
-    -- assumed role because SCB owns both the requested command and its lifecycle.
-    if not SCB_HasBotSpawnOperation or not SCB_HasBotSpawnOperation() then return end
-
-    -- A server combat rejection re-sends the exact same burst. The original
-    -- unmatched intents already describe that retry, so do not enqueue copies.
-    if (SCB.presetCombatRetryFailures or 0) > 0
-        and table.getn(SCB.pendingAssumedSpawns or {}) > 0 then
-        return
-    end
-
-    intent = SCB_ParseSpawnAssumption(command, spawnKind)
-    if not intent then return end
-
-    -- SoloCraft processes same-frame summon bursts LIFO. The preset/refill
-    -- schedulers deliberately send each logical group in reverse so the bots
-    -- are received in preset-slot order. Preserve any older pending burst, but
-    -- reverse the intents queued during this same frame so join messages consume
-    -- assumptions in the same order the bots are actually received.
-    count = table.getn(SCB.pendingAssumedSpawns)
-    insertAt = count + 1
-    while insertAt > 1
-        and SCB.pendingAssumedSpawns[insertAt - 1]
-        and SCB.pendingAssumedSpawns[insertAt - 1].queuedAt == intent.queuedAt do
-        insertAt = insertAt - 1
-    end
-    table.insert(SCB.pendingAssumedSpawns, insertAt, intent)
 end
 
 local function SCB_BindAssumedSpawnName(name, intent)
@@ -126,9 +66,9 @@ local function SCB_PruneAssumedRolesToCurrentRoster()
     end
 end
 
--- Primary identity path: SoloCraft membership messages arrive in server receive
--- order. SCB queues each same-frame reversed summon burst in that receive order,
--- so the first joined bot consumes the logical first preset assignment.
+-- Primary identity path: the explicit summon runtime preloads
+-- SCB.pendingAssumedSpawns in the exact expected SoloCraft receive sequence.
+-- Each membership message consumes one planned logical assignment.
 function SCB_HandleAssumedRoleSystemMessage(text)
     local _, _, name
     if not text or text == "" then return false end
@@ -238,7 +178,7 @@ if SCB_OriginalBuildLiveRoster then
     end
 end
 
--- The Live Roster is now the one controller of SCB-applied pfUI tank flags.
+-- The Live Roster is the one controller of SCB-applied pfUI tank flags.
 -- Manual pfUI tank assignments remain untouched because we remove only names
 -- previously written by SCB itself. Bootstrap is lifecycle infrastructure, not
 -- a real preset member, so it never receives a persistent SCB tank mark.
@@ -283,11 +223,8 @@ function SCB_ApplyTrackedPfUITankRoles(tracker)
     SCB_ApplyLivePfUITankRoles()
 end
 
--- Reconcile the legacy preset tracker after it reaches its normal full-roster
--- barrier. The old ordinal map may have been wrong; exact spawn-command identity
--- plus the live subgroup lets us replace it with the summoner-linked name.
--- Identical requests are interchangeable by definition. Bootstrap can never
--- satisfy a preset assignment even if its warrior+tank command happens to match.
+-- Compatibility reconciliation for trackers created before exact slot metadata.
+-- RaidIdentity.lua replaces this with the explicit slotIndex path later in load.
 function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     local roster, used, replacements = nil, {}, {}
     local i, j, assignment, member, assumption, wantedGroup, matchedName
@@ -337,9 +274,6 @@ if SCB_OriginalTryFinalizeRaidRoleTracking then
         local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
 
         if ready and tracker and SCB_ReconcileTrackerFromAssumedRoles(tracker) then
-            -- The original finalizer may already have built the Active Roster
-            -- from its ordinal guess. Rebuild it once from the corrected tracker
-            -- so Replace Dead/Missing inherits the same identity truth.
             if SCB_EstablishActiveRosterFromTracker then
                 SCB_EstablishActiveRosterFromTracker(tracker)
             end
@@ -350,18 +284,7 @@ if SCB_OriginalTryFinalizeRaidRoleTracking then
     end
 end
 
--- Capture automated spawn intent at the exact point the command is sent.
-local SCB_OriginalSendSpawnCommand = SCB_SendSpawnCommand
-if SCB_OriginalSendSpawnCommand then
-    function SCB_SendSpawnCommand(command)
-        SCB_QueueAssumedSpawn(command, SCB_CurrentManagedSpawnKind())
-        return SCB_OriginalSendSpawnCommand(command)
-    end
-end
-
--- A bootstrap should never be adopted as a desired maintained slot. Normally
--- the preset transition already suppresses adoption while it exists; this guard
--- makes the lifecycle rule explicit and protects future callers as well.
+-- A bootstrap should never be adopted as a desired maintained slot.
 local SCB_OriginalAdoptObservedBotIntoActiveRoster = SCB_AdoptObservedBotIntoActiveRoster
 if SCB_OriginalAdoptObservedBotIntoActiveRoster then
     function SCB_AdoptObservedBotIntoActiveRoster(member, roster)
@@ -373,7 +296,6 @@ end
 
 -- Bind a roster-delta fallback before the normal roster handler overwrites
 -- SCB.lastRoster, then let the canonical handler refresh Live/Active Roster.
--- Finally prune departed names and apply tank flags from settled live role state.
 local SCB_OriginalHandleRosterChange = SCB_HandleRosterChange
 if SCB_OriginalHandleRosterChange then
     function SCB_HandleRosterChange()
@@ -385,104 +307,10 @@ if SCB_OriginalHandleRosterChange then
     end
 end
 
--- The existing Presets.lua solo >5 scheduler was deliberately built around one
--- temporary warrior: [check] [warrior tank] [wait bootstrap] ... [handoff real
--- G1 bot]. Outside T3 raid zones that temporary member is unnecessary. Reuse the
--- already-held real Group 1 command as the party creator, convert that real bot
--- to raid with the player, and delete the later temporary-survivor handoff.
-local function SCB_RewriteSoloRaidQueueWithoutBootstrap()
-    local queue = SCB.presetSpawnQueue or {}
-    local bootstrapWaitIndex, handoffIndex, heldCommand, i
-
-    for i = 1, table.getn(queue) do
-        if queue[i] == "__SCB_WAIT_BOOTSTRAP__" and not bootstrapWaitIndex then
-            bootstrapWaitIndex = i
-        elseif queue[i] == SCB.PRESET_WAIT_FINAL_ROSTER and not handoffIndex then
-            handoffIndex = i
-        end
-    end
-
-    if not bootstrapWaitIndex or bootstrapWaitIndex <= 1 or not handoffIndex then return false end
-    if queue[handoffIndex + 1] ~= SCB.PRESET_REMOVE_SURVIVOR
-        or queue[handoffIndex + 2] ~= SCB.PRESET_WAIT_SURVIVOR_GONE
-        or queue[handoffIndex + 3] ~= SCB.PRESET_CHECK_COMBAT then
-        return false
-    end
-
-    heldCommand = queue[handoffIndex + 4]
-    if type(heldCommand) ~= "string" or string.find(heldCommand, "^__SCB_") then return false end
-
-    -- Replace only the temporary add command; preserve its preceding combat gate.
-    queue[bootstrapWaitIndex - 1] = heldCommand
-    queue[bootstrapWaitIndex] = SCB.PRESET_WAIT_REAL_RAID_START
-
-    -- The real bot is already present, so there is no temporary survivor to
-    -- wait for/remove/re-spawn at the end. Remove the complete handoff sequence.
-    for i = 1, 5 do table.remove(queue, handoffIndex) end
-
-    SCB.presetExpectedBotCountBeforeHandoff = nil
-    SCB.presetBootstrapBotName = nil
-    SCB.presetSurvivorBotName = nil
-    return true
-end
-
-local SCB_OriginalStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
-if SCB_OriginalStartPresetSummonSnapshot then
-    function SCB_StartPresetSummonSnapshot(snapshot)
-        local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-        local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-        local soloRaidStart = snapshot and (snapshot.size or 0) > 5 and raidCount == 0 and partyCount == 0
-        local needsBootstrap = soloRaidStart and SCB_IsT3RaidLocation()
-        local ok, errorText = SCB_OriginalStartPresetSummonSnapshot(snapshot)
-
-        if ok and soloRaidStart and not needsBootstrap then
-            if not SCB_RewriteSoloRaidQueueWithoutBootstrap() then
-                if SCB_AbortBotSpawnOperations then SCB_AbortBotSpawnOperations() end
-                return false, SCB_L("ERR_SUMMON_BUSY")
-            end
-        end
-        return ok, errorText
-    end
-end
-
--- Custom barrier used only by the non-T3 solo >5 path. The first member is a
--- real preset bot, so retain it: wait for its party membership, convert to raid,
--- then hand control straight back to the normal WAIT_RAID/arrange/spawn queue.
-local SCB_OriginalPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
-if SCB_OriginalPresetSpawnQueueOnUpdate then
-    function SCB_PresetSpawnQueueOnUpdate()
-        local queue = SCB.presetSpawnQueue or {}
-        local head = queue[1]
-        local partyCount, raidCount
-
-        if head == SCB.PRESET_WAIT_REAL_RAID_START then
-            if not SCB_FindFirstGroupBotName or not SCB_FindFirstGroupBotName() then return end
-
-            raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-            if raidCount > 0 then
-                table.remove(queue, 1)
-                SCB.presetSpawnElapsed = 0
-                return
-            end
-
-            partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-            if partyCount > 0 and ConvertToRaid then
-                ConvertToRaid()
-                queue[1] = "__SCB_WAIT_RAID__"
-                SCB.presetSpawnElapsed = 0
-            end
-            return
-        end
-
-        return SCB_OriginalPresetSpawnQueueOnUpdate()
-    end
-end
-
 -- Replace Dead removes exact bot names, but SoloCraft can continue to count a
 -- departed bot against the instance cap briefly after Blizzard drops it from the
 -- group roster. Wait three full seconds from the first observed roster absence
--- before starting the replacement summon chain. Combat remains a hard gate, so
--- the normal maintenance summon never begins while the group is fighting.
+-- before starting the replacement summon chain. Combat remains a hard gate.
 SCB.REPLACE_REMOVAL_SETTLE_DELAY = 3.0
 local SCB_OriginalMaintenanceReplaceOnUpdate = SCB_MaintenanceReplaceOnUpdate
 if SCB_OriginalMaintenanceReplaceOnUpdate then
@@ -517,8 +345,8 @@ if SCB_OriginalMaintenanceReplaceOnUpdate then
     end
 end
 
--- Fresh preset and refill operations must never inherit an unmatched intent from
--- an aborted earlier operation.
+-- Fresh preset/refill operations never inherit unmatched intents from an
+-- aborted earlier operation.
 local SCB_OriginalCreateRaidRoleTracker = SCB_CreateRaidRoleTracker
 if SCB_OriginalCreateRaidRoleTracker then
     function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
