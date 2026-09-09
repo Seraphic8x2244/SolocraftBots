@@ -4,14 +4,14 @@
 -- reliable old-client pattern: listen to CHAT_MSG_SPELL_* combat text, extract
 -- the acting group member from arg1, and classify recognised spell names.  SCB
 -- keeps that proven transport but treats each observation as one evidence step.
--- Four observations are required before confirmedRole is set.
+-- Three observations are required before confirmedRole is set.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
 SCB.roleEvidenceByName = SCB.roleEvidenceByName or {}
 SCB.roleEvidenceRecent = SCB.roleEvidenceRecent or {}
-SCB.ROLE_CONFIRM_THRESHOLD = 4
+SCB.ROLE_CONFIRM_THRESHOLD = 3
 
 -- Vanilla-only subset of FRB's spell/role catalogue.  Later-expansion entries
 -- (for example Lava Lash, Crusader Strike, Steady Shot, Incinerate) are
@@ -531,38 +531,64 @@ end
 -- -------------------------------------------------------------------------
 -- Preset role-icon overlays
 -- -------------------------------------------------------------------------
--- Both status marks live entirely inside the existing 24px role icon.  Nothing
--- below changes row, group or panel geometry.
+-- Both status marks are anchored to the role button itself. Their size and
+-- overlap are derived from the configured role icon size, so layout-option
+-- changes cannot move or scale the role icon independently of its indicators.
+-- Neither indicator changes row, group or panel geometry.
 
 local SCB_CONFIRM_COLORS = {
-    [1] = { 1.00, 0.10, 0.10 },
-    [2] = { 1.00, 0.50, 0.00 },
-    [3] = { 1.00, 0.90, 0.00 },
-    [4] = { 0.20, 1.00, 0.20 },
+    [0] = { 1.00, 0.10, 0.10 },
+    [1] = { 1.00, 0.50, 0.00 },
+    [2] = { 1.00, 0.90, 0.00 },
+    [3] = { 0.20, 1.00, 0.20 },
 }
+
+local function SCB_UpdatePresetRoleIndicatorGeometry(row)
+    local roleSize, tickSize, overlap, confirmedOffset
+    if not row or not row.roleButton or not row.scbAssumedTick or not row.scbConfirmedTick then return end
+
+    roleSize = SCB_GetLayoutValue and SCB_GetLayoutValue("preset", "roleSize") or 24
+    if roleSize < 1 then roleSize = 1 end
+    tickSize = math.floor((roleSize * 0.375) + 0.5)
+    if tickSize < 4 then tickSize = 4 end
+    overlap = math.floor((tickSize * 0.22) + 0.5)
+    if overlap < 1 then overlap = 1 end
+    confirmedOffset = tickSize - overlap
+
+    row.scbAssumedTick:SetWidth(tickSize)
+    row.scbAssumedTick:SetHeight(tickSize)
+    row.scbAssumedTick:ClearAllPoints()
+    -- Assumed role is deliberately the rightmost mark.
+    row.scbAssumedTick:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", 0, 0)
+
+    row.scbConfirmedTick:SetWidth(tickSize)
+    row.scbConfirmedTick:SetHeight(tickSize)
+    row.scbConfirmedTick:ClearAllPoints()
+    -- Confirmation sits immediately to its left with a small proportional
+    -- overlap, keeping the two marks visually tight at every configured size.
+    row.scbConfirmedTick:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", -confirmedOffset, 0)
+end
 
 local function SCB_CreatePresetRoleIndicatorPair(row)
     local assumed, confirmed
-    if not row or not row.roleButton or row.scbAssumedTick then return end
+    if not row or not row.roleButton then return end
+    if row.scbAssumedTick and row.scbConfirmedTick then
+        SCB_UpdatePresetRoleIndicatorGeometry(row)
+        return
+    end
 
     assumed = row.roleButton:CreateTexture(nil, "OVERLAY")
     assumed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    assumed:SetWidth(9)
-    assumed:SetHeight(9)
-    -- Deliberately overlap the two 9px marks by ~2px so they read as one compact
-    -- status cluster rather than a new column in the character box.
-    assumed:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", -7, 0)
     assumed:SetVertexColor(0.20, 1.00, 0.20)
     assumed:Hide()
     row.scbAssumedTick = assumed
 
     confirmed = row.roleButton:CreateTexture(nil, "OVERLAY")
     confirmed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    confirmed:SetWidth(9)
-    confirmed:SetHeight(9)
-    confirmed:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", 0, 0)
     confirmed:Hide()
     row.scbConfirmedTick = confirmed
+
+    SCB_UpdatePresetRoleIndicatorGeometry(row)
 end
 
 local function SCB_FindTrackerAssignmentForIndicator(slotIndex)
@@ -602,6 +628,7 @@ function SCB_RefreshPresetRoleIndicators()
         row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
         if row then
             SCB_CreatePresetRoleIndicatorPair(row)
+            SCB_UpdatePresetRoleIndicatorGeometry(row)
             if row.scbAssumedTick then row.scbAssumedTick:Hide() end
             if row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
 
@@ -609,20 +636,25 @@ function SCB_RefreshPresetRoleIndicators()
                 assignment = SCB_FindTrackerAssignmentForIndicator(i)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
+                    -- Both marks appear only once a real named bot has acquired
+                    -- this preset's assumed role. Right = assumption exists.
                     row.scbAssumedTick:Show()
+
+                    -- Left = confidence in that exact assumed role. Zero is a
+                    -- first-class state: no evidence yet is red, then each
+                    -- matching observation advances orange -> yellow -> green.
                     stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
                     if stage <= 0 then
                         local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
                         local scores = slot and slot.roleEvidence or nil
                         stage = scores and scores[assignment.role] or 0
                         if slot and slot.confirmedRole == assignment.role then stage = SCB.ROLE_CONFIRM_THRESHOLD end
-                        if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
                     end
-                    if stage > 0 then
-                        color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[SCB.ROLE_CONFIRM_THRESHOLD]
-                        row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
-                        row.scbConfirmedTick:Show()
-                    end
+                    if stage < 0 then stage = 0 end
+                    if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                    color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
+                    row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
+                    row.scbConfirmedTick:Show()
                 end
             end
         end
