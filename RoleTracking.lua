@@ -67,7 +67,7 @@ local function SCB_CurrentManagedSpawnKind()
 end
 
 local function SCB_QueueAssumedSpawn(command, spawnKind)
-    local intent
+    local intent, count, insertAt
 
     -- Manual one-off spawns are intentionally left for the future detector.
     -- The automated preset/refill machinery is the authoritative source of an
@@ -83,7 +83,20 @@ local function SCB_QueueAssumedSpawn(command, spawnKind)
 
     intent = SCB_ParseSpawnAssumption(command, spawnKind)
     if not intent then return end
-    table.insert(SCB.pendingAssumedSpawns, intent)
+
+    -- SoloCraft processes same-frame summon bursts LIFO. The preset/refill
+    -- schedulers deliberately send each logical group in reverse so the bots
+    -- are received in preset-slot order. Preserve any older pending burst, but
+    -- reverse the intents queued during this same frame so join messages consume
+    -- assumptions in the same order the bots are actually received.
+    count = table.getn(SCB.pendingAssumedSpawns)
+    insertAt = count + 1
+    while insertAt > 1
+        and SCB.pendingAssumedSpawns[insertAt - 1]
+        and SCB.pendingAssumedSpawns[insertAt - 1].queuedAt == intent.queuedAt do
+        insertAt = insertAt - 1
+    end
+    table.insert(SCB.pendingAssumedSpawns, insertAt, intent)
 end
 
 local function SCB_BindAssumedSpawnName(name, intent)
@@ -113,9 +126,9 @@ local function SCB_PruneAssumedRolesToCurrentRoster()
     end
 end
 
--- Primary identity path: SoloCraft's membership messages arrive in the same
--- server processing order as the add commands. This preserves the summoner's
--- role identity even when Blizzard later presents the subgroup in another order.
+-- Primary identity path: SoloCraft membership messages arrive in server receive
+-- order. SCB queues each same-frame reversed summon burst in that receive order,
+-- so the first joined bot consumes the logical first preset assignment.
 function SCB_HandleAssumedRoleSystemMessage(text)
     local _, _, name
     if not text or text == "" then return false end
@@ -462,6 +475,45 @@ if SCB_OriginalPresetSpawnQueueOnUpdate then
         end
 
         return SCB_OriginalPresetSpawnQueueOnUpdate()
+    end
+end
+
+-- Replace Dead removes exact bot names, but SoloCraft can continue to count a
+-- departed bot against the instance cap briefly after Blizzard drops it from the
+-- group roster. Wait three full seconds from the first observed roster absence
+-- before starting the replacement summon chain. Combat remains a hard gate, so
+-- the normal maintenance summon never begins while the group is fighting.
+SCB.REPLACE_REMOVAL_SETTLE_DELAY = 3.0
+local SCB_OriginalMaintenanceReplaceOnUpdate = SCB_MaintenanceReplaceOnUpdate
+if SCB_OriginalMaintenanceReplaceOnUpdate then
+    function SCB_MaintenanceReplaceOnUpdate()
+        local state = SCB.replaceDeadState
+        local now = GetTime and GetTime() or 0
+        local waitForDeparture = state and state.active
+            and (state.phase == "waitremoved" or state.phase == "waitsurvivorremoved")
+            and state.removedNames and next(state.removedNames) ~= nil
+
+        if waitForDeparture then
+            if state.scbRemovalDelayPhase ~= state.phase then
+                state.scbRemovalDelayPhase = state.phase
+                state.scbRemovalGoneAt = nil
+            end
+
+            if not SCB_ReplaceDeadNamesGone or not SCB_ReplaceDeadNamesGone(state.removedNames) then
+                state.scbRemovalGoneAt = nil
+                return
+            end
+
+            if not state.scbRemovalGoneAt then
+                state.scbRemovalGoneAt = now
+                return
+            end
+
+            if (now - state.scbRemovalGoneAt) < SCB.REPLACE_REMOVAL_SETTLE_DELAY then return end
+            if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return end
+        end
+
+        return SCB_OriginalMaintenanceReplaceOnUpdate()
     end
 end
 
