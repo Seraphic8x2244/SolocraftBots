@@ -51,7 +51,11 @@ function SCB_PresetRebuildOnUpdate()
         state.readySeenAt = now
         return
     end
-    if now - state.readySeenAt < 1.0 then return end
+
+    -- Any rebuild that removed bots must allow SoloCraft's instance accounting
+    -- to settle after Blizzard no longer shows those removed names. This is the
+    -- shared remove-then-add policy used by replacement paths too.
+    if now - state.readySeenAt < (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0) then return end
 
     state.active = false
     ok, errorText = SCB_StartPresetSummonSnapshot(state.snapshot)
