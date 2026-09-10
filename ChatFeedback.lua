@@ -41,7 +41,7 @@ local SCB_ROLE_COLOR_KEYS = {
 }
 
 -- One authoritative class-colour source for both existing preset player names
--- and new chat feedback. Vanilla 1.12.1 has no built-in RAID_CLASS_COLORS table.
+-- and chat feedback. Vanilla 1.12.1 has no built-in RAID_CLASS_COLORS table.
 function SCB_ClassColor(classToken)
     local token = classToken and string.upper(classToken) or nil
     local key = token and SCB_CLASS_COLOR_KEYS[token] or nil
@@ -82,122 +82,61 @@ local function SCB_RefreshChatPrefix()
 end
 SCB_RefreshChatPrefix()
 
-local function SCB_ParseFeedbackCommand(command)
-    local _, _, classKey, role, extra
-    if type(command) ~= "string" then return nil end
-    _, _, classKey, role, extra = string.find(command, "^add%s+(%S+)%s+(%S+)%s*(.*)$")
-    if not classKey or not role then return nil end
-    if extra == "" then extra = nil end
-    return { class = classKey, role = role, extra = extra, command = command, spawnKind = "manual" }
-end
-
-local function SCB_AddedDescription(intent)
+local function SCB_AddedDescription(classKey, role, extra)
     local classInfo, roleInfo, parts, roleCount
-    if not intent or not intent.class then return nil end
+    if not classKey then return nil end
 
-    classInfo = SCB_FindClass and SCB_FindClass(intent.class) or nil
-    roleInfo = SCB_FindRoleEntry and SCB_FindRoleEntry(classInfo, intent.role, intent.extra) or nil
+    classInfo = SCB_FindClass and SCB_FindClass(classKey) or nil
+    roleInfo = SCB_FindRoleEntry and SCB_FindRoleEntry(classInfo, role, extra) or nil
     parts = {}
 
-    if intent.class == "paladin" and intent.extra and intent.extra ~= "" then
-        table.insert(parts, SCB_ColorExtra("blessing", intent.extra))
-    elseif intent.class == "mage" then
-        if intent.extra == "fire" or (roleInfo and roleInfo.label == SCB_L("ROLE_FIRE")) then
+    if classKey == "paladin" and extra and extra ~= "" then
+        table.insert(parts, SCB_ColorExtra("blessing", extra))
+    elseif classKey == "mage" then
+        if extra == "fire" or (roleInfo and roleInfo.label == SCB_L("ROLE_FIRE")) then
             table.insert(parts, SCB_ColorExtra("fire", SCB_L("ROLE_FIRE")))
         else
             table.insert(parts, SCB_ColorExtra("frost", SCB_L("ROLE_FROST")))
         end
     end
 
-    table.insert(parts, SCB_ColorClass(intent.class, classInfo and classInfo.name or tostring(intent.class)))
+    table.insert(parts, SCB_ColorClass(classKey, classInfo and classInfo.name or tostring(classKey)))
 
     roleCount = classInfo and classInfo.roles and table.getn(classInfo.roles) or 0
-    if intent.class ~= "mage" and roleCount > 1 and roleInfo and roleInfo.label then
-        table.insert(parts, SCB_ColorRole(intent.role, roleInfo.label))
+    if classKey ~= "mage" and roleCount > 1 and roleInfo and roleInfo.label then
+        table.insert(parts, SCB_ColorRole(role, roleInfo.label))
     end
 
     return table.concat(parts, " ")
 end
 
-local function SCB_PrintAddedIntent(intent)
-    local description
-    if not intent or intent.spawnKind == "bootstrap" then return end
-    description = SCB_AddedDescription(intent)
+local function SCB_PrintAddedRequest(classKey, role, extra)
+    local description = SCB_AddedDescription(classKey, role, extra)
     if not description then return end
     SCB_Print(SCB_L("CHAT_ADDED", "Added") .. " "
         .. SCB_ColorText(SCB_ThemeColor("COLOR_SCB", "88CCFF"), "1")
         .. " " .. description)
 end
 
-SCB.chatAnnouncedSpawnIntents = SCB.chatAnnouncedSpawnIntents or {}
-local function SCB_AnnounceNewBoundIntents()
-    local _, intent
-    for _, intent in pairs(SCB.assumedRolesByName or {}) do
-        if intent and not SCB.chatAnnouncedSpawnIntents[intent] then
-            SCB.chatAnnouncedSpawnIntents[intent] = true
-            SCB_PrintAddedIntent(intent)
-        end
-    end
-end
-
-SCB.pendingManualChatFeedback = SCB.pendingManualChatFeedback or {}
-local SCB_ChatPreviousSendSpawnCommand = SCB_SendSpawnCommand
-if SCB_ChatPreviousSendSpawnCommand then
-    function SCB_SendSpawnCommand(command)
-        local managed = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
-        local result = SCB_ChatPreviousSendSpawnCommand(command)
-        local intent
-        if result and not managed then
-            intent = SCB_ParseFeedbackCommand(command)
-            if intent then table.insert(SCB.pendingManualChatFeedback, intent) end
-        end
-        return result
-    end
-end
-
-local function SCB_ParseJoinedName(text)
-    local _, _, name
-    if type(text) ~= "string" then return nil end
-    _, _, name = string.find(text, "^([^%s]+%*) joins the party%.$")
-    if not name then _, _, name = string.find(text, "^([^%s]+%*) has joined the raid group%.?$") end
-    return name
-end
-
--- Preserve the explicit identity handler exactly, then add presentation from the
--- identity it bound. The bound-intent scan also covers the existing roster-delta
--- compatibility path without making that fallback part of message semantics.
-local SCB_ChatPreviousHandleAssumedRoleSystemMessage = SCB_HandleAssumedRoleSystemMessage
-if SCB_ChatPreviousHandleAssumedRoleSystemMessage then
-    function SCB_HandleAssumedRoleSystemMessage(text)
-        local name = SCB_ParseJoinedName(text)
-        local alreadyBound = name and SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
-        local result = SCB_ChatPreviousHandleAssumedRoleSystemMessage(text)
-
-        SCB_AnnounceNewBoundIntents()
-
-        if name and not alreadyBound and not result
-            and table.getn(SCB.pendingManualChatFeedback or {}) > 0
-            and not (SCB.assumedRolesByName and SCB.assumedRolesByName[name]) then
-            SCB_PrintAddedIntent(table.remove(SCB.pendingManualChatFeedback, 1))
-        end
-        return result
-    end
-end
-
--- Replace only the click-time presentation. The authoritative sender still owns
--- command validation and registration; successful feedback waits for the join.
+-- Manual summon feedback is request feedback: print immediately when the
+-- validated command is sent. Preset summons intentionally do not print one line
+-- per bot; their single preset summary below is the only normal chat feedback.
 function SCB_SpawnOnClick()
     local extra, command
     if not this.scbClass or not this.scbRole then return end
+
     extra = this.scbExtra
     if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
     command = SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra)
+
     if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    SCB_SendSpawnCommand(command)
+    if SCB_SendSpawnCommand(command) then
+        SCB_PrintAddedRequest(this.scbClass, this.scbRole, extra)
+    end
 end
 
--- Keep preset scheduling untouched; this only replaces the old
--- "Summoning Preset ..." start message with the agreed compact summary.
+-- Keep preset scheduling untouched; this only provides the agreed compact
+-- one-line request summary. Individual preset bot requests stay silent.
 function SCB_PresetSummonOnClick()
     local snapshot, errorText, ok, botCount, botWord
 
@@ -230,13 +169,3 @@ function SCB_PresetSummonOnClick()
         botWord
     ))
 end
-
--- RoleTracking's roster-delta compatibility binding can run before the visible
--- membership line on some event orders. Announce any newly-bound exact intent
--- after those roster events as well; intent-table dedupe prevents duplicates.
-local chatRosterFrame = CreateFrame("Frame", "SoloCraftBotsChatFeedbackRosterFrame", UIParent)
-chatRosterFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
-chatRosterFrame:RegisterEvent("RAID_ROSTER_UPDATE")
-chatRosterFrame:SetScript("OnEvent", function()
-    SCB_AnnounceNewBoundIntents()
-end)
