@@ -1,6 +1,12 @@
 # SoloCraft Bots
 
-A compact bot control panel for **SoloCraft on Vanilla WoW 1.12.1**. Build a party or raid around your friends, save your favourite setups, and command bots without typing `.partybot` commands.
+A bot control panel for **SoloCraft**. It is designed as a full replacement for PCP and FRB, with a different design philosophy.
+
+## Addon Focus
+
+- Intuitive, graphical control of bot summoning, commands and assignments.
+- A powerful, visual preset manager for building parties and raids.
+- Configure presets with specific group compositions, including other human players.
 
 ## Features
 
