@@ -40,7 +40,7 @@ This applies to Replace Dead/Missing where removal occurs, preset-over-preset re
 
 ## Target file ownership
 
-The goal is a small number of coherent files, not micro-modules.
+The goal is a small number of coherent files, not micro-modules. File count is secondary to clear ownership; Location and Comms are explicitly subject to a final sizing/cohesion review after non-preset runtime code has been removed from `Presets.lua`.
 
 ### `SoloCraftBots.lua`
 - bootstrap/global namespace
@@ -54,10 +54,10 @@ The goal is a small number of coherent files, not micro-modules.
 - exact human logical-slot assignments and Other Players pool
 - save/load/dirty/editor behaviour
 - execution snapshot construction if still compact
-- preset communications/protocol
-- location/capacity/runtime zone data and automatic preset-group switching
+- optionally preset communications/protocol if the resulting file remains coherent
+- optionally location/capacity/runtime zone data and automatic preset-group switching if the resulting file remains coherent
 
-Location belongs here because it primarily selects/constrains preset groups and is small enough not to justify another architecture boundary. Preset communications belong here because they serialize and transfer preset state rather than owning an independent runtime subsystem.
+Earlier target notes proposed folding Location and Comms into this file. That remains a preference, not a hard requirement. Reassess after runtime/scheduler/maintenance code has been extracted from `Presets.lua`; keep either as a separate file if merging would recreate an oversized mixed-responsibility module.
 
 ### `Spawn.lua`
 - one authoritative preset summon state machine
@@ -91,9 +91,9 @@ This file may be internally sectioned. Split only if its real size/complexity pr
 Supporting locale/assets/bindings remain separate as appropriate.
 
 ## Files/layers expected to disappear by consolidation
-`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua`, `RoleTracking.lua`, `Detection.lua`, `DetectionShieldSlam.lua`, `DetectionLifecycle.lua`, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua`, `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
+`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), `RoleTracking.lua`, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, `DetectionLifecycle.lua`, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
 
-Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev. `Location.lua` and `Comms.lua` remain pending absorption into `Presets.lua`.
+Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
 
 This is a target, not permission to delete code before its live responsibility is migrated and verified.
 

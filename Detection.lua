@@ -27,6 +27,7 @@ local SCB_ROLE_SPELLS = {
         { "Last Stand", "tank" },
         { "Shield Block", "tank" },
         { "Mocking Blow", "tank" },
+        { "Shield Slam", "tank" },
         { "Mortal Strike", "meleedps" },
         { "Bloodthirst", "meleedps" },
         { "Whirlwind", "meleedps" },
