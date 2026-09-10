@@ -1,185 +1,176 @@
 # SoloCraftBots 0.8 Consolidation Plan
 
-Status: source audit complete; architecture direction approved
-Behavioural reference: 0.7.14 plus explicit deviations in `DECISIONS.md`
-Implementation branch: dev
+Status: implementation started on dev
+Behavioural reference: 0.7.14
+Current development line: 0.8.0-dev
 
-## Goal
-0.8.x removes wrapper/load-order fragmentation and establishes a small set of coherent owners. Fewer files are useful only when ownership becomes clearer; do not create giant miscellaneous modules without internal structure.
+## Purpose
 
-## Non-negotiable process
-- Documentation-only commits do not bump addon version.
-- First functional consolidation commit starts `0.8.0-dev` and bumps TOC in that same commit.
-- Every later functional code change bumps version in the same commit.
-- Preserve SavedVariables compatibility or provide explicit migration.
-- Migrate and verify behaviour before deleting old paths.
-- Static dead-code deductions are not enough to delete runtime code without proof.
-- Update docs as decisions change.
+0.8.x is an architectural consolidation line. The goal is a small number of coherent owners, explicit state transitions, and removal of load-order wrapper chains while preserving the approved behaviour model.
 
-## Audit findings to eliminate
-1. Final preset scheduling is in `Spawn.lua`, while older Presets/RaidBurst/RaidRefill scheduler layers still exist.
-2. `SCB_HandleRosterChange` and related paths are wrapper chains across multiple files.
-3. Identity has competing consumers of global pending intent.
-4. Human logical intent and Blizzard physical row were conflated/mutate-then-restored.
-5. Role detection is spread across Detection, ShieldSlam and Lifecycle wrappers.
-6. Runtime location identity is split across maps/patch files/localized labels.
-7. Rebuild and maintenance use inconsistent removal-settle concepts.
+## Non-negotiable rules
 
-## Approved final ownership
+- 0.7.14 remains the stable behavioural reference.
+- Functional code changes must bump the addon version in the same commit.
+- Documentation-only commits do not bump the addon version.
+- The repo docs are the development-direction source of truth.
+- Do not silently fix adjacent behaviour while moving code.
+- Preserve SavedVariables compatibility unless a migration is explicitly designed.
+- One authoritative implementation per public behaviour.
+- Prefer explicit coordinator/helper calls over wrapper interception.
+- Keep migration commits small enough to identify and revert regressions.
+- Update these docs as migrations land.
+
+## Approved canonical target
+
+See `TARGET-0.8.md` for the concise target model. Key rules:
+
+- preset slots are logical composition identities;
+- humans are saved to exact logical preset slots, suppressing the underlying bot only while present;
+- saved present humans snap back to those logical slots on preset load; absent saved humans do not suppress anything;
+- Blizzard remains authoritative for live names, classes, subgroup membership and displayed row/order;
+- logical slot must never be inferred from physical Blizzard row;
+- bot ordering inside a subgroup ignores humans;
+- explicit burst plan + SoloCraft join-message order is the primary identity source;
+- Blizzard roster reinforces/verifies identity and live location, but does not compete to consume pending assignments;
+- resolved role is `confirmedRole` when available, otherwise `assumedRole`, while assumed role is retained;
+- every remove-then-add lifecycle waits for roster disappearance plus a shared 3.0-second settle;
+- target files are `SoloCraftBots.lua`, `Presets.lua`, `Spawn.lua`, `Raid.lua`, `Options.lua`, `Debug.lua` plus supporting locale/assets/bindings.
+
+## Source audit result
+
+The 0.7.14 static/source audit is complete. The main architectural knots are:
+
+1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
+2. bot identity is split across RoleTracking/RaidIdentity/Detection/refill/tracker reconciliation and uses a global pending FIFO with competing consumers;
+3. human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;
+4. role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;
+5. location data and runtime correction were split across Presets/LocationZones/Location.
+
+Full details remain in `ARCHITECTURE.md`.
+
+## Final target ownership
 
 ### `SoloCraftBots.lua`
-Bootstrap, namespace, shared UI helpers, top-level event dispatch, direct command/raid-mark controls where compact. Do not put raid state machines here.
+Owns bootstrap, shared UI helpers, top-level event dispatch, direct bot commands and raid-mark controls where size remains reasonable.
 
 ### `Presets.lua`
-Preset storage/migrations/editor/dirty state; bot logical-slot intent; exact human logical-slot assignments; Other Players pool; saved-player snap semantics; snapshot building if compact; preset comms; canonical location/capacity/runtime zone data and auto preset-group selection.
+Owns preset storage/editor semantics, bot logical slots, exact human logical-slot assignments and Other Players pool, preset communications, execution snapshot construction if compact, and location/capacity/auto-preset-group logic.
 
 ### `Spawn.lua`
-One authoritative preset operation: clean summon, rebuild, explicit burst/LIFO planning, combat retry/error abort, party->raid conversion, human subgroup arrangement, survivor/bootstrap safety anchor, identity-burst barriers, shared 3-second remove-then-add settle.
+Owns the single preset summon state machine: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and interaction with isolated identity bursts.
 
 ### `Raid.lua`
-Observed Blizzard roster; live tracker; Active Roster; isolated bot identity binding/reconciliation; Replace Dead/Missing; assumed/confirmed/resolved roles; optional combat scanner; pfUI tank integration. Use clear internal sections and split only if later size proves a truly independent owner.
+Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
 
 ### `Options.lua`
-Options/settings plus chat filter/hide-message hooks.
+Owns options/settings UI and chat-filter/hide-chat hooks.
 
 ### `Debug.lua`
-Developer diagnostics/debug UI.
+Owns developer diagnostics and debug UI.
 
-Locales/assets/bindings remain supporting files.
+## Migration phases
 
-## Canonical state model
+### Phase A — source audit
+- [x] Complete 0.7.14 source-level architecture audit.
+- [x] Record wrapper/redefinition chains, event/timer ownership and shared-state risks.
+- [x] Establish behavioural regression baseline.
 
-### Logical bot slot
-- logicalSlot / logicalGroup
-- desiredClass
-- desiredRole
-- desiredExtra
+### Phase B — architecture agreement
+- [x] Exact human logical-slot intent approved.
+- [x] Saved present humans auto-activate; saved absent humans leave underlying bot active.
+- [x] Blizzard live row remains observational only; no hard-coded physical-row expectation.
+- [x] Confirmed role may drive resolved maintenance role while assumed role remains retained.
+- [x] Join-message order is primary burst identity; roster is reinforcement/verification, not competing consumption.
+- [x] Final file ownership approved and aggressively consolidated.
+- [x] Universal 3-second remove-then-add settle approved.
 
-### Human preset assignment
-- stable player identity/name
-- logicalGroup
-- logicalSlot
-- optional player role/spec metadata
+### Phase C — start 0.8.0-dev
+- [x] First functional consolidation commit bumps TOC to `0.8.0-dev`.
+- [x] Remove the standalone `LocationZones.lua` patch layer by absorbing the AQ40 runtime correction into the current location owner.
 
-If saved player is present: activate assignment and suppress underlying bot. If absent: underlying bot remains active. Unsaved player: Other Players pool.
+### Phase D — low-risk consolidation
 
-### Live Blizzard observation
-- name
-- class
-- liveGroup
-- liveRow/order
-- dead/present state
+1. **Location / Presets**
+   - [x] Eliminate `LocationZones.lua` late correction layer.
+   - [ ] Move the remaining `Location.lua` implementation into `Presets.lua`.
+   - [ ] Centralize all runtime zone strings/capacity policy there.
+   - [ ] Make saved-raid safety consumers use canonical runtime location data rather than localized labels.
+   - [ ] Remove `Location.lua` from TOC after behaviour is migrated.
 
-Blizzard observation never rewrites logical slot merely because its physical row differs.
+2. **Options / Chat filter**
+   - [ ] Absorb `ChatFilter.lua` into `Options.lua`.
+   - [ ] Preserve hide-SCB-chat behaviour and ensure filters do not prevent SCB's internal event observation.
 
-### Bot identity
-- active burst id
-- expected ordered logical assignments
-- ordered join-message bindings
-- verified live roster records
-- explicit complete/failed/aborted state
+3. **Presets / Comms**
+   - [ ] Absorb `Comms.lua` into `Presets.lua` without changing protocol/serialization behaviour.
 
-No global cross-burst consumable FIFO in final design.
+4. **Core / Commands**
+   - [ ] Move direct commands/raid marks from `Commands.lua` into `SoloCraftBots.lua` if the resulting core remains readable.
+   - [ ] Move survivor/removal policy out of Commands into Spawn/Raid ownership before deleting Commands.
 
-### Roles
-- assumedRole
-- confirmedRole
-- resolvedRole = confirmedRole or assumedRole
+### Phase E — Raid consolidation
 
-### Preset operation
-One operation object should contain phase, snapshot, target size, safety anchor/bootstrap, current logical group/burst, active identity burst, retry/deadline/settle state and abort reason.
+- [ ] Establish `Raid.lua` as the coherent owner.
+- [ ] Move observed roster + Active Roster ownership from `Roster.lua`.
+- [ ] Move tracker/assumption/identity behaviour from `RoleTracking.lua` and `RaidIdentity.lua`.
+- [ ] Move maintenance from `RaidRefill.lua`/Presets wrappers.
+- [ ] Move role evidence/lifecycle from Detection files.
+- [ ] Move pfUI role integration into Raid.
+- [ ] Replace roster wrapper chain with one explicit coordinator.
+- [ ] Remove superseded raid patch files only after runtime proof.
 
-## Critical invariants
-1. Logical preset slot is not Blizzard row.
-2. Blizzard roster is authoritative for live names/classes/subgroups/order.
-3. Bot ordinal mapping inside subgroup ignores human rows.
-4. Join-message order binds explicit burst identity; roster verifies/reinforces and cannot race-consume the next assignment.
-5. A new burst cannot inherit unresolved stale identity from a previous burst.
-6. Human saved logical slot determines exactly which bot is suppressed.
-7. Absent saved human never suppresses their underlying bot.
-8. Every remove-then-add operation waits for roster disappearance + 3.0s.
-9. Combat confirmation OFF means no persistent combat scanner.
-10. Confirmed role never destroys assumed role.
+### Phase F — human logical-slot model
 
-## Migration sequence
+- [ ] Replace group-only/current-row editor semantics with exact human logical-slot ownership.
+- [ ] Unassigned present humans appear in Other Players pool.
+- [ ] Saved present humans snap to exact logical slots on preset load.
+- [ ] Saved absent humans do not suppress underlying bots.
+- [ ] Arrange humans into intended Blizzard subgroup, but never expect them to appear at the saved physical row.
+- [ ] Resolve bot logical order within subgroup while ignoring humans.
+- [ ] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model once superseded.
 
-### Phase A — audit [complete]
-Source maps, wrapper inventory, state writers, event/OnUpdate ownership and regression baseline documented.
+### Phase G — Spawn consolidation
 
-### Phase B — architecture agreement [complete]
-Resolved:
-- exact human logical slots are durable intent;
-- saved present humans auto-snap; absent saved humans do not suppress bots;
-- Blizzard row remains live truth but not logical identity;
-- confirmed role may drive resolved maintenance role without overwriting assumed;
-- join messages primary, roster non-competing verification;
-- aggressive final module consolidation approved;
-- universal 3-second remove-then-add settle approved.
-
-### Phase C — start `0.8.0-dev`
-First functional commit bumps TOC. Prefer introducing canonical shared data/state structures before deleting compatibility layers.
-
-### Phase D — low-risk ownership consolidation
-1. Fold location/capacity/auto-group into Presets; remove `LocationZones.lua` patch semantics and localized runtime comparisons.
-2. Fold chat filter into Options without changing filtering behaviour.
-3. Fold direct Commands into core if size remains reasonable.
-4. Fold Comms into Presets while preserving protocol exactly.
-
-### Phase E — human logical-slot model
-- migrate saved human group+slot representation compatibly;
-- present known saved humans at logical preset slots;
-- absent saved humans leave bot active;
-- unsaved humans remain in pool;
-- stop editor chasing Blizzard physical rows;
-- retain Blizzard live roster/order separately;
-- bot order reconciliation explicitly ignores humans.
-
-### Phase F — Raid consolidation
-Build `Raid.lua` from proven pieces rather than rewriting blind:
-- observed roster + Active Roster;
-- tracker/live identity;
-- role state/pfUI;
-- optional detection lifecycle;
-- maintenance.
-Flatten wrapper chains into explicit coordinator calls.
-
-### Phase G — Spawn/state-machine consolidation
-Start from final 0.7.14 `Spawn.lua`, absorb PresetRebuild and live survivor/bootstrap helpers, create one operation state object, implement shared removal-settle barrier and remove superseded scheduler paths only after tests.
+- [ ] Keep final `Spawn.lua` scheduler as the proven base.
+- [ ] Absorb `PresetRebuild.lua`.
+- [ ] Absorb still-live burst/survivor helpers.
+- [ ] One explicit operation object/state machine for conversion/bootstrap/survivor/bursts/abort.
+- [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every remove-then-add operation.
+- [ ] Remove superseded scheduler definitions after proof.
 
 ### Phase H — identity hardening
-Can overlap Spawn work where necessary:
-- one active burst object;
-- join-message ordered binding;
-- roster verification only;
-- mismatch/timeout fails visibly/safely;
-- explicit close before next burst;
-- no cross-burst stale queue.
+
+- [ ] One active identity burst object at a time.
+- [ ] Join-message order binds names to explicit assignments.
+- [ ] Roster confirms the same names/classes/subgroups/order without independently consuming pending assignments.
+- [ ] Failed/mismatched burst surfaces an error and closes safely instead of shifting later identities.
+- [ ] Next burst cannot inherit stale intents.
+- [ ] Combat confirmation remains optional and normally OFF.
 
 ### Phase I — cleanup/re-audit
-Remove absorbed patch files/wrapper variables/dead scheduler code; search for repeated public function definitions; verify TOC order reflects dependencies rather than interception; update `ARCHITECTURE.md` to final 0.8 implementation.
 
-## Verification gates
-After each phase run affected tests plus smoke: load/reload, preset save/reselect, 5-man summon, abort/reset, direct commands.
+- [ ] Remove obsolete wrapper variables, compatibility state and patch-only files.
+- [ ] Search again for repeated public function definitions.
+- [ ] Verify TOC order reflects true dependencies only.
+- [ ] Update `ARCHITECTURE.md` from 0.7.14 audit description to the final 0.8 architecture.
+- [ ] Run the full regression baseline before any main promotion.
 
-Before main promotion run the full matrix in `BEHAVIOUR-BASELINE.md`, especially:
-- ordinary and T3 conversion;
-- preset-over-preset survivor flow;
-- repeated 40-man bursts;
-- exact identity with humans occupying arbitrary Blizzard rows;
-- saved-player present/absent behaviour;
-- all remove-then-add 3-second barriers;
-- confirmation OFF performance and ON sleep behaviour;
-- pfUI exact named tank roles;
-- AQ40 location;
-- comm protocol.
+## Verification priorities
+
+After each relevant phase, test only affected systems plus a small smoke set. Before main promotion, run full baseline.
+
+Highest-risk scenarios:
+- 10-man dungeon from solo using first-real conversion;
+- T3 raid-zone bootstrap start;
+- preset-over-preset teardown/survivor handoff;
+- multiple consecutive LIFO bursts with duplicated class/role assignments;
+- humans occupying arbitrary Blizzard rows while suppressing exact intended logical slots;
+- saved recurring players present vs absent across repeated preset reloads;
+- Replace Dead/Missing with shared 3-second removal settle;
+- combat confirmation OFF during a 40-man raid;
+- pfUI tank marks bound to the correct named identities immediately after summon.
 
 ## Definition of done
-- six-ish coherent runtime owners rather than patch-layer sprawl;
-- one obvious owner per important workflow;
-- no mutate-then-restore preset presentation hack;
-- no competing identity consumers;
-- no cross-burst stale identity;
-- one shared remove-then-add settle policy;
-- exact human logical replacement slots work independently of Blizzard physical rows;
-- optional combat detection is dormant by construction when unused;
-- docs allow a fresh session/developer to recover architecture and decisions.
+
+0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; and the repo docs are enough for a fresh development session to continue safely.
