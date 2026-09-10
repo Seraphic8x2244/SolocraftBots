@@ -30,6 +30,14 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - When enabled, only currently-unconfirmed tracked bot names are eligible for the expensive detector; confirmed bots stop being scanned and the combat listeners unregister when no relevant unconfirmed bots remain.
 - Moved the role-confirmation option/UI bridge into `Options.lua`. Options now explicitly calls the Detection lifecycle when the checkbox changes instead of relying on a later file to wrap Options after load.
 - The existing Options-local wrapper style is still transitional; final wrapper elimination belongs to the broader Raid/Options ownership cleanup rather than being mixed into this behaviour-preserving move.
+- User smoke test passed: role ticks appeared to advance in step with observed spell use and the addon felt substantially more responsive. The exact all-confirmed listener sleep state was not directly instrumented, and 40-player performance remains untested at this checkpoint.
+
+## 0.8.4-dev — preset rebuild removal settle
+
+- Preset-over-preset rebuild now waits until the old bots are absent from Blizzard's roster and then waits the shared 3.0-second removal-settle interval before new summoning begins.
+- This replaces the previous 1.0-second post-roster barrier in `PresetRebuild.lua`.
+- This implements the approved rule that any remove-then-add operation must allow SoloCraft instance accounting to settle before issuing replacement summons.
+- `PresetRebuild.lua` remains separate for now; absorption into `Spawn.lua` is still pending.
 
 ## Presets sizing decision
 
@@ -40,5 +48,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - Flatten the human/layout/presentation wrapper chain around exact logical human slots.
+- Preserve Blizzard roster/order as live truth for names, classes, subgroup and physical row while keeping logical preset slot identity separate.
 - Continue moving role/identity/runtime ownership toward the eventual `Raid.lua` owner without changing established behaviour unintentionally.
+- Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
