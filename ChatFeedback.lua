@@ -169,3 +169,47 @@ function SCB_PresetSummonOnClick()
         botWord
     ))
 end
+
+-- Reuse the existing centre-screen warning frame for summon failures while
+-- preserving its normal survivor-safety wording for all existing callers.
+local SCB_ChatPreviousShowSafetyMessage = SCB_ShowSafetyMessage
+if SCB_ChatPreviousShowSafetyMessage then
+    function SCB_ShowSafetyMessage(message)
+        if SCB.safetyMessageFrame and SCB.safetyMessageFrame.text then
+            SCB.safetyMessageFrame.text:SetText(message or SCB_L("SURVIVOR_MESSAGE"))
+        end
+        return SCB_ChatPreviousShowSafetyMessage()
+    end
+end
+
+local function SCB_PlayerIsStealthed()
+    return IsStealthed and IsStealthed() and true or false
+end
+
+local function SCB_HandleSpawnServerRejection(text)
+    local hadOperation
+    if text ~= "Cannot add bots right now." then return end
+
+    hadOperation = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
+    if hadOperation and SCB_AbortBotSpawnOperations then
+        SCB_AbortBotSpawnOperations()
+    end
+
+    if SCB_ShowSafetyMessage then
+        if SCB_PlayerIsStealthed() then
+            SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_STEALTH", "Cannot summon bots while stealthed."))
+        else
+            SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_NOW", "Cannot summon bots right now."))
+        end
+    end
+
+    if SCB_DebugLog then
+        SCB_DebugLog("Spawn", "Server rejected bot summon; active operation aborted=" .. tostring(hadOperation))
+    end
+end
+
+local spawnFailureFrame = CreateFrame("Frame", "SoloCraftBotsSpawnFailureFrame", UIParent)
+spawnFailureFrame:RegisterEvent("CHAT_MSG_SYSTEM")
+spawnFailureFrame:SetScript("OnEvent", function()
+    if arg1 then SCB_HandleSpawnServerRejection(arg1) end
+end)

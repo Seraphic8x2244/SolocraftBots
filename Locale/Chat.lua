@@ -34,3 +34,7 @@ T["CHAT_ADDED"] = "Added"
 T["CHAT_LOADED_PRESET"] = "Loaded %s preset with %s %s"
 T["CHAT_BOT_ONE"] = "bot"
 T["CHAT_BOT_MANY"] = "bots"
+
+-- Centre-screen summon failure wording.
+T["SUMMON_BLOCKED_STEALTH"] = "Cannot summon bots while stealthed."
+T["SUMMON_BLOCKED_NOW"] = "Cannot summon bots right now."
