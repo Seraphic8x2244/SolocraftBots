@@ -1,9 +1,9 @@
 # SoloCraftBots 0.8 Canonical Target
 
-Status: approved architecture direction before first functional 0.8 change
+Status: approved architecture direction; implementation in progress
 Baseline: 0.7.14
 
-This document is the concise canonical target for 0.8. Where an older audit description differs, this target and `DECISIONS.md` win.
+This document is the concise canonical target for 0.8. Where an older audit description differs, this target and `DECISIONS.md` win. Historical notes are retained as the project develops; completed migration items are struck through or recorded in `MIGRATION-LOG.md` rather than deleted.
 
 ## Core model
 
@@ -57,7 +57,7 @@ The goal is a small number of coherent files, not micro-modules.
 - preset communications/protocol
 - location/capacity/runtime zone data and automatic preset-group switching
 
-Location belongs here because it primarily selects/constrains preset groups and is small enough not to justify another architecture boundary.
+Location belongs here because it primarily selects/constrains preset groups and is small enough not to justify another architecture boundary. Preset communications belong here because they serialize and transfer preset state rather than owning an independent runtime subsystem.
 
 ### `Spawn.lua`
 - one authoritative preset summon state machine
@@ -91,7 +91,9 @@ This file may be internally sectioned. Split only if its real size/complexity pr
 Supporting locale/assets/bindings remain separate as appropriate.
 
 ## Files/layers expected to disappear by consolidation
-`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua`, `RoleTracking.lua`, `Detection.lua`, `DetectionShieldSlam.lua`, `DetectionLifecycle.lua`, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua`, `Commands.lua`, `ChatFilter.lua` and other patch-only layers should be absorbed into the owners above where practical.
+`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua`, `RoleTracking.lua`, `Detection.lua`, `DetectionShieldSlam.lua`, `DetectionLifecycle.lua`, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua`, `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
+
+Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev. `Location.lua` and `Comms.lua` remain pending absorption into `Presets.lua`.
 
 This is a target, not permission to delete code before its live responsibility is migrated and verified.
 
