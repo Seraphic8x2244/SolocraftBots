@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.3-dev
+Current development line: 0.8.5-dev
 
 ## Purpose
 
@@ -45,7 +45,7 @@ The 0.7.14 static/source audit is complete. The main architectural knots were:
 
 1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
 2. bot identity is split across RoleTracking/RaidIdentity/Detection/refill/tracker reconciliation and uses a global pending FIFO with competing consumers;
-3. human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;
+3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation, while RaidPlayers/RaidLayout remain transitional owners pending final Presets/Raid consolidation;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
 
@@ -132,13 +132,14 @@ Owns developer diagnostics and debug UI.
 
 ### Phase F — human logical-slot model
 
-- [ ] Replace group-only/current-row editor semantics with exact human logical-slot ownership.
-- [ ] Unassigned present humans appear in Other Players pool.
-- [ ] Saved present humans snap to exact logical slots on preset load.
-- [ ] Saved absent humans do not suppress underlying bots.
-- [ ] Arrange humans into intended Blizzard subgroup, but never expect them to appear at the saved physical row.
-- [ ] Resolve bot logical order within subgroup while ignoring humans.
-- [ ] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model once superseded.
+- [x] Replace group-only/current-row editor semantics with exact human logical-slot ownership in 0.8.5-dev.
+- [x] Unassigned present humans appear in Other Players pool.
+- [x] Saved present humans snap to exact logical slots on preset load.
+- [x] Saved absent humans do not suppress underlying bots.
+- [x] Arrange humans into intended Blizzard subgroup derived from logical slot, without expecting them to appear at the saved physical row.
+- [x] Preserve bot logical order resolution within subgroup while ignoring humans.
+- [x] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model as superseded.
+- [ ] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners.
 
 ### Phase G — Spawn consolidation
 
