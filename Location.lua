@@ -4,6 +4,11 @@
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
+-- Runtime client zone strings. User-facing preset labels remain localized.
+-- Keep this correction in the canonical location owner rather than a later patch file.
+SCB.INSTANCE_ZONE_BY_GROUP = SCB.INSTANCE_ZONE_BY_GROUP or {}
+SCB.INSTANCE_ZONE_BY_GROUP.aq40 = "Ahn'Qiraj"
+
 SCB.INSTANCE_GROUP_BY_ZONE = {}
 do
     local groupID, zoneName
@@ -115,8 +120,6 @@ function SCB_ResolveLocationExpectedCap(context, currentCount, previousCap, expl
     if previousCap and tonumber(previousCap) and tonumber(previousCap) > resolved then
         resolved = tonumber(previousCap)
     end
-    -- A currently-existing group is never described as smaller than itself,
-    -- even during an unusual transition that exceeds the local summon cap.
     if currentCount > resolved then resolved = currentCount end
     return resolved
 end
@@ -125,14 +128,7 @@ function SCB_GetLocationSignature(context)
     context = context or SCB_GetLocationContext()
 
     if not context.inInstanceAvailable then return "?" end
-
-    -- World zone changes are not Preset Group transitions. This deliberately
-    -- keeps a manually-selected raid preset open while travelling outdoors.
     if not context.inInstance then return "world" end
-
-    -- Inside instances, preserve the resolved zone so direct instance-to-
-    -- instance transitions still auto-swap correctly (for example BRD -> MC,
-    -- BRS -> BWL, or Stratholme -> Naxxramas).
     return "instance\031" .. (context.resolvedZone or "")
 end
 
@@ -155,7 +151,6 @@ function SCB_ApplyLocationPresetGroup(context)
         return false
     end
 
-    -- Never discard an unsaved editor state just because the player zoned.
     if SCB.presetDirty then
         SCB_Print(SCB_L("AUTO_SWAP_SKIPPED_UNSAVED"))
         return false
@@ -203,14 +198,11 @@ function SCB_QueueLocationRefresh(delay)
     end
 
     frame = SCB.locationRefreshFrame
-    -- Zone events can arrive in a burst, and ZONE_CHANGED_NEW_AREA can precede
-    -- the zone-text APIs updating. Debounce and read the settled state.
     frame.scbDelay = delay or 0.20
     frame.scbElapsed = 0
     frame:Show()
 end
 
--- Replaces the earlier raw probe once this module loads.
 function SCB_PrintLocationProbe()
     local context = SCB_GetLocationContext()
     local inInstance
