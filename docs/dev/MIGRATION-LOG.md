@@ -51,6 +51,15 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Removed `RaidPresentation.lua` and its 0.7.14 green-pulse/live-row editor model; that design was explicitly superseded by the approved logical-slot model.
 - Existing bot finalization still uses bot-only subgroup order, preserving the useful property that humans are ignored when resolving bot order inside a subgroup.
 - Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before a raid preset can summon.
+- BWL runtime test passed with three humans total. Two humans deliberately occupied Mage logical slots and self occupied a Priest logical slot; Blizzard placed humans independently in the live raid rows while SCB still suppressed the intended logical bot slots.
+- An apparent Priest-replacement failure was traced to cross-version preset communication involving an older client, not the local 0.8.5 summon path. The alternate request flow produced the correct result. Cross-version preset comms therefore remain a compatibility item to audit before 0.8 main promotion.
+
+## 0.8.6-dev — snapshot layer absorbed into RaidPlayers
+
+- Removed `RaidSnapshot.lua` from the TOC and repository.
+- Moved its authoritative execution-snapshot builder, validation extension, exact-slot occupancy compatibility handling, and tracker preset-reference wrapper into `RaidPlayers.lua`.
+- Removed the now-redundant earlier `SCB_BuildPresetExecutionSnapshot` wrapper from `RaidPlayers.lua`; there is now one final snapshot builder in this transitional owner.
+- No intended runtime behaviour change from the tested 0.8.5 exact-slot model. This is a structural flattening step before final Presets/Raid ownership is chosen.
 
 ## Presets sizing decision
 
@@ -60,7 +69,8 @@ This file is append-only project memory for the consolidation. Existing audit/de
 
 ## Next consolidation direction
 
-- Test 0.8.5 with multiple humans if practical: exact slot suppression, saved-player snap, absent saved player fallback bot, and arbitrary Blizzard rows.
+- The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
 - Continue moving role/identity/runtime ownership toward the eventual `Raid.lua` owner without changing established behaviour unintentionally.
+- Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
 - Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
