@@ -84,6 +84,7 @@ This file may be internally sectioned. Split only if its real size/complexity pr
 ### `Options.lua`
 - options/settings UI
 - chat filter/hide-SCB-chat behaviour and hooks
+- user-facing combat-confirmation setting and explicit callback into the role-detection lifecycle
 
 ### `Debug.lua`
 - developer diagnostics and debug UI
@@ -91,9 +92,9 @@ This file may be internally sectioned. Split only if its real size/complexity pr
 Supporting locale/assets/bindings remain separate as appropriate.
 
 ## Files/layers expected to disappear by consolidation
-`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), `RoleTracking.lua`, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, `DetectionLifecycle.lua`, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
+`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), `RoleTracking.lua`, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
 
-Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
+Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
 
 This is a target, not permission to delete code before its live responsibility is migrated and verified.
 
