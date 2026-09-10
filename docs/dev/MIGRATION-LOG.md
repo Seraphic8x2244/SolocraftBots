@@ -39,6 +39,19 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - This implements the approved rule that any remove-then-add operation must allow SoloCraft instance accounting to settle before issuing replacement summons.
 - `PresetRebuild.lua` remains separate for now; absorption into `Spawn.lua` is still pending.
 
+## 0.8.5-dev — exact logical human slots
+
+- Raid humans now occupy explicit logical preset slots rather than being packed into the first free rows of their assigned subgroup.
+- Present humans with no exact logical assignment remain in Other Players until assigned to a specific slot.
+- Saved present humans snap to their saved logical slot on preset load; saved absent humans remain stored but do not suppress the underlying bot.
+- Execution snapshots now carry each raid human's exact logical `slotIndex`; bot suppression uses that exact slot rather than group occupancy count.
+- Exact player slot remains the source of the derived desired subgroup used by the existing raid arrangement code.
+- Drag/drop now resolves the specific preset row under the cursor. Dropping onto a group background alone no longer assigns the player.
+- Blizzard raid rows/subgroup positions remain observed as `current*` runtime fields and no longer permute tracker logical assignments or the working preset.
+- Removed `RaidPresentation.lua` and its 0.7.14 green-pulse/live-row editor model; that design was explicitly superseded by the approved logical-slot model.
+- Existing bot finalization still uses bot-only subgroup order, preserving the useful property that humans are ignored when resolving bot order inside a subgroup.
+- Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before a raid preset can summon.
+
 ## Presets sizing decision
 
 - Do not force `Location.lua` or `Comms.lua` into `Presets.lua` merely to reduce file count.
@@ -47,8 +60,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 
 ## Next consolidation direction
 
-- Flatten the human/layout/presentation wrapper chain around exact logical human slots.
-- Preserve Blizzard roster/order as live truth for names, classes, subgroup and physical row while keeping logical preset slot identity separate.
+- Test 0.8.5 with multiple humans if practical: exact slot suppression, saved-player snap, absent saved player fallback bot, and arbitrary Blizzard rows.
 - Continue moving role/identity/runtime ownership toward the eventual `Raid.lua` owner without changing established behaviour unintentionally.
 - Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
