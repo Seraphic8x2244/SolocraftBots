@@ -1,7 +1,12 @@
--- SoloCraft Bots - exact live human rows in raid presets.
+-- SoloCraft Bots - exact logical human-slot ownership for raid presets.
+--
+-- A preset slot is composition intent. Blizzard's physical raid row is live
+-- observation only and must never decide which bot a human suppresses.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
+
+SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
 
 local function SCB_CopyExactPlayerSlots(source, size)
     local copy = {}
@@ -16,24 +21,32 @@ local function SCB_CopyExactPlayerSlots(source, size)
     return copy
 end
 
+local function SCB_PlayerSlotGroup(slotIndex)
+    if not slotIndex then return nil end
+    return math.floor((slotIndex - 1) / 5) + 1
+end
+
+local function SCB_FindPlayerKeyByName(name)
+    local roster = SCB_GetHumanRoster and SCB_GetHumanRoster() or {}
+    local i
+    for i = 1, table.getn(roster) do
+        if roster[i].name == name then return roster[i].key end
+    end
+    return nil
+end
+
 -- -------------------------------------------------------------------------
--- Exact live human rows in raid presets
+-- Logical human layout
 -- -------------------------------------------------------------------------
 
--- Raid presets still assign humans to a group as the durable saved intent, but
--- may additionally remember the exact live row Blizzard finally chose. Missing
--- exact rows fall back to stable roster order in the first free row of the
--- assigned group, preserving compatibility with every existing preset.
 function SCB_GetPresetHumanLayout()
     local size = SCB_CurrentPresetSize()
     local roster = SCB_GetHumanRoster()
     local present, assignedPresent, playerRows = {}, {}, {}
     local used = {}
-    local i, info, key, groupIndex, slotIndex, groupStart, groupEnd, candidate
+    local i, info, key, slotIndex
 
-    for i = 1, table.getn(roster) do
-        present[roster[i].key] = roster[i]
-    end
+    for i = 1, table.getn(roster) do present[roster[i].key] = roster[i] end
 
     if size <= 5 then
         local auto = SCB_AutoPartyPlayerSlots(roster)
@@ -46,83 +59,92 @@ function SCB_GetPresetHumanLayout()
         return roster, present, playerRows, assignedPresent
     end
 
-    -- First honour exact saved/working rows that still belong to the player's
-    -- assigned group and are not already claimed by another human.
+    -- Raid presets render only explicit logical assignments. Present humans with
+    -- no exact saved/working slot remain in Other Players until the user assigns
+    -- them. Blizzard's current subgroup row never fills this table.
     for i = 1, table.getn(roster) do
         info = roster[i]
-        groupIndex = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
-        slotIndex = SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[info.key]
-        if groupIndex and slotIndex
-            and groupIndex >= 1 and groupIndex <= math.ceil(size / 5)
-            and slotIndex >= 1 and slotIndex <= size
-            and math.floor((slotIndex - 1) / 5) + 1 == groupIndex
-            and not used[slotIndex] then
+        slotIndex = SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[info.key] or nil
+        if slotIndex and slotIndex >= 1 and slotIndex <= size and not used[slotIndex] then
             playerRows[info.key] = slotIndex
             assignedPresent[info.key] = true
             used[slotIndex] = true
         end
     end
 
-    -- Old/group-only presets get exactly the previous behavior, except that
-    -- rows already claimed by an exact player are skipped.
-    for i = 1, table.getn(roster) do
-        info = roster[i]
-        if not playerRows[info.key] then
-            groupIndex = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
-            if groupIndex and groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
-                groupStart = ((groupIndex - 1) * 5) + 1
-                groupEnd = math.min(groupStart + 4, size)
-                candidate = groupStart
-                while candidate <= groupEnd and used[candidate] do
-                    candidate = candidate + 1
-                end
-                if candidate <= groupEnd then
-                    playerRows[info.key] = candidate
-                    assignedPresent[info.key] = true
-                    used[candidate] = true
-                end
-            end
-        end
-    end
-
     return roster, present, playerRows, assignedPresent
 end
 
-local function SCB_GetEditorExactPlayerSlots()
+local SCB_PreviousAssignPresetPlayer_Logical = SCB_AssignPresetPlayer
+function SCB_AssignPresetPlayer(key, slotIndex)
     local size = SCB_CurrentPresetSize()
-    local exact = SCB_CopyExactPlayerSlots(SCB.presetEditorPlayerSlots, size)
-    local roster, present, playerRows = SCB_GetPresetHumanLayout()
-    local key, slotIndex
+    local groupIndex, otherKey, otherSlot
+    if size <= 5 or not key or not slotIndex or slotIndex < 1 or slotIndex > size then return false end
 
-    -- Present players' rendered positions are the authoritative working rows.
-    for key, slotIndex in pairs(playerRows or {}) do
-        if present[key] then exact[key] = slotIndex end
+    SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
+    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+
+    -- Never silently displace another saved human assignment. The user can
+    -- explicitly remove/move that player first.
+    for otherKey, otherSlot in pairs(SCB.presetEditorPlayerSlots) do
+        if otherKey ~= key and otherSlot == slotIndex then return false end
     end
-    return exact
+
+    groupIndex = SCB_PlayerSlotGroup(slotIndex)
+    SCB.presetEditorPlayerSlots[key] = slotIndex
+    SCB.presetEditorPlayers[key] = groupIndex
+    if SCB_SetPresetDirty then SCB_SetPresetDirty(true) else SCB.presetDirty = true end
+    return true
 end
 
-local SCB_072PreviousAssignPresetPlayer = SCB_AssignPresetPlayer
-if SCB_072PreviousAssignPresetPlayer then
-    function SCB_AssignPresetPlayer(key, groupIndex)
-        local result = SCB_072PreviousAssignPresetPlayer(key, groupIndex)
-        if SCB_CurrentPresetSize() > 5 and key then
-            SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
-            -- A group-level editor drag deliberately relinquishes any exact
-            -- Blizzard row. The normal layout resolver chooses the first free
-            -- row until the live raid establishes a new exact one.
-            SCB.presetEditorPlayerSlots[key] = nil
+-- Exact slot drops replace the old group-frame drop semantics for raids.
+function SCB_FinishPresetPlayerDrag(slotIndex)
+    local key = SCB.draggedPresetPlayer
+    if not key then return false end
+
+    SCB.draggedPresetPlayer = nil
+    SCB.draggedPresetPlayerOriginSlot = nil
+    SCB_HideDragGhost()
+    SCB.draggedPresetPlayerHoverGroup = nil
+    SCB_SetPresetGroupDragHighlight(nil)
+
+    if slotIndex then SCB_AssignPresetPlayer(key, slotIndex) end
+
+    SCB_RefreshPresetSlots()
+    if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
+    return true
+end
+
+-- Mouse-up resolves the exact preset row beneath the cursor. Dropping onto the
+-- group background alone is intentionally not enough: a human must replace one
+-- specific logical bot slot.
+function SCB_PresetPlayerDragStop()
+    local i, row
+    if not SCB.draggedPresetPlayer or SCB_CurrentPresetSize() <= 5 then return end
+    for i = 1, SCB_CurrentPresetSize() do
+        row = SCB.presetDropTargets and SCB.presetDropTargets[i] or nil
+        if row and SCB_FrameContainsCursor(row) then
+            SCB_FinishPresetPlayerDrag(i)
+            return
         end
-        return result
     end
+    SCB_FinishPresetPlayerDrag(nil)
 end
 
-local SCB_072PreviousPresetPlayerOnClick = SCB_PresetPlayerOnClick
-if SCB_072PreviousPresetPlayerOnClick then
+local SCB_PreviousPresetPlayerOnClick_Logical = SCB_PresetPlayerOnClick
+if SCB_PreviousPresetPlayerOnClick_Logical then
     function SCB_PresetPlayerOnClick()
         local key = this and this.scbPlayerKey or nil
+        local slotIndex = this and this.scbSlotIndex or nil
         local remove = arg1 == "RightButton" and key and key ~= "$self"
             and SCB_CurrentPresetSize() > 5
-        local result = SCB_072PreviousPresetPlayerOnClick()
+
+        if SCB.draggedPresetPlayer and slotIndex then
+            SCB_FinishPresetPlayerDrag(slotIndex)
+            return
+        end
+
+        local result = SCB_PreviousPresetPlayerOnClick_Logical()
         if remove and SCB.presetEditorPlayers and not SCB.presetEditorPlayers[key] then
             SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
             SCB.presetEditorPlayerSlots[key] = nil
@@ -131,48 +153,51 @@ if SCB_072PreviousPresetPlayerOnClick then
     end
 end
 
-local SCB_072PreviousLoadPreset = SCB_LoadPreset
-if SCB_072PreviousLoadPreset then
+-- -------------------------------------------------------------------------
+-- Preset persistence
+-- -------------------------------------------------------------------------
+
+local SCB_PreviousLoadPreset_Logical = SCB_LoadPreset
+if SCB_PreviousLoadPreset_Logical then
     function SCB_LoadPreset(groupIndex, presetIndex)
-        local group, preset, size
-        -- Never let exact rows from the previously-selected preset leak into
-        -- the first refresh performed by the legacy loader. Reloading a preset
-        -- also deliberately breaks the editor's live-layout alignment: this is
-        -- the existing lightweight "revert to saved" behavior.
+        local group, preset, size, key, slotIndex
         SCB.presetEditorPlayerSlots = {}
-        SCB.scbEditorLayoutTrackerRevision = nil
-        SCB_072PreviousLoadPreset(groupIndex, presetIndex)
+        SCB_PreviousLoadPreset_Logical(groupIndex, presetIndex)
 
         group = SCB_CurrentPresetGroup()
         preset = SCB_CurrentPreset()
         size = group and group.size or SCB_CurrentPresetSize()
-        SCB.presetEditorPlayerSlots = SCB_CopyExactPlayerSlots(
-            preset and preset.playerSlots or nil,
-            size
-        )
+        SCB.presetEditorPlayerSlots = SCB_CopyExactPlayerSlots(preset and preset.playerSlots or nil, size)
+
+        -- Exact slot is authoritative; group is retained as derived compatibility
+        -- data for existing arrangement/snapshot code during consolidation.
+        SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+        for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+            SCB.presetEditorPlayers[key] = SCB_PlayerSlotGroup(slotIndex)
+        end
         if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
     end
 end
 
-local SCB_072PreviousSaveCurrentPreset = SCB_SaveCurrentPreset
-if SCB_072PreviousSaveCurrentPreset then
+local SCB_PreviousSaveCurrentPreset_Logical = SCB_SaveCurrentPreset
+if SCB_PreviousSaveCurrentPreset_Logical then
     function SCB_SaveCurrentPreset()
-        local exact = SCB_GetEditorExactPlayerSlots()
-        local result = SCB_072PreviousSaveCurrentPreset()
+        local exact = SCB_CopyExactPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
+        local result = SCB_PreviousSaveCurrentPreset_Logical()
         local preset = SCB_CurrentPreset()
         if preset then
-            SCB.presetEditorPlayerSlots = exact
-            preset.playerSlots = SCB_CopyExactPlayerSlots(exact, SCB_CurrentPresetSize())
+            preset.playerSlots = exact
+            SCB.presetEditorPlayerSlots = SCB_CopyExactPlayerSlots(exact, SCB_CurrentPresetSize())
         end
         return result
     end
 end
 
-local SCB_072PreviousAcceptPresetName = SCB_AcceptPresetName
-if SCB_072PreviousAcceptPresetName then
+local SCB_PreviousAcceptPresetName_Logical = SCB_AcceptPresetName
+if SCB_PreviousAcceptPresetName_Logical then
     function SCB_AcceptPresetName(dialog)
-        local exact = SCB_GetEditorExactPlayerSlots()
-        local result = SCB_072PreviousAcceptPresetName(dialog)
+        local exact = SCB_CopyExactPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
+        local result = SCB_PreviousAcceptPresetName_Logical(dialog)
         local preset = SCB_CurrentPreset()
         if preset then
             preset.playerSlots = SCB_CopyExactPlayerSlots(exact, SCB_CurrentPresetSize())
@@ -181,4 +206,50 @@ if SCB_072PreviousAcceptPresetName then
         end
         return result
     end
+end
+
+-- -------------------------------------------------------------------------
+-- Execution snapshots
+-- -------------------------------------------------------------------------
+
+local SCB_PreviousBuildPresetExecutionSnapshot_Logical = SCB_BuildPresetExecutionSnapshot
+if SCB_PreviousBuildPresetExecutionSnapshot_Logical then
+    function SCB_BuildPresetExecutionSnapshot()
+        local snapshot, errorText = SCB_PreviousBuildPresetExecutionSnapshot_Logical()
+        local used, i, player, key, slotIndex
+        if not snapshot then return nil, errorText end
+        if (snapshot.size or 0) <= 5 then return snapshot, errorText end
+
+        used = {}
+        for i = 1, table.getn(snapshot.players or {}) do
+            player = snapshot.players[i]
+            key = SCB_FindPlayerKeyByName(player.name)
+            slotIndex = key and SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[key] or nil
+            if not slotIndex then
+                return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), player.name)
+            end
+            if slotIndex < 1 or slotIndex > snapshot.size or used[slotIndex] then
+                return nil, SCB_L("ERR_PARTY_LAYOUT")
+            end
+            used[slotIndex] = true
+            player.slotIndex = slotIndex
+            player.group = SCB_PlayerSlotGroup(slotIndex)
+        end
+        return snapshot, errorText
+    end
+end
+
+-- Raid human occupancy is exact logical-slot occupancy. Humans are not packed
+-- into the first N slots of their Blizzard subgroup.
+function SCB_GetSnapshotOccupiedSlots(snapshot)
+    local occupied = {}
+    local i, player
+    if not snapshot or not snapshot.players then return occupied end
+    for i = 1, table.getn(snapshot.players) do
+        player = snapshot.players[i]
+        if player.slotIndex and player.slotIndex >= 1 and player.slotIndex <= (snapshot.size or 0) then
+            occupied[player.slotIndex] = true
+        end
+    end
+    return occupied
 end
