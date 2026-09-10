@@ -20,7 +20,16 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Moved `Shield Slam` into the Warrior tank evidence catalogue in `Detection.lua`.
 - Removed the standalone `DetectionShieldSlam.lua` wrapper and its duplicate combat-source parsing/name-normalization code.
 - Behaviour intentionally unchanged: Shield Slam remains Warrior tank evidence and uses the same two-observation confirmation threshold as the rest of the catalogue.
-- `DetectionLifecycle.lua` remains temporarily separate because it currently loads after `Options.lua` and owns the optional scanner/event sleeping wrappers. It should be consolidated deliberately rather than by introducing a new load-order dependency.
+- `DetectionLifecycle.lua` remained temporarily separate at this point because it loaded after `Options.lua` and owned the optional scanner/event sleeping wrappers.
+
+## 0.8.3-dev — role-detection lifecycle flattened
+
+- Removed `DetectionLifecycle.lua` from the TOC and repository.
+- Moved the optional combat-confirmation event lifecycle into `Detection.lua`, reusing Detection's existing combat-source/name parsing rather than maintaining a duplicate parser.
+- Combat confirmation remains OFF by default.
+- When enabled, only currently-unconfirmed tracked bot names are eligible for the expensive detector; confirmed bots stop being scanned and the combat listeners unregister when no relevant unconfirmed bots remain.
+- Moved the role-confirmation option/UI bridge into `Options.lua`. Options now explicitly calls the Detection lifecycle when the checkbox changes instead of relying on a later file to wrap Options after load.
+- The existing Options-local wrapper style is still transitional; final wrapper elimination belongs to the broader Raid/Options ownership cleanup rather than being mixed into this behaviour-preserving move.
 
 ## Presets sizing decision
 
@@ -30,6 +39,6 @@ This file is append-only project memory for the consolidation. Existing audit/de
 
 ## Next consolidation direction
 
-- Continue collapsing role-detection/lifecycle layering without changing the OFF-by-default performance behaviour.
-- Then flatten the human/layout/presentation wrapper chain around exact logical human slots.
+- Flatten the human/layout/presentation wrapper chain around exact logical human slots.
+- Continue moving role/identity/runtime ownership toward the eventual `Raid.lua` owner without changing established behaviour unintentionally.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
