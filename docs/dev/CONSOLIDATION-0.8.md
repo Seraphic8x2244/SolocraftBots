@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.2-dev
+Current development line: 0.8.3-dev
 
 ## Purpose
 
@@ -41,15 +41,15 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 
 ## Source audit result
 
-The 0.7.14 static/source audit is complete. The main architectural knots are:
+The 0.7.14 static/source audit is complete. The main architectural knots were:
 
 1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
 2. bot identity is split across RoleTracking/RaidIdentity/Detection/refill/tracker reconciliation and uses a global pending FIFO with competing consumers;
 3. human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;
-4. role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;
+4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
 
-Full details remain in `ARCHITECTURE.md`.
+Full historical details remain in `ARCHITECTURE.md`.
 
 ## Final target ownership
 
@@ -66,7 +66,7 @@ Owns the single preset summon state machine: clean summon, rebuild, explicit LIF
 Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
 
 ### `Options.lua`
-Owns options/settings UI and chat-filter/hide-chat hooks.
+Owns options/settings UI, chat-filter/hide-chat hooks, and the user-facing combat-confirmation option/callback.
 
 ### `Debug.lua`
 Owns developer diagnostics and debug UI.
@@ -107,8 +107,9 @@ Owns developer diagnostics and debug UI.
 3. **Role detection**
    - [x] Absorb the standalone Shield Slam patch into the main Warrior evidence catalogue in `Detection.lua` in 0.8.2-dev.
    - [x] Remove duplicate Shield Slam combat-source/name parsing by deleting `DetectionShieldSlam.lua`.
-   - [ ] Flatten `DetectionLifecycle.lua` without breaking OFF-by-default event unregistration or introducing hidden TOC-order dependencies.
-   - [ ] Replace late Options wrappers with explicit option ownership/callbacks during that lifecycle consolidation.
+   - [x] Flatten `DetectionLifecycle.lua` into `Detection.lua` in 0.8.3-dev without changing OFF-by-default event sleeping behaviour.
+   - [x] Move the user-facing role-confirmation option bridge into `Options.lua`, which explicitly calls the detector lifecycle on checkbox changes.
+   - [ ] Remove the remaining self-wrapper style around role-detection UI/roster integration when those functions move into their final Raid/Options owners; do not treat the 0.8.3 move as final wrapper cleanup.
 
 4. **Presets / Comms**
    - [ ] ~~Absorb `Comms.lua` into `Presets.lua` as an unconditional low-risk step.~~ Superseded: defer until final Presets size/cohesion is known.
@@ -124,7 +125,7 @@ Owns developer diagnostics and debug UI.
 - [ ] Move observed roster + Active Roster ownership from `Roster.lua`.
 - [ ] Move tracker/assumption/identity behaviour from `RoleTracking.lua` and `RaidIdentity.lua`.
 - [ ] Move maintenance from `RaidRefill.lua`/Presets wrappers.
-- [ ] Move role evidence/lifecycle from Detection files.
+- [ ] Move role evidence/lifecycle from `Detection.lua` into the final Raid owner if size remains coherent.
 - [ ] Move pfUI role integration into Raid.
 - [ ] Replace roster wrapper chain with one explicit coordinator.
 - [ ] Remove superseded raid patch files only after runtime proof.
@@ -180,6 +181,7 @@ Highest-risk scenarios:
 - Replace Dead/Missing with shared 3-second removal settle;
 - combat confirmation OFF during a 40-man raid;
 - combat confirmation ON still recognizes Shield Slam and sleeps after all tracked bots are confirmed;
+- toggling combat confirmation ON/OFF from Options immediately arms/sleeps the detector correctly;
 - pfUI tank marks bound to the correct named identities immediately after summon.
 
 ## Definition of done
