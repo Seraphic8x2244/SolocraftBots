@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.5-dev
+Current development line: 0.8.6-dev
 
 ## Purpose
 
@@ -45,7 +45,7 @@ The 0.7.14 static/source audit is complete. The main architectural knots were:
 
 1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
 2. bot identity is split across RoleTracking/RaidIdentity/Detection/refill/tracker reconciliation and uses a global pending FIFO with competing consumers;
-3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation, while RaidPlayers/RaidLayout remain transitional owners pending final Presets/Raid consolidation;
+3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers, while RaidPlayers/RaidLayout remain transitional owners pending final Presets/Raid consolidation;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
 
@@ -114,6 +114,7 @@ Owns developer diagnostics and debug UI.
 4. **Presets / Comms**
    - [ ] ~~Absorb `Comms.lua` into `Presets.lua` as an unconditional low-risk step.~~ Superseded: defer until final Presets size/cohesion is known.
    - [ ] Keep protocol/serialization behaviour unchanged regardless of final file placement.
+   - [ ] Audit cross-version exact-human-slot compatibility; older clients must not silently degrade 0.8 logical-slot intent.
 
 5. **Core / Commands**
    - [ ] Move direct commands/raid marks from `Commands.lua` into `SoloCraftBots.lua` if the resulting core remains readable.
@@ -128,6 +129,7 @@ Owns developer diagnostics and debug UI.
 - [ ] Move role evidence/lifecycle from `Detection.lua` into the final Raid owner if size remains coherent.
 - [ ] Move pfUI role integration into Raid.
 - [ ] Replace roster wrapper chain with one explicit coordinator.
+- [x] Absorb `RaidSnapshot.lua` into the tested exact-slot transitional owner in 0.8.6-dev, removing one late snapshot wrapper layer before final Presets/Raid placement.
 - [ ] Remove superseded raid patch files only after runtime proof.
 
 ### Phase F — human logical-slot model
@@ -139,7 +141,7 @@ Owns developer diagnostics and debug UI.
 - [x] Arrange humans into intended Blizzard subgroup derived from logical slot, without expecting them to appear at the saved physical row.
 - [x] Preserve bot logical order resolution within subgroup while ignoring humans.
 - [x] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model as superseded.
-- [ ] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners.
+- [x] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners: three-human BWL test passed on 0.8.5-dev.
 
 ### Phase G — Spawn consolidation
 
@@ -183,7 +185,8 @@ Highest-risk scenarios:
 - combat confirmation OFF during a 40-man raid;
 - combat confirmation ON still recognizes Shield Slam and sleeps after all tracked bots are confirmed;
 - toggling combat confirmation ON/OFF from Options immediately arms/sleeps the detector correctly;
-- pfUI tank marks bound to the correct named identities immediately after summon.
+- pfUI tank marks bound to the correct named identities immediately after summon;
+- cross-version preset send/request behavior preserves or explicitly rejects exact human-slot intent rather than silently changing it.
 
 ## Definition of done
 
