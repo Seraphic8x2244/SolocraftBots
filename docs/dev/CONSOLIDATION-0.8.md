@@ -1,8 +1,8 @@
 # SoloCraftBots 0.8 Consolidation Plan
 
-Status: implementation started on dev
+Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.0-dev
+Current development line: 0.8.2-dev
 
 ## Purpose
 
@@ -20,6 +20,7 @@ Current development line: 0.8.0-dev
 - Prefer explicit coordinator/helper calls over wrapper interception.
 - Keep migration commits small enough to identify and revert regressions.
 - Update these docs as migrations land.
+- Preserve historical audit/decision notes. Mark completed or superseded items rather than deleting the record.
 
 ## Approved canonical target
 
@@ -35,7 +36,8 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 - Blizzard roster reinforces/verifies identity and live location, but does not compete to consume pending assignments;
 - resolved role is `confirmedRole` when available, otherwise `assumedRole`, while assumed role is retained;
 - every remove-then-add lifecycle waits for roster disappearance plus a shared 3.0-second settle;
-- target files are `SoloCraftBots.lua`, `Presets.lua`, `Spawn.lua`, `Raid.lua`, `Options.lua`, `Debug.lua` plus supporting locale/assets/bindings.
+- target ownership should be coarse rather than micro-modular;
+- `Location.lua` and `Comms.lua` are not mandatory merges into `Presets.lua`: decide after non-preset runtime code has been removed from Presets and the resulting size/cohesion is known.
 
 ## Source audit result
 
@@ -55,7 +57,7 @@ Full details remain in `ARCHITECTURE.md`.
 Owns bootstrap, shared UI helpers, top-level event dispatch, direct bot commands and raid-mark controls where size remains reasonable.
 
 ### `Presets.lua`
-Owns preset storage/editor semantics, bot logical slots, exact human logical-slot assignments and Other Players pool, preset communications, execution snapshot construction if compact, and location/capacity/auto-preset-group logic.
+Owns preset storage/editor semantics, bot logical slots, exact human logical-slot assignments and Other Players pool. Execution snapshot construction may remain here if compact. Location and preset communications may merge here only if the final file remains coherent after runtime code is extracted.
 
 ### `Spawn.lua`
 Owns the single preset summon state machine: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and interaction with isolated identity bursts.
@@ -82,8 +84,9 @@ Owns developer diagnostics and debug UI.
 - [x] Blizzard live row remains observational only; no hard-coded physical-row expectation.
 - [x] Confirmed role may drive resolved maintenance role while assumed role remains retained.
 - [x] Join-message order is primary burst identity; roster is reinforcement/verification, not competing consumption.
-- [x] Final file ownership approved and aggressively consolidated.
+- [x] Final ownership should be aggressively consolidated, but file count is not a goal by itself.
 - [x] Universal 3-second remove-then-add settle approved.
+- [x] Location/Comms merge into Presets left open pending final Presets size/cohesion.
 
 ### Phase C — start 0.8.0-dev
 - [x] First functional consolidation commit bumps TOC to `0.8.0-dev`.
@@ -93,19 +96,25 @@ Owns developer diagnostics and debug UI.
 
 1. **Location / Presets**
    - [x] Eliminate `LocationZones.lua` late correction layer.
-   - [ ] Move the remaining `Location.lua` implementation into `Presets.lua`.
-   - [ ] Centralize all runtime zone strings/capacity policy there.
+   - [ ] ~~Move the remaining `Location.lua` implementation into `Presets.lua` immediately.~~ Superseded as a mandatory step: reassess after Presets sheds non-preset runtime code.
+   - [ ] Centralize runtime zone strings/capacity policy in one final owner, whether that is Presets or a retained Location file.
    - [ ] Make saved-raid safety consumers use canonical runtime location data rather than localized labels.
-   - [ ] Remove `Location.lua` from TOC after behaviour is migrated.
 
 2. **Options / Chat filter**
-   - [ ] Absorb `ChatFilter.lua` into `Options.lua`.
-   - [ ] Preserve hide-SCB-chat behaviour and ensure filters do not prevent SCB's internal event observation.
+   - [x] Absorb `ChatFilter.lua` into `Options.lua` in 0.8.1-dev.
+   - [x] Preserve hide-SCB-chat behaviour and ensure filters do not prevent SCB's internal event observation.
 
-3. **Presets / Comms**
-   - [ ] Absorb `Comms.lua` into `Presets.lua` without changing protocol/serialization behaviour.
+3. **Role detection**
+   - [x] Absorb the standalone Shield Slam patch into the main Warrior evidence catalogue in `Detection.lua` in 0.8.2-dev.
+   - [x] Remove duplicate Shield Slam combat-source/name parsing by deleting `DetectionShieldSlam.lua`.
+   - [ ] Flatten `DetectionLifecycle.lua` without breaking OFF-by-default event unregistration or introducing hidden TOC-order dependencies.
+   - [ ] Replace late Options wrappers with explicit option ownership/callbacks during that lifecycle consolidation.
 
-4. **Core / Commands**
+4. **Presets / Comms**
+   - [ ] ~~Absorb `Comms.lua` into `Presets.lua` as an unconditional low-risk step.~~ Superseded: defer until final Presets size/cohesion is known.
+   - [ ] Keep protocol/serialization behaviour unchanged regardless of final file placement.
+
+5. **Core / Commands**
    - [ ] Move direct commands/raid marks from `Commands.lua` into `SoloCraftBots.lua` if the resulting core remains readable.
    - [ ] Move survivor/removal policy out of Commands into Spawn/Raid ownership before deleting Commands.
 
@@ -153,7 +162,8 @@ Owns developer diagnostics and debug UI.
 - [ ] Remove obsolete wrapper variables, compatibility state and patch-only files.
 - [ ] Search again for repeated public function definitions.
 - [ ] Verify TOC order reflects true dependencies only.
-- [ ] Update `ARCHITECTURE.md` from 0.7.14 audit description to the final 0.8 architecture.
+- [ ] Reassess final Presets size before deciding Location/Comms merge.
+- [ ] Update `ARCHITECTURE.md` from 0.7.14 audit description to the final 0.8 architecture while retaining the historical audit sections.
 - [ ] Run the full regression baseline before any main promotion.
 
 ## Verification priorities
@@ -169,8 +179,9 @@ Highest-risk scenarios:
 - saved recurring players present vs absent across repeated preset reloads;
 - Replace Dead/Missing with shared 3-second removal settle;
 - combat confirmation OFF during a 40-man raid;
+- combat confirmation ON still recognizes Shield Slam and sleeps after all tracked bots are confirmed;
 - pfUI tank marks bound to the correct named identities immediately after summon.
 
 ## Definition of done
 
-0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; and the repo docs are enough for a fresh development session to continue safely.
+0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; final Presets/Location/Comms ownership is chosen by actual size/cohesion rather than an arbitrary file-count target; historical migration notes remain recoverable; and the repo docs are enough for a fresh development session to continue safely.
