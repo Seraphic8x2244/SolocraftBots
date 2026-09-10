@@ -37,4 +37,7 @@ T["CHAT_BOT_MANY"] = "bots"
 
 -- Centre-screen summon failure wording.
 T["SUMMON_BLOCKED_STEALTH"] = "Cannot summon bots while stealthed."
+T["SUMMON_BLOCKED_PROWL"] = "Cannot summon bots while prowling."
+T["SUMMON_BLOCKED_SHADOWMELD"] = "Cannot summon bots while Shadowmelded."
+T["SUMMON_BLOCKED_INVISIBILITY"] = "Cannot summon bots while invisible."
 T["SUMMON_BLOCKED_NOW"] = "Cannot summon bots right now."

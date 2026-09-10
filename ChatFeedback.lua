@@ -182,12 +182,50 @@ if SCB_ChatPreviousShowSafetyMessage then
     end
 end
 
-local function SCB_PlayerIsStealthed()
-    return IsStealthed and IsStealthed() and true or false
+local SCB_HIDDEN_AURAS = {
+    ["Stealth"] = "stealth",
+    ["Prowl"] = "prowl",
+    ["Shadowmeld"] = "shadowmeld",
+    ["Invisibility"] = "invisibility",
+    ["Lesser Invisibility"] = "invisibility",
+}
+
+local function SCB_GetHiddenAuraKind()
+    local tooltip, buffIndex, line, auraName, i
+
+    -- Vanilla 1.12 does not expose player buff names directly. Only inspect
+    -- tooltip text after the server has already rejected a summon; there is no
+    -- background aura polling or ongoing cost.
+    if GetPlayerBuff and GameTooltip then
+        tooltip = SCB.hiddenAuraTooltip
+        if not tooltip then
+            tooltip = CreateFrame("GameTooltip", "SoloCraftBotsHiddenAuraTooltip", UIParent, "GameTooltipTemplate")
+            tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+            SCB.hiddenAuraTooltip = tooltip
+        end
+
+        for i = 0, 31 do
+            buffIndex = GetPlayerBuff(i, "HELPFUL")
+            if not buffIndex or buffIndex < 0 then break end
+            tooltip:ClearLines()
+            tooltip:SetPlayerBuff(buffIndex)
+            line = getglobal("SoloCraftBotsHiddenAuraTooltipTextLeft1")
+            auraName = line and line:GetText() or nil
+            if auraName and SCB_HIDDEN_AURAS[auraName] then
+                tooltip:Hide()
+                return SCB_HIDDEN_AURAS[auraName], auraName
+            end
+        end
+        tooltip:Hide()
+    end
+
+    -- Covers stealth-like states even if their tooltip text differs on a fork.
+    if IsStealthed and IsStealthed() then return "stealth", nil end
+    return nil, nil
 end
 
 local function SCB_HandleSpawnServerRejection(text)
-    local hadOperation
+    local hadOperation, hiddenKind, auraName, warning
     if text ~= "Cannot add bots right now." then return end
 
     hadOperation = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
@@ -195,16 +233,24 @@ local function SCB_HandleSpawnServerRejection(text)
         SCB_AbortBotSpawnOperations()
     end
 
-    if SCB_ShowSafetyMessage then
-        if SCB_PlayerIsStealthed() then
-            SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_STEALTH", "Cannot summon bots while stealthed."))
-        else
-            SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_NOW", "Cannot summon bots right now."))
-        end
+    hiddenKind, auraName = SCB_GetHiddenAuraKind()
+    if hiddenKind == "prowl" then
+        warning = SCB_L("SUMMON_BLOCKED_PROWL", "Cannot summon bots while prowling.")
+    elseif hiddenKind == "shadowmeld" then
+        warning = SCB_L("SUMMON_BLOCKED_SHADOWMELD", "Cannot summon bots while Shadowmelded.")
+    elseif hiddenKind == "invisibility" then
+        warning = SCB_L("SUMMON_BLOCKED_INVISIBILITY", "Cannot summon bots while invisible.")
+    elseif hiddenKind == "stealth" then
+        warning = SCB_L("SUMMON_BLOCKED_STEALTH", "Cannot summon bots while stealthed.")
+    else
+        warning = SCB_L("SUMMON_BLOCKED_NOW", "Cannot summon bots right now.")
     end
 
+    if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(warning) end
+
     if SCB_DebugLog then
-        SCB_DebugLog("Spawn", "Server rejected bot summon; active operation aborted=" .. tostring(hadOperation))
+        SCB_DebugLog("Spawn", "Server rejected bot summon; active operation aborted=" .. tostring(hadOperation)
+            .. ", hidden=" .. tostring(hiddenKind) .. ", aura=" .. tostring(auraName))
     end
 end
 
