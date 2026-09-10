@@ -118,20 +118,29 @@ local function SCB_PrintAddedRequest(classKey, role, extra)
         .. " " .. description)
 end
 
+local function SCB_GetFinalSpawnExtra(command)
+    local _, _, extra
+    if type(command) ~= "string" then return nil end
+    _, _, extra = string.find(command, "^add%s+%S+%s+%S+%s*(.*)$")
+    if extra == "" then extra = nil end
+    return extra
+end
+
 -- Manual summon feedback is request feedback: print immediately when the
 -- validated command is sent. Preset summons intentionally do not print one line
 -- per bot; their single preset summary below is the only normal chat feedback.
 function SCB_SpawnOnClick()
-    local extra, command
+    local extra, command, finalExtra
     if not this.scbClass or not this.scbRole then return end
 
     extra = this.scbExtra
     if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
     command = SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra)
+    finalExtra = SCB_GetFinalSpawnExtra(command)
 
     if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
     if SCB_SendSpawnCommand(command) then
-        SCB_PrintAddedRequest(this.scbClass, this.scbRole, extra)
+        SCB_PrintAddedRequest(this.scbClass, this.scbRole, finalExtra)
     end
 end
 
