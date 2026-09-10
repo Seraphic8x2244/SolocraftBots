@@ -14,12 +14,16 @@ A human assignment is exact: player identity -> logical group + logical slot. Th
 
 Saved humans who are present automatically snap back to their saved logical slot when the preset is loaded/reloaded. Saved humans who are absent do not suppress the underlying bot and require no manual cleanup. Unsaved present humans remain in the lower Other Players pool until assigned.
 
+Implemented in 0.8.5-dev: raid human drag/drop targets exact logical rows; execution snapshots carry the exact human `slotIndex`; group is derived from that slot; group-only legacy assignments without an exact slot remain unassigned until the user chooses a specific slot.
+
 ### Logical slot is not Blizzard row
 Blizzard raid roster/order remains the source of truth for live names, classes, subgroup membership and displayed within-group order. SCB must never assume logical GxSy equals Blizzard displayed GxSy.
 
 During raid formation humans commonly appear at the top of a subgroup. Their live Blizzard row does not change which logical preset slot they replace.
 
 Bot identity/order inside a subgroup is resolved while ignoring humans. The explicit burst plan and reliable bot-join messages establish bot name -> logical assignment. Blizzard roster then verifies that those names exist, their class, subgroup and live ordering. No hard-coded physical-row expectation is allowed.
+
+Implemented in 0.8.5-dev: Blizzard layout reconciliation records `current*` live placement fields but no longer permutes tracker logical assignments or the preset editor. The 0.7.14 green-pulse/live-row presentation layer was removed as superseded.
 
 ### Identity
 Primary identity source: explicit burst plan + SoloCraft join-message order.
@@ -92,9 +96,9 @@ This file may be internally sectioned. Split only if its real size/complexity pr
 Supporting locale/assets/bindings remain separate as appropriate.
 
 ## Files/layers expected to disappear by consolidation
-`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), `RoleTracking.lua`, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, `RaidPresentation.lua`, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
+`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), `RoleTracking.lua`, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, `RaidSnapshot.lua`, `RaidBurst.lua`, `RaidRefill.lua`, `RaidLayout.lua`, ~~`RaidPresentation.lua`~~, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
 
-Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
+Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev; `RaidPresentation.lua` was removed in 0.8.5-dev after the exact-logical-human-slot model superseded live-row editor mirroring. `RaidPlayers.lua` and `RaidLayout.lua` still exist as transitional owners and are expected to fold into final Presets/Raid ownership later. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
 
 This is a target, not permission to delete code before its live responsibility is migrated and verified.
 
