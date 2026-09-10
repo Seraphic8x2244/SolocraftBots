@@ -4,14 +4,14 @@
 -- reliable old-client pattern: listen to CHAT_MSG_SPELL_* combat text, extract
 -- the acting group member from arg1, and classify recognised spell names.  SCB
 -- keeps that proven transport but treats each observation as one evidence step.
--- Three observations are required before confirmedRole is set.
+-- Two observations are required before confirmedRole is set.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
 SCB.roleEvidenceByName = SCB.roleEvidenceByName or {}
 SCB.roleEvidenceRecent = SCB.roleEvidenceRecent or {}
-SCB.ROLE_CONFIRM_THRESHOLD = 3
+SCB.ROLE_CONFIRM_THRESHOLD = 2
 
 -- Vanilla-only subset of FRB's spell/role catalogue.  Later-expansion entries
 -- (for example Lava Lash, Crusader Strike, Steady Shot, Incinerate) are
@@ -538,9 +538,8 @@ end
 
 local SCB_CONFIRM_COLORS = {
     [0] = { 1.00, 0.10, 0.10 },
-    [1] = { 1.00, 0.50, 0.00 },
-    [2] = { 1.00, 0.90, 0.00 },
-    [3] = { 0.20, 1.00, 0.20 },
+    [1] = { 1.00, 0.90, 0.00 },
+    [2] = { 0.20, 1.00, 0.20 },
 }
 
 local function SCB_UpdatePresetRoleIndicatorGeometry(row)
@@ -640,9 +639,8 @@ function SCB_RefreshPresetRoleIndicators()
                     -- this preset's assumed role. Right = assumption exists.
                     row.scbAssumedTick:Show()
 
-                    -- Left = confidence in that exact assumed role. Zero is a
-                    -- first-class state: no evidence yet is red, then each
-                    -- matching observation advances orange -> yellow -> green.
+                    -- Left = confidence in that exact assumed role. Zero is red,
+                    -- one matching observation is yellow, and two confirms green.
                     stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
                     if stage <= 0 then
                         local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
