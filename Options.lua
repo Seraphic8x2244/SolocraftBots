@@ -24,8 +24,6 @@ function SCB_AutoLootOptionOnClick()
     SCB_RefreshAutoLootSelector()
     if SCB.optionAutoLootMenu then SCB.optionAutoLootMenu:Hide() end
 
-    -- Changing the setting while already grouped should take effect now, not
-    -- wait for another SCB bot to join.
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if partyCount > 0 or raidCount > 0 then
@@ -153,7 +151,7 @@ function SCB_SetDebugOutline(frame, shown)
 end
 
 function SCB_UpdateLayoutDebugBorders()
-    local shown, r, i, row, frame
+    local shown, r, i, row
     shown = SCB.optionsDebugMode and SCB.optionsDebugMode.command
     if SCB.commandLayout then
         for r = 1, table.getn(SCB.commandLayout.rows or {}) do
@@ -545,8 +543,6 @@ end
 -- -------------------------------------------------------------------------
 -- Bot chat filtering
 -- -------------------------------------------------------------------------
--- Presentation-only filtering. CHAT_MSG_SYSTEM still reaches SCB's event
--- handlers; this only suppresses selected lines when chat frames render them.
 
 local SCB_MOVEMENT_ROLE_PREFIXES = {
     "Tanks ",
@@ -660,4 +656,59 @@ function SCB_InstallBotChatFilter()
         end
     end
     SCB.botChatFilterInstalled = true
+end
+
+-- -------------------------------------------------------------------------
+-- Optional role-confirmation option bridge
+-- -------------------------------------------------------------------------
+-- Detection owns the scanner lifecycle. Options owns the setting/UI and calls
+-- the detector explicitly; no later DetectionLifecycle file is needed to wrap
+-- Options after load.
+
+if SoloCraftBotsLocale then
+    SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES"] = SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES"] or "Confirm bot roles from combat"
+    SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES_TIP"] = SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES_TIP"] or "Validate requested bot roles from combat text. Disabled by default for performance."
+end
+
+local SCB_OptionsBaseOptionCheckOnClick = SCB_OptionCheckOnClick
+function SCB_OptionCheckOnClick()
+    local key = this and this.scbOptionKey or nil
+    SCB_OptionsBaseOptionCheckOnClick()
+    if key == "confirmBotRolesFromCombat" then
+        if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle() end
+        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+    end
+end
+
+local SCB_OptionsBaseRefreshOptionsUI = SCB_RefreshOptionsUI
+function SCB_RefreshOptionsUI()
+    local result = SCB_OptionsBaseRefreshOptionsUI()
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
+        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
+    end
+    if SCB.optionConfirmBotRolesCheck then
+        SCB.optionConfirmBotRolesCheck:SetChecked(SoloCraftBotsDB.options.confirmBotRolesFromCombat and 1 or nil)
+    end
+    return result
+end
+
+local SCB_OptionsBaseCreateOptionsUI = SCB_CreateOptionsUI
+function SCB_CreateOptionsUI(frame)
+    local result = SCB_OptionsBaseCreateOptionsUI(frame)
+    local content = SCB.optionMiscSection and SCB.optionMiscSection.scbContent or nil
+    local check
+    if content and SCB_CreateOptionCheck and not SCB.optionConfirmBotRolesCheck then
+        check = SCB_CreateOptionCheck(content, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -112)
+        check.scbTooltip = SCB_L("OPTION_CONFIRM_BOT_ROLES_TIP")
+        check:SetScript("OnEnter", SCB_TooltipOnEnter)
+        check:SetScript("OnLeave", SCB_TooltipOnLeave)
+        SCB.optionConfirmBotRolesCheck = check
+        SCB.optionMiscSection.scbExpandedHeight = 168
+        content:SetHeight(142)
+    end
+    SCB_RefreshOptionsUI()
+    if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
+    return result
 end

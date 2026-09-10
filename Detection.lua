@@ -1,8 +1,8 @@
 -- SoloCraft Bots - combat role evidence and preset role-status indicators.
 --
--- Vanilla 1.12 has no modern combat-log API.  FillRaidBots demonstrates the
+-- Vanilla 1.12 has no modern combat-log API. FillRaidBots demonstrates the
 -- reliable old-client pattern: listen to CHAT_MSG_SPELL_* combat text, extract
--- the acting group member from arg1, and classify recognised spell names.  SCB
+-- the acting group member from arg1, and classify recognised spell names. SCB
 -- keeps that proven transport but treats each observation as one evidence step.
 -- Two observations are required before confirmedRole is set.
 
@@ -13,9 +13,9 @@ SCB.roleEvidenceByName = SCB.roleEvidenceByName or {}
 SCB.roleEvidenceRecent = SCB.roleEvidenceRecent or {}
 SCB.ROLE_CONFIRM_THRESHOLD = 2
 
--- Vanilla-only subset of FRB's spell/role catalogue.  Later-expansion entries
+-- Vanilla-only subset of FRB's spell/role catalogue. Later-expansion entries
 -- (for example Lava Lash, Crusader Strike, Steady Shot, Incinerate) are
--- deliberately excluded.  These are evidence, not class locks: every role keeps
+-- deliberately excluded. These are evidence, not class locks: every role keeps
 -- its own score and the strongest score wins once it reaches the threshold.
 local SCB_ROLE_SPELLS = {
     warrior = {
@@ -239,8 +239,6 @@ local function SCB_ResolveEvidenceCandidate(name, state)
         if score > bestScore then
             bestRole, bestScore = role, score
         elseif score == bestScore and role == assumedRole then
-            -- Assumption is a tie-breaker only; it never prevents another role
-            -- from winning once the observed evidence is stronger.
             bestRole = role
         end
     end
@@ -294,10 +292,6 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
         state = { class = classKey, byRole = {}, observations = 0 }
         SCB.roleEvidenceByName[name] = state
     end
-
-    -- Actual UnitClass is authoritative for identity. If a stale text parse ever
-    -- points at the wrong unit, do not let a spell from another class contaminate
-    -- that bot's role evidence.
     if state.class and state.class ~= classKey then return false end
 
     oldConfirmed = state.confirmedRole
@@ -328,9 +322,6 @@ end
 function SCB_HandleRoleCombatText(text, eventName)
     local source, name, classKey, spell, role
     if type(text) ~= "string" or text == "" then return false end
-
-    -- Resource gain lines are noisy and can contain recognised words without a
-    -- meaningful cast. FRB filters these too.
     if string.find(text, "gains %d+ Mana") or string.find(text, "gains %d+ Rage")
         or string.find(text, "gains %d+ Energy") then
         return false
@@ -350,9 +341,6 @@ end
 -- -------------------------------------------------------------------------
 -- Active Roster role semantics
 -- -------------------------------------------------------------------------
--- Active slots keep the requested role and the observed role separately.  The
--- legacy slot.role field remains the resolved/desirable replacement role so the
--- existing Replace Missing machinery does not need a parallel command path.
 
 local SCB_OriginalEstablishActiveRosterFromTracker_Detection = SCB_EstablishActiveRosterFromTracker
 if SCB_OriginalEstablishActiveRosterFromTracker_Detection then
@@ -373,9 +361,6 @@ if SCB_OriginalEstablishActiveRosterFromTracker_Detection then
     end
 end
 
--- Replace the old scaffold semantics: confirmed observation no longer destroys
--- the requested/assumed role.  Consumers can resolve confirmedRole first while
--- the original intent remains available for diagnostics and future replacement.
 function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
     local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
     local assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
@@ -410,8 +395,6 @@ if SCB_OriginalBindReplacementToActiveSlot_Detection then
     end
 end
 
--- Enrich every fresh Live Roster snapshot from the durable evidence/Active
--- layers. RoleTracking.lua already attaches assumedRole before this wrapper runs.
 local SCB_OriginalBuildLiveRoster_Detection = SCB_BuildLiveRoster
 if SCB_OriginalBuildLiveRoster_Detection then
     function SCB_BuildLiveRoster()
@@ -461,7 +444,6 @@ function SCB_LinkAssumptionsToTrackerSlots()
     if not tracker or not tracker.assignments then return end
     used = {}
 
-    -- Preserve still-valid links first.
     for i = 1, table.getn(tracker.assignments) do
         assignment = tracker.assignments[i]
         name = assignment and assignment.scbAssumedName or nil
@@ -474,9 +456,6 @@ function SCB_LinkAssumptionsToTrackerSlots()
         end
     end
 
-    -- Then match every unresolved preset assignment to the earliest unclaimed
-    -- name-linked intent with the exact spawn command. Identical commands are
-    -- interchangeable by definition; differing role/spec commands are not.
     for i = 1, table.getn(tracker.assignments) do
         assignment = tracker.assignments[i]
         if assignment and assignment.initialActive and not assignment.scbAssumedName then
@@ -529,10 +508,6 @@ end
 -- -------------------------------------------------------------------------
 -- Preset role-icon overlays
 -- -------------------------------------------------------------------------
--- Both status marks are anchored to the role button itself. Their size and
--- overlap are derived from the configured role icon size, so layout-option
--- changes cannot move or scale the role icon independently of its indicators.
--- Neither indicator changes row, group or panel geometry.
 
 local SCB_CONFIRM_COLORS = {
     [0] = { 1.00, 0.10, 0.10 },
@@ -555,14 +530,11 @@ local function SCB_UpdatePresetRoleIndicatorGeometry(row)
     row.scbAssumedTick:SetWidth(tickSize)
     row.scbAssumedTick:SetHeight(tickSize)
     row.scbAssumedTick:ClearAllPoints()
-    -- Assumed role is deliberately the rightmost mark.
     row.scbAssumedTick:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", 0, 0)
 
     row.scbConfirmedTick:SetWidth(tickSize)
     row.scbConfirmedTick:SetHeight(tickSize)
     row.scbConfirmedTick:ClearAllPoints()
-    -- Confirmation sits immediately to its left with a small proportional
-    -- overlap, keeping the two marks visually tight at every configured size.
     row.scbConfirmedTick:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", -confirmedOffset, 0)
 end
 
@@ -633,12 +605,7 @@ function SCB_RefreshPresetRoleIndicators()
                 assignment = SCB_FindTrackerAssignmentForIndicator(i)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
-                    -- Both marks appear only once a real named bot has acquired
-                    -- this preset's assumed role. Right = assumption exists.
                     row.scbAssumedTick:Show()
-
-                    -- Left = confidence in that exact assumed role. Zero is red,
-                    -- one matching observation is yellow, and two confirms green.
                     stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
                     if stage <= 0 then
                         local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
@@ -685,7 +652,7 @@ if SCB_OriginalRefreshPresetPlayers_Detection then
 end
 
 -- -------------------------------------------------------------------------
--- Vanilla combat-text listener
+-- Optional combat-role confirmation lifecycle
 -- -------------------------------------------------------------------------
 
 local detectionFrame = CreateFrame("Frame", "SoloCraftBotsRoleDetectionEventFrame", UIParent)
@@ -702,9 +669,137 @@ local SCB_DETECTION_EVENTS = {
     "CHAT_MSG_SPELL_PARTY_DAMAGE",
     "CHAT_MSG_COMBAT_PARTY_HITS",
 }
-local i
-for i = 1, table.getn(SCB_DETECTION_EVENTS) do detectionFrame:RegisterEvent(SCB_DETECTION_EVENTS[i]) end
+
+local function SCB_EnsureRoleDetectionOption()
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
+        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
+    end
+    return SoloCraftBotsDB.options.confirmBotRolesFromCombat == true
+end
+
+local function SCB_LiveBotNeedsRoleConfirmation(member)
+    local slot
+    if not member or not member.isBot or member.spawnKind == "bootstrap" then return false end
+    if member.confirmedRole then return false end
+    if member.assumedRole then return true end
+
+    if SCB_GetActiveSlotByName and member.name then
+        slot = SCB_GetActiveSlotByName(member.name)
+        if slot and (slot.assumedRole or slot.role) then
+            return slot.confirmedRole == nil
+        end
+    end
+    return false
+end
+
+local function SCB_RebuildRoleDetectionPendingNames()
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    local pending = {}
+    local i, member, key
+
+    for i = 1, table.getn(roster and roster.members or {}) do
+        member = roster.members[i]
+        if SCB_LiveBotNeedsRoleConfirmation(member) then
+            key = SCB_NormalizeCombatName(member.name)
+            if key then pending[key] = true end
+        end
+    end
+    SCB.roleDetectionPendingNames = pending
+    return next(pending) ~= nil
+end
+
+local function SCB_SetRoleDetectionEventsEnabled(enabled, reason)
+    local i
+    enabled = enabled == true
+    if SCB.roleDetectionEventsEnabled == enabled then return end
+
+    if enabled then
+        for i = 1, table.getn(SCB_DETECTION_EVENTS) do
+            detectionFrame:RegisterEvent(SCB_DETECTION_EVENTS[i])
+        end
+    else
+        for i = 1, table.getn(SCB_DETECTION_EVENTS) do
+            detectionFrame:UnregisterEvent(SCB_DETECTION_EVENTS[i])
+        end
+    end
+    SCB.roleDetectionEventsEnabled = enabled
+
+    if SCB_DebugLog then
+        SCB_DebugLog("Detection", enabled and "Combat role scanning enabled" or (reason or "Combat role scanning sleeping"))
+    end
+end
+
+function SCB_RefreshRoleDetectionLifecycle()
+    local enabled = SCB_EnsureRoleDetectionOption()
+    local pending
+
+    if not enabled then
+        SCB.roleDetectionPendingNames = {}
+        SCB_SetRoleDetectionEventsEnabled(false, "Combat role scanning disabled by option")
+        return
+    end
+
+    pending = SCB_RebuildRoleDetectionPendingNames()
+    SCB_SetRoleDetectionEventsEnabled(pending, "Combat role scanning sleeping; all tracked bots confirmed")
+end
+
+local function SCB_CombatSourceNeedsRoleConfirmation(text)
+    local source = SCB_ExtractCombatSource(text)
+    local key = SCB_NormalizeCombatName(source)
+    return key and SCB.roleDetectionPendingNames and SCB.roleDetectionPendingNames[key] == true
+end
+
+local SCB_PreviousHandleRoleCombatText_Lifecycle = SCB_HandleRoleCombatText
+function SCB_HandleRoleCombatText(text, eventName)
+    if not SCB_EnsureRoleDetectionOption() then return false end
+    if not SCB_CombatSourceNeedsRoleConfirmation(text) then return false end
+    return SCB_PreviousHandleRoleCombatText_Lifecycle(text, eventName)
+end
+
+local SCB_PreviousAddBotRoleEvidence_Lifecycle = SCB_AddBotRoleEvidence
+function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
+    local changed = SCB_PreviousAddBotRoleEvidence_Lifecycle(name, classKey, role, spell, eventName)
+    SCB_RefreshRoleDetectionLifecycle()
+    return changed
+end
+
+local SCB_PreviousHandleRosterChange_Lifecycle = SCB_HandleRosterChange
+if SCB_PreviousHandleRosterChange_Lifecycle then
+    function SCB_HandleRosterChange()
+        local result = SCB_PreviousHandleRosterChange_Lifecycle()
+        SCB_RefreshRoleDetectionLifecycle()
+        return result
+    end
+end
+
+local SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle = SCB_HandleAssumedRoleSystemMessage
+if SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle then
+    function SCB_HandleAssumedRoleSystemMessage(text)
+        local changed = SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle(text)
+        if changed then SCB_RefreshRoleDetectionLifecycle() end
+        return changed
+    end
+end
+
+local SCB_PreviousRefreshPresetRoleIndicators_Lifecycle = SCB_RefreshPresetRoleIndicators
+function SCB_RefreshPresetRoleIndicators()
+    local result = SCB_PreviousRefreshPresetRoleIndicators_Lifecycle()
+    local i, row
+    if not SCB_EnsureRoleDetectionOption() then
+        for i = 1, 40 do
+            row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+            if row and row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
+        end
+    end
+    return result
+end
 
 detectionFrame:SetScript("OnEvent", function()
     if arg1 then SCB_HandleRoleCombatText(arg1, event) end
 end)
+
+SCB.roleDetectionEventsEnabled = false
+SCB_EnsureRoleDetectionOption()
+SCB_RefreshRoleDetectionLifecycle()
