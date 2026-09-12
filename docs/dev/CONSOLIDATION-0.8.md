@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.14-dev
+Current development line: 0.8.15-dev
 
 ## Purpose
 
@@ -35,7 +35,7 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 - explicit burst plan + SoloCraft join-message order is the primary identity source;
 - Blizzard roster reinforces/verifies identity and live location, but does not compete to consume pending assignments;
 - resolved role is `confirmedRole` when available, otherwise `assumedRole`, while assumed role is retained;
-- every remove-then-add lifecycle waits for roster disappearance plus a shared 3.0-second settle;
+- every remove-then-add lifecycle waits for roster disappearance plus a shared 3.0-second settle before the next add; conversion, subgroup movement and non-add observation may occur during that settle;
 - target ownership should be coarse rather than micro-modular;
 - `Location.lua` and `Comms.lua` are not mandatory merges into `Presets.lua`: decide after non-preset runtime code has been removed from Presets and the resulting size/cohesion is known.
 
@@ -43,7 +43,7 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 
 The 0.7.14 static/source audit is complete. The main architectural knots were:
 
-1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime; 0.8.11 absorbed the separate preset-rebuild transition layer into Spawn, but 0.8.12 explicitly rolled that absorption back after a runtime client hang. In 0.8.14 the rebuild barrier is temporarily separate again while its queue handoff is re-proven; burst/survivor helpers and older scheduler definitions still remain to consolidate;
+1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime; 0.8.11 absorbed the separate preset-rebuild transition layer into Spawn, but 0.8.12 explicitly rolled that absorption back after a runtime client hang. The separate 0.8.14 next-frame rebuild handoff is now runtime-proven; 0.8.15 is refining where the shared remove-then-add settle blocks progress before any re-absorption is reconsidered. Burst/survivor helpers and older scheduler definitions still remain to consolidate;
 2. bot identity is split across the current `Raid.lua` owner, the transitional late `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers; the former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have now been reduced/absorbed;
 3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers; 0.8.9 folds the remaining standalone RaidLayout implementation into the late identity layer, while RaidPlayers and the combined late identity/layout owner remain transitional;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
@@ -62,7 +62,7 @@ Owns preset storage/editor semantics, bot logical slots, exact human logical-slo
 ### `Spawn.lua`
 Owns the single preset summon state machine: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and interaction with isolated identity bursts.
 
-0.8.11-dev absorbed the standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, but that specific migration was rolled back in 0.8.12-dev after the runtime client hang. In 0.8.14-dev `PresetRebuild.lua` is again the live transition owner immediately before Spawn while the rebuild handoff is tested. Final ownership remains Spawn; do not re-absorb the barrier until the current runtime gate passes. Remaining Spawn consolidation also includes the still-live burst/survivor helper layer and older superseded scheduler definitions.
+0.8.11-dev absorbed the standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, but that specific migration was rolled back in 0.8.12-dev after the runtime client hang. The separate rebuild handoff itself passed runtime testing in 0.8.14-dev. In 0.8.15-dev `PresetRebuild.lua` remains the live transition owner while removal-settle placement is refined so non-add conversion/parking can overlap the timer and the next add remains correctly gated. Final ownership remains Spawn; do not re-absorb the barrier until this current runtime gate passes. Remaining Spawn consolidation also includes the still-live burst/survivor helper layer and older superseded scheduler definitions.
 
 ### `Raid.lua`
 Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
@@ -90,6 +90,7 @@ Owns developer diagnostics and debug UI.
 - [x] Join-message order is primary burst identity; roster is reinforcement/verification, not competing consumption.
 - [x] Final ownership should be aggressively consolidated, but file count is not a goal by itself.
 - [x] Universal 3-second remove-then-add settle approved.
+- [x] Clarify settle placement: it blocks the next add after roster disappearance; non-add conversion/subgroup movement may overlap the timer.
 - [x] Location/Comms merge into Presets left open pending final Presets size/cohesion.
 
 ### Phase C — start 0.8.0-dev
@@ -152,8 +153,9 @@ Owns developer diagnostics and debug UI.
 
 - [x] Keep final `Spawn.lua` scheduler as the proven base.
 - [x] Absorb `PresetRebuild.lua` in 0.8.11-dev, preserving the 3-second rebuild settle and party-to-raid transition barrier. **Historical completion; rolled back in 0.8.12-dev after runtime hang.**
-- [ ] Re-prove the separate `PresetRebuild.lua` handoff after the 0.8.12 rollback. Current 0.8.14-dev test gate: 5-man preset-over-preset must remove old bots, wait approximately 3 seconds after roster disappearance, and summon replacements automatically without another click.
-- [ ] Re-absorb `PresetRebuild.lua` into Spawn only after that runtime gate passes; do not treat the 0.8.11 move as currently live architecture.
+- [x] Re-prove the separate `PresetRebuild.lua` handoff after the 0.8.12 rollback. 0.8.14-dev passed clean 5-man, 5-man overwrite, 5 -> 10 survivor/conversion, and repeated A -> B -> C overwrite tests without a second click.
+- [ ] Verify 0.8.15 settle placement: during 5 -> 10 overwrite, move the survivor to G8 promptly once raid conversion is visible while the original teardown settle continues; after the parked safety bot is kicked, wait ~3 seconds before any following summon burst, but do not delay final roster tracking when no add follows.
+- [ ] Re-absorb `PresetRebuild.lua` into Spawn only after the current settle-placement runtime gate passes; do not treat the 0.8.11 move as currently live architecture.
 - [ ] Absorb still-live burst/survivor helpers.
 - [ ] One explicit operation object/state machine for conversion/bootstrap/survivor/bursts/abort.
 - [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every remove-then-add operation.
@@ -197,4 +199,4 @@ Highest-risk scenarios:
 
 ## Definition of done
 
-0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; final Presets/Location/Comms ownership is chosen by actual size/cohesion rather than an arbitrary file-count target; historical migration notes remain recoverable; and the repo docs are enough for a fresh development session to continue safely.
+0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy at the actual remove -> next-add boundary; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; final Presets/Location/Comms ownership is chosen by actual size/cohesion rather than an arbitrary file-count target; historical migration notes remain recoverable; and the repo docs are enough for a fresh development session to continue safely.
