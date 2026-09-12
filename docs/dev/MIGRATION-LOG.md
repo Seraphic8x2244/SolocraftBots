@@ -125,7 +125,18 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - After the old bots are observed gone and the shared 3.0-second settle completes, the rebuild updater constructs the replacement snapshot/queue but suppresses `scbExplicitPresetOperation` for the remainder of that already-running scheduler frame.
 - On the following OnUpdate, the rebuild updater releases the explicit operation and clears its transition state. `Spawn.lua` therefore captures and consumes the replacement queue normally from the start of that frame rather than inheriting a queue created halfway through the previous frame.
 - This keeps the approved 3.0-second removal-settle rule intact while adding only a frame-boundary handoff; no consolidation was attempted.
-- Runtime verification pending: 5-man preset-over-preset should kick the old bots, wait approximately 3 seconds after roster disappearance, then summon the replacement bots automatically without another click.
+- Runtime verification passed: clean 5-man summon, 5-man preset-over-preset, 5-man -> 10-man overwrite with survivor/conversion, and repeated A -> B -> C overwrite all completed automatically without a second Summon click or Ctrl override.
+- During that verification the survivor was observed waiting before being parked in Group 8. Review showed the rebuild settle was delaying non-add work, while the later parked-survivor removal path did not itself wait 3 seconds before another burst. That sequencing is corrected in 0.8.15 below.
+
+## 0.8.15-dev — place removal settle at the next-add boundary
+
+- Refined the shared removal-settle rule: the 3.0-second safety delay gates the next bot add, not harmless conversion, subgroup movement or final roster observation.
+- In preset rebuilds the settle clock now starts as soon as the removed bots are actually absent. Party-to-raid conversion and parking the retained survivor in Group 8 can happen during that clock, so the survivor no longer waits unnecessarily before being moved.
+- The Group-8 parking helper now accepts an explicit safety-bot name, allowing the rebuild barrier to park the survivor before the replacement snapshot is released.
+- When a parked survivor/bootstrap is later removed after a real Group 1 bot joins, SCB now observes that safety bot leave and waits the shared 3.0 seconds before a following summon burst.
+- If no add follows and the only remaining work is final roster tracking, no artificial 3-second delay is added.
+- The existing bootstrap-from-empty path still cannot park until raid conversion is visible, but once Blizzard exposes the raid roster it requests Group 8 immediately; it is not intentionally held behind the removal settle.
+- Runtime verification pending: in a 5-man -> 10-man overwrite, the survivor should move to Group 8 promptly after raid conversion while the original teardown settle continues; after the survivor is later removed, any subsequent bot burst must wait approximately 3 seconds from roster disappearance.
 
 ## Presets sizing decision
 
@@ -136,7 +147,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps only after the current rebuild regression gate is cleared.
+- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps only after the current 0.8.15 removal-settle placement is runtime-proven.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
-- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. `PresetRebuild.lua` is live again and must not be re-absorbed until its current rebuild path passes runtime verification.
+- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The 0.8.14 handoff is now proven, but `PresetRebuild.lua` remains live until the 0.8.15 settle-placement refinement is verified before any re-absorption is reconsidered.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
