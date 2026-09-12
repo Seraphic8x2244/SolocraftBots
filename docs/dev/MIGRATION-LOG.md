@@ -60,6 +60,14 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Moved its authoritative execution-snapshot builder, validation extension, exact-slot occupancy compatibility handling, and tracker preset-reference wrapper into `RaidPlayers.lua`.
 - Removed the now-redundant earlier `SCB_BuildPresetExecutionSnapshot` wrapper from `RaidPlayers.lua`; there is now one final snapshot builder in this transitional owner.
 - No intended runtime behaviour change from the tested 0.8.5 exact-slot model. This is a structural flattening step before final Presets/Raid ownership is chosen.
+- User smoke test passed: addon/preset summon still behaved normally after the snapshot merge.
+
+## 0.8.7-dev — establish final Raid owner
+
+- Renamed the transitional `RoleTracking.lua` owner to `Raid.lua` without changing its load position or implementation.
+- This deliberately preserves runtime behaviour while establishing the final coarse Raid owner before larger roster/identity/layout/maintenance merges.
+- `RoleTracking.lua` is removed from the TOC/repository; its former code now loads from `Raid.lua`.
+- No wrapper-chain cleanup was attempted in this step. Subsequent Raid consolidation can absorb neighbouring responsibilities into this stable owner in smaller, testable changes.
 
 ## Presets sizing decision
 
@@ -70,7 +78,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue moving role/identity/runtime ownership toward the eventual `Raid.lua` owner without changing established behaviour unintentionally.
+- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
 - Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
