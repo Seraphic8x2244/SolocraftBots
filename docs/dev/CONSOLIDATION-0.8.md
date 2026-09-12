@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.9-dev
+Current development line: 0.8.11-dev
 
 ## Purpose
 
@@ -43,7 +43,7 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 
 The 0.7.14 static/source audit is complete. The main architectural knots were:
 
-1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
+1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime; 0.8.11 absorbs the separate preset-rebuild transition layer into Spawn, but burst/survivor helpers and older scheduler definitions still remain to consolidate;
 2. bot identity is split across the current `Raid.lua` owner, the transitional late `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers; the former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have now been reduced/absorbed;
 3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers; 0.8.9 folds the remaining standalone RaidLayout implementation into the late identity layer, while RaidPlayers and the combined late identity/layout owner remain transitional;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
@@ -61,6 +61,8 @@ Owns preset storage/editor semantics, bot logical slots, exact human logical-slo
 
 ### `Spawn.lua`
 Owns the single preset summon state machine: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and interaction with isolated identity bursts.
+
+As of 0.8.11-dev the standalone `PresetRebuild.lua` transition barrier has been absorbed into `Spawn.lua`, so preset-over-preset teardown/conversion/settle/handoff now lives with the authoritative scheduler. Remaining Spawn consolidation is the still-live burst/survivor helper layer and older superseded scheduler definitions.
 
 ### `Raid.lua`
 Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
@@ -148,8 +150,8 @@ Owns developer diagnostics and debug UI.
 
 ### Phase G — Spawn consolidation
 
-- [ ] Keep final `Spawn.lua` scheduler as the proven base.
-- [ ] Absorb `PresetRebuild.lua`.
+- [x] Keep final `Spawn.lua` scheduler as the proven base.
+- [x] Absorb `PresetRebuild.lua` in 0.8.11-dev, preserving the 3-second rebuild settle and party-to-raid transition barrier.
 - [ ] Absorb still-live burst/survivor helpers.
 - [ ] One explicit operation object/state machine for conversion/bootstrap/survivor/bursts/abort.
 - [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every remove-then-add operation.
