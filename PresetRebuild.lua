@@ -10,6 +10,7 @@ function SCB_PresetRebuildOnUpdate()
     local now = GetTime and GetTime() or 0
     local anchorName, botCount, ready, raidCount, partyCount
     local ok, errorText
+    local schedulerQueue, newQueue, i
 
     if not state or not state.active then return end
 
@@ -57,8 +58,20 @@ function SCB_PresetRebuildOnUpdate()
     -- shared remove-then-add policy used by replacement paths too.
     if now - state.readySeenAt < (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0) then return end
 
+    -- Spawn's scheduler takes a local reference to presetSpawnQueue before it
+    -- calls this updater. Starting the replacement summon creates a new queue
+    -- table, so preserve the old table identity for this handoff frame.
+    -- Otherwise the scheduler sees its stale empty queue, clears explicit state,
+    -- and leaves the newly-built replacement queue permanently parked.
+    schedulerQueue = SCB.presetSpawnQueue or {}
     state.active = false
     ok, errorText = SCB_StartPresetSummonSnapshot(state.snapshot)
+    if ok and SCB.presetSpawnQueue ~= schedulerQueue then
+        newQueue = SCB.presetSpawnQueue or {}
+        for i = table.getn(schedulerQueue), 1, -1 do table.remove(schedulerQueue, i) end
+        for i = 1, table.getn(newQueue) do schedulerQueue[i] = newQueue[i] end
+        SCB.presetSpawnQueue = schedulerQueue
+    end
     if not ok then
         if errorText then SCB_Print(errorText) end
         if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
