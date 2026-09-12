@@ -101,6 +101,32 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - No intentional summon behaviour change in this step; this is ownership consolidation so teardown, conversion, settle and summon handoff now live in the same final Spawn owner.
 - Runtime verification pending: preset-over-preset in a 5-player group should remove the old bots, pause for approximately 3 seconds after roster disappearance, then summon the replacement preset normally.
 
+## 0.8.12-dev — preset rebuild absorption rolled back after runtime hang
+
+- Runtime testing of 0.8.11 exposed a client hang during preset-over-preset rebuilding.
+- Restored `PresetRebuild.lua` as a separate live transition barrier and restored its TOC position before the location/raid/spawn layers.
+- The 0.8.11 absorption remains preserved above as historical migration record, but it is no longer the current Git architecture.
+- Also restored the missing scheduler queue consumption that had been lost during the 0.8.11 move.
+- User runtime test confirmed the client hang was fixed.
+- Further consolidation of `PresetRebuild.lua` is blocked until the separate barrier's full handoff behaviour is proven again.
+
+## 0.8.13-dev — preserve queue identity across rebuild handoff
+
+- Found that `Spawn.lua` captures `SCB.presetSpawnQueue` in a frame-local variable before calling the rebuild updater.
+- Starting the replacement snapshot from `PresetRebuild.lua` creates a new queue table. The first 0.8.13 fix copied that new queue back into the scheduler's already-captured table so the same OnUpdate could continue.
+- Runtime test improved the failure: the summoner no longer became endlessly paused.
+- However preset-over-preset in a 5-man still kicked the old bots and reported loading the new preset without the replacement bots appearing.
+- A second normal Summon click then worked; Ctrl override was not required. This shows the first automatic operation was no longer stuck busy, but the same-frame rebuild handoff still was not a valid replacement-summon boundary.
+- Therefore the queue-table transplant is superseded by the 0.8.14 next-frame handoff below rather than treated as a final fix.
+
+## 0.8.14-dev — defer rebuild scheduler release one frame
+
+- Replaced the 0.8.13 queue-table transplant with an explicit two-frame handoff in `PresetRebuild.lua`.
+- After the old bots are observed gone and the shared 3.0-second settle completes, the rebuild updater constructs the replacement snapshot/queue but suppresses `scbExplicitPresetOperation` for the remainder of that already-running scheduler frame.
+- On the following OnUpdate, the rebuild updater releases the explicit operation and clears its transition state. `Spawn.lua` therefore captures and consumes the replacement queue normally from the start of that frame rather than inheriting a queue created halfway through the previous frame.
+- This keeps the approved 3.0-second removal-settle rule intact while adding only a frame-boundary handoff; no consolidation was attempted.
+- Runtime verification pending: 5-man preset-over-preset should kick the old bots, wait approximately 3 seconds after roster disappearance, then summon the replacement bots automatically without another click.
+
 ## Presets sizing decision
 
 - Do not force `Location.lua` or `Comms.lua` into `Presets.lua` merely to reduce file count.
@@ -110,7 +136,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps.
+- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps only after the current rebuild regression gate is cleared.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
-- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev with the existing rebuild state transition kept intact inside Spawn.
+- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. `PresetRebuild.lua` is live again and must not be re-absorbed until its current rebuild path passes runtime verification.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
