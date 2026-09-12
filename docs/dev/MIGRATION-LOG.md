@@ -136,7 +136,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - When a parked survivor/bootstrap is later removed after a real Group 1 bot joins, SCB now observes that safety bot leave and waits the shared 3.0 seconds before a following summon burst.
 - If no add follows and the only remaining work is final roster tracking, no artificial 3-second delay is added.
 - The existing bootstrap-from-empty path still cannot park until raid conversion is visible, but once Blizzard exposes the raid roster it requests Group 8 immediately; it is not intentionally held behind the removal settle.
-- Runtime verification pending: in a 5-man -> 10-man overwrite, the survivor should move to Group 8 promptly after raid conversion while the original teardown settle continues; after the survivor is later removed, any subsequent bot burst must wait approximately 3 seconds from roster disappearance.
+- Runtime verification passed: in the 5-man -> 10-man overwrite, raid conversion and Group-8 parking occurred promptly during the original teardown settle, G1 began when that settle expired, and after the parked survivor was removed the following burst respected the new removal -> next-add delay. No second click or Ctrl override was required.
 
 ## Presets sizing decision
 
@@ -147,7 +147,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps only after the current 0.8.15 removal-settle placement is runtime-proven.
+- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps; the 0.8.15 removal-settle placement is now runtime-proven.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
-- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The 0.8.14 handoff is now proven, but `PresetRebuild.lua` remains live until the 0.8.15 settle-placement refinement is verified before any re-absorption is reconsidered.
+- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The separate rebuild handoff and corrected settle placement are now proven through 0.8.15, so re-absorption may be reconsidered as a future Spawn consolidation step; it is not required immediately.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
