@@ -139,6 +139,7 @@ local function SCB_RewriteSurvivorQueueForGroupEight(tracker, useKickAllAnchor)
     SCB.scbRemoveSurvivorAfterG1 = true
     SCB.scbSurvivorRemovalWaiting = nil
     SCB.scbSurvivorRemovalName = nil
+    SCB.scbSurvivorRemovalGoneAt = nil
     return true, true
 end
 
@@ -259,9 +260,9 @@ local function SCB_FindRaidMemberGroup(name)
     return nil, nil
 end
 
-local function SCB_TryParkSurvivorInGroupEight()
-    local name = SCB.presetSurvivorBotName or SCB.presetBootstrapBotName
+local function SCB_TryParkSurvivorInGroupEight(name)
     local group, raidIndex
+    name = name or SCB.presetSurvivorBotName or SCB.presetBootstrapBotName
     if not name then return false end
     if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
 
@@ -298,22 +299,43 @@ local function SCB_TryRemoveParkedSurvivor()
     local name = SCB.scbSurvivorRemovalName
         or SCB.presetSurvivorBotName
         or SCB.presetBootstrapBotName
+    local now, settleDelay, nextHead
 
     if not name then
         SCB.scbRemoveSurvivorAfterG1 = nil
         SCB.scbSurvivorRemovalWaiting = nil
         SCB.scbSurvivorRemovalName = nil
+        SCB.scbSurvivorRemovalGoneAt = nil
         return true
     end
 
     if SCB.scbSurvivorRemovalWaiting then
-        if SCB_GroupHasName and SCB_GroupHasName(name) then return false end
+        if SCB_GroupHasName and SCB_GroupHasName(name) then
+            SCB.scbSurvivorRemovalGoneAt = nil
+            return false
+        end
+
+        -- The safety delay belongs at the remove -> next-add boundary. If the
+        -- only remaining work is final roster tracking, no add follows and no
+        -- artificial 3-second pause is required.
+        nextHead = SCB.presetSpawnQueue and SCB.presetSpawnQueue[1] or nil
+        if nextHead == SCB.PRESET_CHECK_COMBAT and GetTime then
+            now = GetTime()
+            if not SCB.scbSurvivorRemovalGoneAt then
+                SCB.scbSurvivorRemovalGoneAt = now
+                return false
+            end
+            settleDelay = SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0
+            if (now - SCB.scbSurvivorRemovalGoneAt) < settleDelay then return false end
+        end
+
         if SCB_ClearKickAllAnchor then SCB_ClearKickAllAnchor(name) end
         SCB.presetSurvivorBotName = nil
         SCB.presetBootstrapBotName = nil
         SCB.scbRemoveSurvivorAfterG1 = nil
         SCB.scbSurvivorRemovalWaiting = nil
         SCB.scbSurvivorRemovalName = nil
+        SCB.scbSurvivorRemovalGoneAt = nil
         SCB_BurstDebug("Safety " .. tostring(name) .. " removed after real G1 join")
         return true
     end
@@ -324,6 +346,7 @@ local function SCB_TryRemoveParkedSurvivor()
         UninviteByName(name)
         SCB.scbSurvivorRemovalWaiting = true
         SCB.scbSurvivorRemovalName = name
+        SCB.scbSurvivorRemovalGoneAt = nil
         return false
     end
     return false
@@ -368,6 +391,7 @@ if SCB_072PreviousStartPresetSummonSnapshot then
             SCB.scbRemoveSurvivorAfterG1 = nil
             SCB.scbSurvivorRemovalWaiting = nil
             SCB.scbSurvivorRemovalName = nil
+            SCB.scbSurvivorRemovalGoneAt = nil
         end
 
         if not SCB_BuildPresetBurstPlans(tracker) then

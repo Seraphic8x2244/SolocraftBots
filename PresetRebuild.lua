@@ -40,9 +40,14 @@ function SCB_PresetRebuildOnUpdate()
         return
     end
 
+    -- The removal-settle clock starts when the removed bots are actually gone.
+    -- Conversion and safety parking do not add membership, so they can happen
+    -- during this clock instead of creating extra dead time before the next add.
+    if not state.readySeenAt then state.readySeenAt = now end
+
     -- For raid-sized presets rebuilt from an existing party, conversion belongs
-    -- to the rebuild transition itself. Verify the one-survivor state, convert,
-    -- and wait until Blizzard exposes a raid roster before starting G1.
+    -- to the rebuild transition itself. Convert as soon as the survivor is the
+    -- only bot, then park it in G8 as soon as Blizzard exposes the raid roster.
     if state.snapshot and (state.snapshot.size or 0) > 5 and anchorName and botCount == 1 then
         raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
         if raidCount == 0 then
@@ -56,20 +61,20 @@ function SCB_PresetRebuildOnUpdate()
                     end
                 end
             end
-            state.readySeenAt = nil
+            return
+        end
+
+        if SCB.scb072TryParkSurvivorInGroupEight
+            and not SCB.scb072TryParkSurvivorInGroupEight(anchorName) then
             return
         end
     end
 
     state.scbConvertRequestedAt = nil
-    if not state.readySeenAt then
-        state.readySeenAt = now
-        return
-    end
 
     -- Any rebuild that removed bots must allow SoloCraft's instance accounting
-    -- to settle after Blizzard no longer shows those removed names. This is the
-    -- shared remove-then-add policy used by replacement paths too.
+    -- to settle before the next add. Non-add work above is intentionally allowed
+    -- to overlap this timer; the safety boundary is removal -> next summon pass.
     if now - state.readySeenAt < (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0) then return end
 
     state.active = false
