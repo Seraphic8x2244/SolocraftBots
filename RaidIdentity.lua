@@ -1,12 +1,9 @@
--- SoloCraft Bots - explicit spawn identity and live raid-layout reconciliation.
+-- SoloCraft Bots - explicit spawn identity and late raid-layout reconciliation.
 --
--- 0.7.2 replaces the 0.7.1 same-timestamp burst inference with explicit
--- burst plans. The preset/refill scheduler already knows every logical slot it
--- is requesting, so identity follows that plan instead of GetTime() equality.
--- Timestamps remain diagnostics only.
---
--- This module also treats Blizzard's final raid ordering as the live working
--- layout. Saved presets remain untouched until Save is clicked.
+-- This remains a transitional late-load owner during 0.8 consolidation.
+-- Explicit identity and live Blizzard layout are kept together here because both
+-- must currently run after Detection/Spawn wrapper layers. Final ownership is
+-- Raid.lua once those load-order wrappers are flattened.
 
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
@@ -14,7 +11,6 @@ local SCB = SoloCraftBots
 SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
 SCB.scbPresetBurstPlans = SCB.scbPresetBurstPlans or {}
 SCB.scbNextBurstID = SCB.scbNextBurstID or 0
-
 
 local function SCB_GroupLocalSlot(slotIndex)
     if not slotIndex then return nil end
@@ -25,10 +21,10 @@ local function SCB_BurstDebug(text)
     if SCB_DebugLog then SCB_DebugLog("Burst", text) end
 end
 
--- RoleTracking.lua's 0.7.1 wrapper inferred a burst by comparing GetTime()
--- values at each individual send. Bypass that wrapper completely: managed
--- operations now preload SCB.pendingAssumedSpawns from an explicit burst plan.
--- Preserve the original low-level spawn behavior from SoloCraftBots.lua.
+-- -------------------------------------------------------------------------
+-- Explicit spawn identity
+-- -------------------------------------------------------------------------
+
 function SCB_SendSpawnCommand(command)
     if not command or command == "" then return end
     if SCB_RegisterSpawnIntent then SCB_RegisterSpawnIntent() end
@@ -57,8 +53,6 @@ function SCB_BeginAssumedSpawnBurst(plan)
                 slotIndex = entry.slotIndex,
                 group = entry.group or plan.group,
                 burstID = plan.burstID,
-                -- Diagnostic metadata only. It never defines burst membership
-                -- or ordering.
                 queuedAt = GetTime and GetTime() or 0,
             }
             table.insert(SCB.pendingAssumedSpawns, intent)
@@ -80,8 +74,6 @@ function SCB_BeginAssumedSpawnBurst(plan)
     return true
 end
 
--- Primary binding remains the SoloCraft membership message, but it now consumes
--- an explicit logical receive sequence instead of a timestamp-derived queue.
 function SCB_HandleAssumedRoleSystemMessage(text)
     local _, _, name
     local intent, localSlot, label
@@ -118,8 +110,6 @@ function SCB_HandleAssumedRoleSystemMessage(text)
     return true
 end
 
--- Exact logical slot identity is authoritative when available. Command+group is
--- retained only as a compatibility fallback for an in-flight/legacy tracker.
 function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     local roster, used, replacements = nil, {}, {}
     local i, j, assignment, member, assumption, matchedName
@@ -136,8 +126,6 @@ function SCB_ReconcileTrackerFromAssumedRoles(tracker)
         if assignment and assignment.initialActive then
             matchedName = nil
 
-            -- Preferred 0.7.2 identity path: the summoner already told us the
-            -- exact logical slot this name belongs to.
             for j = 1, table.getn(roster.members or {}) do
                 member = roster.members[j]
                 assumption = member and SCB.assumedRolesByName[member.name] or nil
@@ -149,7 +137,6 @@ function SCB_ReconcileTrackerFromAssumedRoles(tracker)
                 end
             end
 
-            -- Legacy fallback for assumptions created without slot metadata.
             if not matchedName then
                 for j = 1, table.getn(roster.members or {}) do
                     member = roster.members[j]
@@ -178,9 +165,6 @@ function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     return true
 end
 
--- Detection.lua uses this public linker for the preset status ticks. Give it
--- the same exact slot identity as the live-role/tank controller; command-only
--- matching remains only for legacy assumptions without slot metadata.
 function SCB_LinkAssumptionsToTrackerSlots()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
     local used = {}
@@ -208,7 +192,6 @@ function SCB_LinkAssumptionsToTrackerSlots()
         if assignment and assignment.initialActive and not assignment.scbAssumedName then
             chosenName, chosenAt = nil, nil
 
-            -- Exact 0.7.2 slot identity first.
             for name, intent in pairs(SCB.assumedRolesByName or {}) do
                 if not used[name] and intent and intent.spawnKind ~= "bootstrap"
                     and intent.slotIndex == assignment.slotIndex then
@@ -217,8 +200,6 @@ function SCB_LinkAssumptionsToTrackerSlots()
                 end
             end
 
-            -- Compatibility fallback for assumptions created before explicit
-            -- slot metadata existed.
             if not chosenName then
                 for name, intent in pairs(SCB.assumedRolesByName or {}) do
                     if not used[name] and intent and intent.spawnKind ~= "bootstrap"
@@ -236,5 +217,123 @@ function SCB_LinkAssumptionsToTrackerSlots()
                 used[chosenName] = true
             end
         end
+    end
+end
+
+-- -------------------------------------------------------------------------
+-- Live Blizzard raid layout observation (former RaidLayout.lua)
+-- -------------------------------------------------------------------------
+
+local function SCB_BuildLiveRaidPositions()
+    local result, groupRows = {}, {}
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local i, name, _, subgroup
+    for i = 1, 8 do groupRows[i] = 0 end
+    for i = 1, raidCount do
+        name = UnitName and UnitName("raid" .. i) or nil
+        _, _, subgroup = GetRaidRosterInfo(i)
+        if name and subgroup and subgroup >= 1 and subgroup <= 8 then
+            groupRows[subgroup] = groupRows[subgroup] + 1
+            result[name] = {
+                raidIndex = i,
+                group = subgroup,
+                groupRow = groupRows[subgroup],
+            }
+        end
+    end
+    return result
+end
+
+local function SCB_RefreshTrackerLiveLayout()
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    local positions, changed = SCB_BuildLiveRaidPositions(), false
+    local i, player, assignment, name, live, assumption
+    if not tracker or not tracker.ready or tracker.mode ~= "raid" then return false end
+
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        live = player and player.name and positions[player.name] or nil
+        if live then
+            if player.currentGroup ~= live.group or player.currentGroupRow ~= live.groupRow
+                or player.currentRaidIndex ~= live.raidIndex then changed = true end
+            player.currentGroup = live.group
+            player.currentGroupRow = live.groupRow
+            player.currentRaidIndex = live.raidIndex
+        end
+    end
+
+    for i = 1, table.getn(tracker.assignments or {}) do
+        assignment = tracker.assignments[i]
+        name = assignment and (assignment.botName or assignment.scbAssumedName) or nil
+        live = name and positions[name] or nil
+        if live then
+            if assignment.currentGroup ~= live.group or assignment.currentGroupRow ~= live.groupRow
+                or assignment.currentRaidIndex ~= live.raidIndex then changed = true end
+            assignment.currentGroup = live.group
+            assignment.currentGroupRow = live.groupRow
+            assignment.currentRaidIndex = live.raidIndex
+            assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
+            if assumption then
+                assumption.currentGroup = live.group
+                assumption.currentGroupRow = live.groupRow
+                assumption.currentRaidIndex = live.raidIndex
+            end
+        end
+    end
+
+    if changed then
+        tracker.layoutRevision = (tracker.layoutRevision or 0) + 1
+        tracker.layoutUpdatedAt = GetTime and GetTime() or 0
+        SCB_BurstDebug("Observed Blizzard raid layout revision " .. tostring(tracker.layoutRevision))
+    end
+    return changed
+end
+
+local SCB_PreviousTryFinalizeRaidRoleTracking_Layout = SCB_TryFinalizeRaidRoleTracking
+if SCB_PreviousTryFinalizeRaidRoleTracking_Layout then
+    function SCB_TryFinalizeRaidRoleTracking()
+        local ready = SCB_PreviousTryFinalizeRaidRoleTracking_Layout()
+        if ready then SCB_RefreshTrackerLiveLayout() end
+        return ready
+    end
+end
+
+local SCB_PreviousHandleRosterChange_Layout = SCB_HandleRosterChange
+if SCB_PreviousHandleRosterChange_Layout then
+    function SCB_HandleRosterChange()
+        local result = SCB_PreviousHandleRosterChange_Layout()
+        SCB_RefreshTrackerLiveLayout()
+        return result
+    end
+end
+
+-- Scheduler-state cleanup remains a late wrapper until Spawn consolidation.
+local SCB_PreviousAbortBotSpawnOperations_Layout = SCB_AbortBotSpawnOperations
+if SCB_PreviousAbortBotSpawnOperations_Layout then
+    function SCB_AbortBotSpawnOperations()
+        SCB.scbPresetBurstPlans = {}
+        SCB.scbExplicitPresetOperation = nil
+        SCB.scbCheckPlanArmed = nil
+        SCB.scbArmedPresetPlan = nil
+        SCB.scbParkSurvivorBeforeArrange = nil
+        SCB.scbRemoveSurvivorAfterG1 = nil
+        SCB.scbSurvivorRemovalWaiting = nil
+        SCB.scbSurvivorRemovalName = nil
+        return SCB_PreviousAbortBotSpawnOperations_Layout()
+    end
+end
+
+local SCB_PreviousResetSessionState_Layout = SCB_ResetSessionState
+if SCB_PreviousResetSessionState_Layout then
+    function SCB_ResetSessionState()
+        SCB.scbPresetBurstPlans = {}
+        SCB.scbExplicitPresetOperation = nil
+        SCB.scbCheckPlanArmed = nil
+        SCB.scbArmedPresetPlan = nil
+        SCB.scbParkSurvivorBeforeArrange = nil
+        SCB.scbRemoveSurvivorAfterG1 = nil
+        SCB.scbSurvivorRemovalWaiting = nil
+        SCB.scbSurvivorRemovalName = nil
+        return SCB_PreviousResetSessionState_Layout()
     end
 end
