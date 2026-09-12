@@ -300,34 +300,3 @@ if SCB_PreviousHandleRosterChange_Layout then
         return result
     end
 end
-
--- Scheduler-state cleanup remains a late wrapper until Spawn consolidation.
-local SCB_PreviousAbortBotSpawnOperations_Layout = SCB_AbortBotSpawnOperations
-if SCB_PreviousAbortBotSpawnOperations_Layout then
-    function SCB_AbortBotSpawnOperations()
-        SCB.scbPresetBurstPlans = {}
-        SCB.scbExplicitPresetOperation = nil
-        SCB.scbCheckPlanArmed = nil
-        SCB.scbArmedPresetPlan = nil
-        SCB.scbParkSurvivorBeforeArrange = nil
-        SCB.scbRemoveSurvivorAfterG1 = nil
-        SCB.scbSurvivorRemovalWaiting = nil
-        SCB.scbSurvivorRemovalName = nil
-        return SCB_PreviousAbortBotSpawnOperations_Layout()
-    end
-end
-
-local SCB_PreviousResetSessionState_Layout = SCB_ResetSessionState
-if SCB_PreviousResetSessionState_Layout then
-    function SCB_ResetSessionState()
-        SCB.scbPresetBurstPlans = {}
-        SCB.scbExplicitPresetOperation = nil
-        SCB.scbCheckPlanArmed = nil
-        SCB.scbArmedPresetPlan = nil
-        SCB.scbParkSurvivorBeforeArrange = nil
-        SCB.scbRemoveSurvivorAfterG1 = nil
-        SCB.scbSurvivorRemovalWaiting = nil
-        SCB.scbSurvivorRemovalName = nil
-        return SCB_PreviousResetSessionState_Layout()
-    end
-end

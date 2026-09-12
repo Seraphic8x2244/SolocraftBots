@@ -168,10 +168,25 @@ end
 local SCB_073PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
 if SCB_073PreviousAbortBotSpawnOperations then
     function SCB_AbortBotSpawnOperations()
+        -- Preserve the old late RaidIdentity cleanup ordering while making Spawn
+        -- the owner: clear scheduler state before the inherited abort chain and
+        -- again afterward in case an older layer mutates it while unwinding.
+        SCB_ResetSpawnRuntimeState()
         local result = SCB_073PreviousAbortBotSpawnOperations()
         SCB_ResetSpawnRuntimeState()
         if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
         return result
+    end
+end
+
+-- Session reset used to receive the same scheduler cleanup from late-loaded
+-- RaidIdentity. Keep that behaviour here so RaidIdentity no longer needs to
+-- load after Spawn merely to intercept this function.
+local SCB_0816PreviousResetSessionState = SCB_ResetSessionState
+if SCB_0816PreviousResetSessionState then
+    function SCB_ResetSessionState()
+        SCB_ResetSpawnRuntimeState()
+        return SCB_0816PreviousResetSessionState()
     end
 end
 
