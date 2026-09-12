@@ -69,12 +69,21 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - `RoleTracking.lua` is removed from the TOC/repository; its former code now loads from `Raid.lua`.
 - No wrapper-chain cleanup was attempted in this step. Subsequent Raid consolidation can absorb neighbouring responsibilities into this stable owner in smaller, testable changes.
 
-## 0.8.8-dev — observed roster absorbed into Raid
+## 0.8.8-dev — roster absorbed into Raid
 
-- Removed the separate `Roster.lua` file and moved its observed Live Roster, persistent Active Roster, session/bot tracking, auto-loot, auto-promote and base roster-change responsibilities into `Raid.lua` ahead of the existing role-identity layer.
-- The order inside `Raid.lua` deliberately mirrors the former TOC order: roster/base functions are defined first, then the former RoleTracking/Raid wrappers are installed over them.
-- This makes `Raid.lua` the real owner of both observed roster and Active Roster state instead of merely being the renamed RoleTracking layer.
-- No intentional identity, human-slot, maintenance or summon-policy change in this step. `RaidIdentity.lua`, `RaidLayout.lua`, `RaidRefill.lua` and Detection remain transitional layers for later passes.
+- Removed `Roster.lua` from the TOC and repository.
+- Folded observed Live Roster, persistent Active Roster, session bot tracking, auto-loot/auto-promote and the base roster-change handler into `Raid.lua`.
+- Preserved the old runtime ordering inside the combined file: base roster implementation first, then the former RoleTracking role/identity wrappers.
+- User runtime test passed for a normal 5-player group and Replace Missing.
+
+## 0.8.9-dev — late identity/layout layer combined
+
+- Removed standalone `RaidLayout.lua`.
+- Folded its live Blizzard raid-position observation and late roster/finalization wrappers into `RaidIdentity.lua`.
+- Moved `RaidIdentity.lua` to the former late `RaidLayout.lua` TOC position, after `Spawn.lua`, preserving the reason those wrappers existed late in load order while removing one separate patch file.
+- Exact identity remains based on explicit burst plans and join-message order. Blizzard layout remains observational only and continues to update `current*` live fields without changing logical preset slots.
+- Scheduler-state cleanup wrappers remain temporary and are explicitly deferred to Spawn consolidation; this build does not pretend the wrapper chain is fully solved.
+- This is a structural step toward the final `Raid.lua` owner, not the final identity architecture. The global pending FIFO and roster-delta competition still need the planned hardening pass.
 
 ## Presets sizing decision
 
@@ -85,7 +94,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue absorbing identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps.
+- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
 - Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
