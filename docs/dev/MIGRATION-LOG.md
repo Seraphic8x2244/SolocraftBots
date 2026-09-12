@@ -91,6 +91,15 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Removed the obsolete `SCB_SendSpawnCommand` definition from late-loaded `RaidIdentity.lua`.
 - `Spawn.lua` is again the sole owner of the validated outbound spawn sender and its boolean success contract.
 - The reported failure was therefore not caused by changing Holy Paladin to Retribution or by unsaved preset semantics; the role edit merely exposed the 0.8.9 load-order regression on the next summon attempt.
+- User repeated the same unsaved Holy-to-Retribution preset test and confirmed summoning worked again.
+
+## 0.8.11-dev — preset rebuild absorbed into Spawn
+
+- Removed `PresetRebuild.lua` from the TOC and repository.
+- Moved the preset-over-preset rebuild transition barrier into `Spawn.lua`, next to the authoritative summon scheduler that consumes it.
+- Preserved the existing rebuild behaviour: wait for old bots to disappear down to the allowed survivor state, perform party-to-raid conversion when required, then wait the shared 3.0-second post-roster settle before beginning the new summon.
+- No intentional summon behaviour change in this step; this is ownership consolidation so teardown, conversion, settle and summon handoff now live in the same final Spawn owner.
+- Runtime verification pending: preset-over-preset in a 5-player group should remove the old bots, pause for approximately 3 seconds after roster disappearance, then summon the replacement preset normally.
 
 ## Presets sizing decision
 
@@ -103,5 +112,5 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
 - Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
-- Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.
+- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev with the existing rebuild state transition kept intact inside Spawn.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
