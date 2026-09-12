@@ -75,6 +75,8 @@ Earlier target notes proposed folding Location and Comms into this file. That re
 - shared 3-second removal-settle use
 - interaction with isolated identity bursts
 
+0.8.11-dev absorbs the former standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, so preset-over-preset teardown, conversion, post-removal settle and summon handoff now live in the intended owner.
+
 ### `Raid.lua`
 - observed Blizzard roster
 - logical/live raid tracker
@@ -100,9 +102,9 @@ Established in 0.8.7-dev: the former `RoleTracking.lua` implementation was moved
 Supporting locale/assets/bindings remain separate as appropriate.
 
 ## Files/layers expected to disappear by consolidation
-`PresetRebuild.lua`, `LocationZones.lua`, `Location.lua` (if merged), ~~`RoleTracking.lua`~~, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, ~~`RaidSnapshot.lua`~~, `RaidBurst.lua`, `RaidRefill.lua`, ~~`RaidLayout.lua`~~, ~~`RaidPresentation.lua`~~, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
+~~`PresetRebuild.lua`~~, `LocationZones.lua`, `Location.lua` (if merged), ~~`RoleTracking.lua`~~, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, ~~`RaidSnapshot.lua`~~, `RaidBurst.lua`, `RaidRefill.lua`, ~~`RaidLayout.lua`~~, ~~`RaidPresentation.lua`~~, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
 
-Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev; `RaidPresentation.lua` was removed in 0.8.5-dev after the exact-logical-human-slot model superseded live-row editor mirroring; `RaidSnapshot.lua` was absorbed into `RaidPlayers.lua` in 0.8.6-dev so snapshot construction/validation no longer depends on a separate late override layer; `RoleTracking.lua` became the initial `Raid.lua` owner in 0.8.7-dev; `Roster.lua` was absorbed into Raid in 0.8.8-dev; and `RaidLayout.lua` was absorbed into the transitional late `RaidIdentity.lua` owner in 0.8.9-dev. `RaidPlayers.lua` and the combined late RaidIdentity layer remain transitional. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
+Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev; `RaidPresentation.lua` was removed in 0.8.5-dev after the exact-logical-human-slot model superseded live-row editor mirroring; `RaidSnapshot.lua` was absorbed into `RaidPlayers.lua` in 0.8.6-dev so snapshot construction/validation no longer depends on a separate late override layer; `RoleTracking.lua` became the initial `Raid.lua` owner in 0.8.7-dev; `Roster.lua` was absorbed into Raid in 0.8.8-dev; `RaidLayout.lua` was absorbed into the transitional late `RaidIdentity.lua` owner in 0.8.9-dev; and `PresetRebuild.lua` was absorbed into `Spawn.lua` in 0.8.11-dev. `RaidPlayers.lua` and the combined late RaidIdentity layer remain transitional. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
 
 Cross-version preset communications are now an explicit compatibility concern: an older client was observed to mishandle a newly sent exact-slot preset, while the alternate request flow produced the expected composition. Before main promotion, 0.8 must either preserve exact-slot intent across supported protocol versions or reject incompatible transfers clearly rather than silently degrading them.
 
