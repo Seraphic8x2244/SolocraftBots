@@ -10,9 +10,23 @@ function SCB_PresetRebuildOnUpdate()
     local now = GetTime and GetTime() or 0
     local anchorName, botCount, ready, raidCount, partyCount
     local ok, errorText
-    local schedulerQueue, newQueue, i
 
-    if not state or not state.active then return end
+    if not state then return end
+
+    -- A completed rebuild creates the replacement queue during this updater,
+    -- after Spawn has already captured the current queue for this OnUpdate.
+    -- Release the new explicit operation on the following frame so Spawn sees
+    -- the replacement queue as its normal frame-local queue from the start.
+    if state.handoffQueued then
+        SCB.scbExplicitPresetOperation = true
+        SCB.presetRebuildState = nil
+        if SCB_DebugLog then
+            SCB_DebugLog("Spawn", "Preset rebuild released replacement queue on next frame")
+        end
+        return
+    end
+
+    if not state.active then return end
 
     anchorName = SCB_GetKickAllAnchorForFreshBuild and SCB_GetKickAllAnchorForFreshBuild() or nil
     botCount = SCB_CountGroupBots and SCB_CountGroupBots() or 0
@@ -58,23 +72,22 @@ function SCB_PresetRebuildOnUpdate()
     -- shared remove-then-add policy used by replacement paths too.
     if now - state.readySeenAt < (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0) then return end
 
-    -- Spawn's scheduler takes a local reference to presetSpawnQueue before it
-    -- calls this updater. Starting the replacement summon creates a new queue
-    -- table, so preserve the old table identity for this handoff frame.
-    -- Otherwise the scheduler sees its stale empty queue, clears explicit state,
-    -- and leaves the newly-built replacement queue permanently parked.
-    schedulerQueue = SCB.presetSpawnQueue or {}
     state.active = false
     ok, errorText = SCB_StartPresetSummonSnapshot(state.snapshot)
-    if ok and SCB.presetSpawnQueue ~= schedulerQueue then
-        newQueue = SCB.presetSpawnQueue or {}
-        for i = table.getn(schedulerQueue), 1, -1 do table.remove(schedulerQueue, i) end
-        for i = 1, table.getn(newQueue) do schedulerQueue[i] = newQueue[i] end
-        SCB.presetSpawnQueue = schedulerQueue
+    if ok then
+        -- SCB_StartPresetSummonSnapshot creates the new queue and marks it as an
+        -- explicit operation. Suppress that mark for the remainder of this
+        -- already-running scheduler frame; the handoff branch above restores it
+        -- next frame, when Spawn captures the new queue normally.
+        state.handoffQueued = true
+        SCB.scbExplicitPresetOperation = nil
+        if SCB_DebugLog then
+            SCB_DebugLog("Spawn", "Preset rebuild prepared replacement queue; deferring scheduler release one frame")
+        end
+        return
     end
-    if not ok then
-        if errorText then SCB_Print(errorText) end
-        if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
-    end
+
+    if errorText then SCB_Print(errorText) end
+    if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
     SCB.presetRebuildState = nil
 end
