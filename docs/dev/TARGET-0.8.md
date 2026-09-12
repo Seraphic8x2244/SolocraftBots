@@ -2,7 +2,7 @@
 
 Status: approved architecture direction; implementation in progress
 Baseline: 0.7.14
-Current live build: 0.8.14-dev. `PresetRebuild.lua` is temporarily restored as a separate live barrier after the 0.8.12 rollback; re-absorption into `Spawn.lua` is blocked on runtime verification.
+Current live build: 0.8.15-dev. `PresetRebuild.lua` is temporarily restored as a separate live barrier after the 0.8.12 rollback; the 0.8.14 next-frame handoff has passed runtime testing, while 0.8.15 is verifying exact removal-settle placement before re-absorption into `Spawn.lua` is reconsidered.
 
 This document is the concise canonical target for 0.8. Where an older audit description differs, this target and `DECISIONS.md` win. Historical notes are retained as the project develops; completed migration items are struck through or recorded in `MIGRATION-LOG.md` rather than deleted.
 
@@ -41,9 +41,11 @@ Keep requested/assumed and confirmed roles separately. Combat confirmation is op
 Resolved role = confirmedRole when available, otherwise assumedRole. Maintenance may use resolved role, because confirmed role is considered more accurate once the evidence threshold has been reached. Never destructively erase assumedRole.
 
 ### Removal settle
-Shared rule for every operation that removes a bot and then intends to add another bot: request removal -> observe removed bot absent from Blizzard roster -> wait 3.0 seconds -> permit replacement/addition.
+Shared rule for every operation that removes a bot and then intends to add another bot: request removal -> observe removed bot absent from Blizzard roster -> wait 3.0 seconds -> permit the next replacement/addition.
 
-This applies to Replace Dead/Missing where removal occurs, preset-over-preset rebuild, survivor handoff, bootstrap handoff and future replacement operations. Pure removal with no following addition does not need this delay.
+The delay protects the remove -> next-add boundary. Conversion to raid, subgroup movement/parking, human arrangement and other work that does not add a bot may happen during the 3-second window. Pure removal with no following addition does not need this delay.
+
+This applies to Replace Dead/Missing where removal occurs, preset-over-preset rebuild, survivor handoff, bootstrap handoff and future replacement operations.
 
 ## Target file ownership
 
@@ -73,10 +75,10 @@ Earlier target notes proposed folding Location and Comms into this file. That re
 - survivor/bootstrap safety-anchor lifecycle
 - party->raid conversion and human arrangement barriers
 - combat gate/retry/error abort
-- shared 3-second removal-settle use
+- shared 3-second removal-settle use at the actual remove -> next-add boundary
 - interaction with isolated identity bursts
 
-0.8.11-dev absorbed the former standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, so preset-over-preset teardown, conversion, post-removal settle and summon handoff temporarily lived in the intended owner. **Current-state correction:** 0.8.12-dev rolled that absorption back after a runtime client hang. In 0.8.14-dev `PresetRebuild.lua` remains a separate live transition barrier while its rebuild handoff is re-proven. The final ownership target remains `Spawn.lua`, but no re-absorption is permitted until the runtime gate passes.
+0.8.11-dev absorbed the former standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, so preset-over-preset teardown, conversion, post-removal settle and summon handoff temporarily lived in the intended owner. **Current-state correction:** 0.8.12-dev rolled that absorption back after a runtime client hang. The separate rebuild handoff was re-proven in 0.8.14-dev. In 0.8.15-dev `PresetRebuild.lua` remains a separate live transition barrier while settle placement is verified: conversion and Group-8 parking may overlap the timer, but the next bot add must still wait until 3 seconds after the relevant removal is observed complete. The final ownership target remains `Spawn.lua`, but no re-absorption is permitted until this runtime gate passes.
 
 ### `Raid.lua`
 - observed Blizzard roster
@@ -105,7 +107,7 @@ Supporting locale/assets/bindings remain separate as appropriate.
 ## Files/layers expected to disappear by consolidation
 ~~`PresetRebuild.lua`~~, `LocationZones.lua`, `Location.lua` (if merged), ~~`RoleTracking.lua`~~, `Detection.lua`, ~~`DetectionShieldSlam.lua`~~, ~~`DetectionLifecycle.lua`~~, `RaidIdentity.lua`, `RaidPlayers.lua`, ~~`RaidSnapshot.lua`~~, `RaidBurst.lua`, `RaidRefill.lua`, ~~`RaidLayout.lua`~~, ~~`RaidPresentation.lua`~~, `Comms.lua` (if merged), `Commands.lua`, ~~`ChatFilter.lua`~~ and other patch-only layers should be absorbed into the owners above where practical.
 
-Historical completion note: `PresetRebuild.lua` was crossed out when it was absorbed in 0.8.11-dev. That completion was explicitly rolled back in 0.8.12-dev; the file is live again in 0.8.14-dev and the strike-through above records the earlier migration rather than current file absence.
+Historical completion note: `PresetRebuild.lua` was crossed out when it was absorbed in 0.8.11-dev. That completion was explicitly rolled back in 0.8.12-dev; the file is live again in 0.8.15-dev and the strike-through above records the earlier migration rather than current file absence.
 
 Completed: `LocationZones.lua` was removed in 0.8.0-dev; `ChatFilter.lua` was absorbed into `Options.lua` in 0.8.1-dev; `DetectionShieldSlam.lua` was absorbed into `Detection.lua` in 0.8.2-dev; `DetectionLifecycle.lua` was absorbed into `Detection.lua`/`Options.lua` in 0.8.3-dev; `RaidPresentation.lua` was removed in 0.8.5-dev after the exact-logical-human-slot model superseded live-row editor mirroring; `RaidSnapshot.lua` was absorbed into `RaidPlayers.lua` in 0.8.6-dev so snapshot construction/validation no longer depends on a separate late override layer; `RoleTracking.lua` became the initial `Raid.lua` owner in 0.8.7-dev; `Roster.lua` was absorbed into Raid in 0.8.8-dev; `RaidLayout.lua` was absorbed into the transitional late `RaidIdentity.lua` owner in 0.8.9-dev; and `PresetRebuild.lua` was absorbed into `Spawn.lua` in 0.8.11-dev before that specific absorption was rolled back in 0.8.12-dev. `RaidPlayers.lua`, `PresetRebuild.lua` and the combined late RaidIdentity layer remain transitional. `Location.lua` and `Comms.lua` remain open pending the final Presets sizing/cohesion decision.
 
@@ -114,4 +116,4 @@ Cross-version preset communications are now an explicit compatibility concern: a
 This is a target, not permission to delete code before its live responsibility is migrated and verified.
 
 ## Migration rule
-0.7.14 remains the stable behavioural reference, except for explicitly approved 0.8 behavioural changes recorded in `DECISIONS.md`: exact logical human-slot semantics, resolved-role maintenance policy, non-competing identity binding, and universal 3-second remove-then-add settle.
+0.7.14 remains the stable behavioural reference, except for explicitly approved 0.8 behavioural changes recorded in `DECISIONS.md`: exact logical human-slot semantics, resolved-role maintenance policy, non-competing identity binding, and universal 3-second remove-then-add settle at the next-add boundary.
