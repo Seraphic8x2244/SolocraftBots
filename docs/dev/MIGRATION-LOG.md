@@ -84,6 +84,13 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Exact identity remains based on explicit burst plans and join-message order. Blizzard layout remains observational only and continues to update `current*` live fields without changing logical preset slots.
 - Scheduler-state cleanup wrappers remain temporary and are explicitly deferred to Spawn consolidation; this build does not pretend the wrapper chain is fully solved.
 - This is a structural step toward the final `Raid.lua` owner, not the final identity architecture. The global pending FIFO and roster-delta competition still need the planned hardening pass.
+- Regression found in 5-player testing: moving `RaidIdentity.lua` after `Spawn.lua` also moved an obsolete duplicate `SCB_SendSpawnCommand` definition after Spawn's authoritative validated sender. That duplicate returned nil, causing Spawn to interpret every attempted command as an invalid scheduler item.
+
+## 0.8.10-dev — restore authoritative Spawn sender
+
+- Removed the obsolete `SCB_SendSpawnCommand` definition from late-loaded `RaidIdentity.lua`.
+- `Spawn.lua` is again the sole owner of the validated outbound spawn sender and its boolean success contract.
+- The reported failure was therefore not caused by changing Holy Paladin to Retribution or by unsaved preset semantics; the role edit merely exposed the 0.8.9 load-order regression on the next summon attempt.
 
 ## Presets sizing decision
 
