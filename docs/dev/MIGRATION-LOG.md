@@ -138,6 +138,15 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - The existing bootstrap-from-empty path still cannot park until raid conversion is visible, but once Blizzard exposes the raid roster it requests Group 8 immediately; it is not intentionally held behind the removal settle.
 - Runtime verification passed: in the 5-man -> 10-man overwrite, raid conversion and Group-8 parking occurred promptly during the original teardown settle, G1 began when that settle expired, and after the parked survivor was removed the following burst respected the new removal -> next-add delay. No second click or Ctrl override was required.
 
+## 0.8.16-dev — move Spawn cleanup out of late RaidIdentity
+
+- Removed `RaidIdentity.lua`'s late wrappers around `SCB_AbortBotSpawnOperations` and `SCB_ResetSessionState`; those wrappers existed only to clear Spawn-owned scheduler state after Spawn had loaded.
+- `Spawn.lua` now owns that cleanup directly. Abort preserves the previous effective ordering by clearing Spawn runtime state before the inherited abort chain and again afterward, then clearing pending assumed-spawn identity state as before.
+- Session reset now clears Spawn runtime state in Spawn before delegating to the existing Raid/session reset chain.
+- No identity matching, Blizzard live-layout observation, preset execution, rebuild timing or maintenance behaviour was intentionally changed.
+- `RaidIdentity.lua` remains live for one more step because its identity and layout wrappers are still being kept at their proven late load position until this cleanup ownership move is runtime-verified.
+- Runtime verification pending: login/reload, a normal 5-man preset summon, the proven 5-man -> 10-man survivor/conversion overwrite, and preferably one Ctrl-Summon abort should remain normal. If this passes, the remaining identity/layout code can move into `Raid.lua` without a hidden Spawn cleanup dependency.
+
 ## Presets sizing decision
 
 - Do not force `Location.lua` or `Comms.lua` into `Presets.lua` merely to reduce file count.
@@ -147,7 +156,8 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- Continue absorbing observed roster, identity, live layout and maintenance responsibilities into the established `Raid.lua` owner in small steps; the 0.8.15 removal-settle placement is now runtime-proven.
+- The 0.8.16 step removes RaidIdentity's post-Spawn cleanup dependency first. After its runtime gate passes, move the remaining explicit identity/live-layout responsibilities into `Raid.lua` and remove `RaidIdentity.lua` in the next small step rather than combining both risks at once.
+- Continue absorbing maintenance responsibilities into the established `Raid.lua` owner after the identity/layout layer is flattened.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
 - ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The separate rebuild handoff and corrected settle placement are now proven through 0.8.15, so re-absorption may be reconsidered as a future Spawn consolidation step; it is not required immediately.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
