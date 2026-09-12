@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.7-dev
+Current development line: 0.8.8-dev
 
 ## Purpose
 
@@ -44,7 +44,7 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 The 0.7.14 static/source audit is complete. The main architectural knots were:
 
 1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime;
-2. bot identity is split across the former RoleTracking layer (renamed to the initial `Raid.lua` owner in 0.8.7), RaidIdentity/Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers;
+2. bot identity is split across the current `Raid.lua` owner, RaidIdentity/Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers; the former standalone `Roster.lua` and `RoleTracking.lua` layers have now both been absorbed into `Raid.lua`;
 3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers, while RaidPlayers/RaidLayout remain transitional owners pending final Presets/Raid consolidation;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
@@ -65,7 +65,7 @@ Owns the single preset summon state machine: clean summon, rebuild, explicit LIF
 ### `Raid.lua`
 Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
 
-`Raid.lua` now exists as of 0.8.7-dev, initially containing the former `RoleTracking.lua` implementation at the same load position. This is the consolidation anchor, not the final completed Raid module.
+`Raid.lua` was established in 0.8.7-dev from the former RoleTracking implementation. In 0.8.8-dev the separate `Roster.lua` implementation was folded into it ahead of the existing role-identity layer, so observed Live Roster and persistent Active Roster now have their intended final owner.
 
 ### `Options.lua`
 Owns options/settings UI, chat-filter/hide-chat hooks, and the user-facing combat-confirmation option/callback.
@@ -125,7 +125,7 @@ Owns developer diagnostics and debug UI.
 ### Phase E — Raid consolidation
 
 - [x] Establish `Raid.lua` as the coherent target owner: 0.8.7-dev renames the former RoleTracking implementation into `Raid.lua` at the same runtime position, deliberately without behaviour changes.
-- [ ] Move observed roster + Active Roster ownership from `Roster.lua`.
+- [x] Move observed roster + Active Roster ownership from `Roster.lua` into `Raid.lua` in 0.8.8-dev, retaining base-roster-before-role-wrapper ordering inside the combined owner.
 - [ ] Move remaining tracker/assumption/identity behaviour from `RaidIdentity.lua` and eliminate transitional compatibility definitions now housed in `Raid.lua`.
 - [ ] Move maintenance from `RaidRefill.lua`/Presets wrappers.
 - [ ] Move role evidence/lifecycle from `Detection.lua` into the final Raid owner if size remains coherent.
