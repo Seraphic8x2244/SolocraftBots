@@ -25,12 +25,6 @@ end
 -- Explicit spawn identity
 -- -------------------------------------------------------------------------
 
-function SCB_SendSpawnCommand(command)
-    if not command or command == "" then return end
-    if SCB_RegisterSpawnIntent then SCB_RegisterSpawnIntent() end
-    SendChatMessage(".partybot " .. command, "SAY")
-end
-
 function SCB_BeginAssumedSpawnBurst(plan)
     local i, entry, intent, groupLabel, localSlot
     if not plan or not plan.assignments or table.getn(plan.assignments) == 0 then
