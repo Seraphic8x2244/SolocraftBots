@@ -144,8 +144,20 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - `Spawn.lua` now owns that cleanup directly. Abort preserves the previous effective ordering by clearing Spawn runtime state before the inherited abort chain and again afterward, then clearing pending assumed-spawn identity state as before.
 - Session reset now clears Spawn runtime state in Spawn before delegating to the existing Raid/session reset chain.
 - No identity matching, Blizzard live-layout observation, preset execution, rebuild timing or maintenance behaviour was intentionally changed.
-- `RaidIdentity.lua` remains live for one more step because its identity and layout wrappers are still being kept at their proven late load position until this cleanup ownership move is runtime-verified.
-- Runtime verification pending: login/reload, a normal 5-man preset summon, the proven 5-man -> 10-man survivor/conversion overwrite, and preferably one Ctrl-Summon abort should remain normal. If this passes, the remaining identity/layout code can move into `Raid.lua` without a hidden Spawn cleanup dependency.
+- `RaidIdentity.lua` remains live because its identity and layout wrappers are still being kept at their proven late load position until surrounding runtime gates are clear.
+- Runtime test: normal 5-man summon passed, and 5-man -> 5-man overwrite passed. `/reload` was not a valid addon-update test because WoW reloads the UI but does not reload changed addon files from disk.
+- Ctrl-abort test failed when four add commands had already left the client but the bots had not joined yet. The second preset reported that summoning had begun, but the original four bots later appeared on their original schedule and the replacement did not take over. This exposed an in-flight server-command race rather than a failure of the moved cleanup itself: client-side abort can clear SCB's local queue but cannot recall PartyBot add requests already accepted by the server.
+- Recommendation changed: do not proceed to RaidIdentity removal yet. Fix and prove the in-flight abort/rebuild boundary first.
+
+## 0.8.17-dev — recover aborted in-flight preset summons
+
+- `PresetRebuild.lua` now recognises outstanding `pendingBotAdds` when a new preset starts after the previous local operation has been aborted.
+- If add commands from the old operation are still in flight, the replacement snapshot is held in the rebuild barrier instead of being released against an apparently empty roster.
+- Existing roster handling remains responsible for consuming `pendingBotAdds` as bot names actually join. The rebuild barrier also honours the existing add-intent expiry so a lost/rejected request cannot park recovery forever if no later roster event fires.
+- Once the old in-flight requests resolve, any bots that actually appeared are treated as the old group: SCB runs the normal Kick All/survivor policy, observes the resulting roster disappearance (or survivor-only state), then applies the existing shared 3.0-second remove -> next-add settle before releasing the replacement preset.
+- If the aborted requests expire and no old bot ever materialises, no artificial removal settle is added because no removal occurred.
+- This deliberately uses the already-existing physical add-intent counter instead of trying to cancel server-side commands that the client cannot recall.
+- Runtime verification pending. Primary gate: start a 5-man summon, Ctrl-click a different preset after the four bot add commands have been sent but before they join, then verify the original bots are allowed to appear, are removed automatically, and the second preset starts only after the normal removal-settle boundary. No third click should be required.
 
 ## Presets sizing decision
 
@@ -156,8 +168,8 @@ This file is append-only project memory for the consolidation. Existing audit/de
 ## Next consolidation direction
 
 - The exact logical human-slot model has now passed a three-human BWL runtime test; preserve that behaviour while removing remaining transitional wrappers.
-- The 0.8.16 step removes RaidIdentity's post-Spawn cleanup dependency first. After its runtime gate passes, move the remaining explicit identity/live-layout responsibilities into `Raid.lua` and remove `RaidIdentity.lua` in the next small step rather than combining both risks at once.
+- Further RaidIdentity consolidation is paused until the 0.8.17 forced-retry recovery gate passes. The remaining explicit identity/live-layout responsibilities can then move into `Raid.lua` and `RaidIdentity.lua` can be removed in a separate small step.
 - Continue absorbing maintenance responsibilities into the established `Raid.lua` owner after the identity/layout layer is flattened.
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
-- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The separate rebuild handoff and corrected settle placement are now proven through 0.8.15, so re-absorption may be reconsidered as a future Spawn consolidation step; it is not required immediately.
+- ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The ordinary separate rebuild handoff and corrected settle placement are proven through 0.8.15, but 0.8.17 now adds a further forced-retry recovery responsibility that must also be proven before any re-absorption is reconsidered.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
