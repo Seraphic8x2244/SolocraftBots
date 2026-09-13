@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.17-dev
+Current development line: 0.8.20-dev
 
 ## Purpose
 
@@ -44,8 +44,8 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 
 The 0.7.14 static/source audit is complete. The main architectural knots were:
 
-1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime; 0.8.11 absorbed the separate preset-rebuild transition layer into Spawn, but 0.8.12 explicitly rolled that absorption back after a runtime client hang. The separate 0.8.14 next-frame rebuild handoff and the 0.8.15 remove -> next-add settle placement are runtime-proven. 0.8.17 adds recovery for aborted add commands that are already server-side/in flight, and that path must be proven before any further Spawn/rebuild consolidation;
-2. bot identity is split across the current `Raid.lua` owner, the transitional `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers; the former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have now been reduced/absorbed. In 0.8.16 the late identity layer's Spawn-owned abort/session cleanup interception was removed, but its remaining identity/live-layout migration is paused until the 0.8.17 forced-retry gate passes;
+1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime. The 0.8.11 direct absorption of PresetRebuild was rolled back after a client hang, so 0.8.18 introduced a staged operation coordinator instead. 0.8.19 moved pending-add recovery, rebuild teardown/settle and next-frame handoff state into `botOperation.rebuild`; aggressive Ctrl-switch stress testing passed. 0.8.20 now migrates survivor/bootstrap handoff state into `botOperation.safety` behind a one-gate compatibility bridge;
+2. bot identity is split across the current `Raid.lua` owner, the transitional `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers. The former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have been reduced/absorbed. The 0.8.16 in-flight summon race no longer blocks architecture work because the coordinator path through 0.8.19 has passed repeated forced-replacement stress testing; remaining RaidIdentity consolidation is simply sequenced after the operation-ownership migration;
 3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers; 0.8.9 folds the remaining standalone RaidLayout implementation into the late identity layer, while RaidPlayers and the combined late identity/layout owner remain transitional;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
@@ -61,14 +61,14 @@ Owns bootstrap, shared UI helpers, top-level event dispatch, direct bot commands
 Owns preset storage/editor semantics, bot logical slots, exact human logical-slot assignments and Other Players pool. Execution snapshot construction may remain here if compact. Location and preset communications may merge here only if the final file remains coherent after runtime code is extracted.
 
 ### `Spawn.lua`
-Owns the single preset summon state machine: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and interaction with isolated identity bursts.
+Owns one authoritative bot-lifecycle operation coordinator: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and maintenance replacement execution requested by Raid.
 
-0.8.11-dev absorbed the standalone `PresetRebuild.lua` transition barrier into `Spawn.lua`, but that specific migration was rolled back in 0.8.12-dev after the runtime client hang. The separate rebuild handoff itself passed runtime testing in 0.8.14-dev, and 0.8.15-dev verified that conversion/parking may overlap the settle while the next add remains gated. `PresetRebuild.lua` remains the live transition owner for now. In 0.8.16-dev Spawn became the direct owner of its scheduler-state cleanup on abort/session reset instead of relying on late `RaidIdentity.lua` wrappers. 0.8.17-dev extends the separate rebuild barrier to hold replacement snapshots while aborted old add commands remain in flight, then tear down any bots that materialise before releasing the replacement after the normal settle. Final ownership remains Spawn, but re-absorption is not considered until this new recovery path is runtime-proven. Remaining Spawn consolidation includes the still-live burst/survivor helper layer and older superseded scheduler definitions.
+The 0.8.11 direct `PresetRebuild.lua` absorption was rolled back in 0.8.12 after a client hang, so the current migration is deliberately staged. 0.8.18 introduced transitional `SpawnOperation.lua` around the proven Spawn scheduler. 0.8.19 moved the actual rebuild/pending-add/settle state into `botOperation.rebuild` while preserving the proven 0.8.14 next-frame handoff; repeated aggressive Ctrl replacement tests passed. 0.8.20 moves survivor/bootstrap handoff state into `botOperation.safety`, with legacy field names hydrated only during a scheduler frame so timing remains unchanged for this gate. Once that passes, absorb the coordinator into `Spawn.lua`, remove the hydration bridge, then migrate maintenance execution.
 
 ### `Raid.lua`
-Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
+Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing decisions, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
 
-`Raid.lua` was established in 0.8.7-dev from the former RoleTracking implementation. In 0.8.8-dev the separate `Roster.lua` implementation was folded into it ahead of the existing role-identity layer, so observed Live Roster and persistent Active Roster now have their intended final owner. In 0.8.9-dev the separate late `RaidLayout.lua` file was eliminated by folding its runtime into the already-late `RaidIdentity.lua`. In 0.8.16-dev that late layer stopped owning Spawn abort/session cleanup. Normal 5-man and 5-man -> 5-man overwrite tests still passed, but a Ctrl-abort during in-flight bot adds exposed a separate summon-recovery race. The remaining explicit identity/live-layout code stays in RaidIdentity until 0.8.17 proves that recovery path.
+`Raid.lua` was established in 0.8.7-dev from the former RoleTracking implementation. In 0.8.8-dev the separate `Roster.lua` implementation was folded into it ahead of the existing role-identity layer, so observed Live Roster and persistent Active Roster now have their intended final owner. In 0.8.9-dev the separate late `RaidLayout.lua` file was eliminated by folding its runtime into the already-late `RaidIdentity.lua`. In 0.8.16-dev that late layer stopped owning Spawn abort/session cleanup. The later coordinator stress tests resolve the earlier forced-retry blocker, but the remaining explicit identity/live-layout code stays in RaidIdentity until Spawn operation ownership is flattened enough to avoid recreating another late wrapper dependency.
 
 ### `Options.lua`
 Owns options/settings UI, chat-filter/hide-chat hooks, and the user-facing combat-confirmation option/callback.
@@ -133,11 +133,11 @@ Owns developer diagnostics and debug UI.
 - [x] Move observed roster + Active Roster ownership from `Roster.lua` into `Raid.lua` in 0.8.8-dev, retaining base-roster-before-role-wrapper ordering inside the combined owner.
 - [x] Remove `RaidIdentity.lua`'s post-Spawn scheduler/session cleanup wrappers in 0.8.16-dev; Spawn now owns that state cleanup directly while preserving the old effective ordering.
 - [x] Verify ordinary 0.8.16 paths: normal 5-man summon passed and 5-man -> 5-man overwrite passed. `/reload` is not an addon-update mechanism and is not counted as a code-update test.
-- [ ] Resolve the failed 0.8.16 Ctrl-Summon test before further Raid consolidation: old add commands already sent to the server survived the local abort and later materialised.
-- [ ] Runtime-prove the 0.8.17 in-flight forced-retry recovery path.
-- [ ] Move the remaining tracker/assumption/identity/live-layout behaviour from `RaidIdentity.lua` into `Raid.lua` only after the 0.8.17 gate passes, then remove the transitional file.
+- [x] Resolve the failed 0.8.16 Ctrl-Summon blocker: 0.8.17 introduced pending-add recovery, 0.8.18 established one operation identity, and 0.8.19 moved the rebuild recovery into the coordinator; repeated aggressive 10-bot Ctrl-switch testing passed without a stuck state or wrong final preset.
+- [x] Treat forced-retry recovery as runtime-proven at the coordinator level through 0.8.19; do not reopen the old 0.8.17-specific gate unless a regression appears.
+- [ ] Move the remaining tracker/assumption/identity/live-layout behaviour from `RaidIdentity.lua` into `Raid.lua` after the current Spawn operation migration is stable, then remove the transitional file.
 - [x] Remove standalone `RaidLayout.lua` in 0.8.9-dev by folding live layout observation into the same late identity layer, preserving its late runtime position rather than moving wrappers earlier unsafely.
-- [ ] Move maintenance from `RaidRefill.lua`/Presets wrappers.
+- [ ] Move maintenance decision/execution split out of `RaidRefill.lua`/Presets wrappers: Raid decides records, Spawn coordinator executes physical mutation.
 - [ ] Deferred Replace Dead UX/API fallback: keep normal click conservative on `UnitIsDeadOrGhost`; improve the no-match message to make clear that no dead bot was detected; later consider Ctrl-click as a one-shot stronger scan using dead OR a valid roster unit reporting `UnitHealth == 0` with `UnitHealthMax > 0`. Verify Vanilla out-of-range health behaviour before enabling the zero-HP fallback.
 - [ ] Move role evidence/lifecycle from `Detection.lua` into the final Raid owner if size remains coherent.
 - [ ] Move pfUI role integration fully into the final Raid implementation; current pfUI integration already resides in Raid.
@@ -164,11 +164,17 @@ Owns developer diagnostics and debug UI.
 - [x] Re-prove the separate `PresetRebuild.lua` handoff after the 0.8.12 rollback. 0.8.14-dev passed clean 5-man, 5-man overwrite, 5 -> 10 survivor/conversion, and repeated A -> B -> C overwrite tests without a second click.
 - [x] Verify 0.8.15 settle placement: during 5 -> 10 overwrite, the survivor moved to G8 promptly once raid conversion was visible while the original teardown settle continued; after the parked safety bot was kicked, the following burst respected the removal -> next-add delay.
 - [x] Move Spawn scheduler cleanup ownership out of late `RaidIdentity.lua` and into `Spawn.lua` in 0.8.16-dev.
-- [x] Add a 0.8.17 rebuild-recovery state for aborted-but-already-sent bot adds: hold replacement snapshot until `pendingBotAdds` resolves/expires, kick arrived old bots, then reuse the normal roster-disappearance + settle path.
-- [ ] Runtime-test 0.8.17 forced retry: start 5-man, Ctrl-click a different preset after add commands are sent but before joins appear; original bots should arrive, be removed automatically, then replacement should summon after the normal settle without a third click.
-- [ ] Re-absorb `PresetRebuild.lua` into Spawn if/when doing so can preserve both the proven ordinary barrier sequencing and the 0.8.17 forced-retry recovery; this is not an immediate step.
-- [ ] Absorb still-live burst/survivor helpers.
-- [ ] One explicit operation object/state machine for conversion/bootstrap/survivor/bursts/abort.
+- [x] Add 0.8.17 recovery for aborted-but-already-sent bot adds.
+- [x] Introduce one active bot operation object in 0.8.18 and route preset requests/forced intent replacement through it without changing proven physical sequencing.
+- [x] Runtime-prove the 0.8.18 foundation: normal 5-man, 5 -> 5, 5 -> 10, and in-flight 10-man -> different 10-man all passed.
+- [x] Move rebuild/pending-add/teardown/settle/next-frame-handoff state into `botOperation.rebuild` in 0.8.19.
+- [x] Runtime-prove 0.8.19 with repeated unreasonable Ctrl-click interruptions of 10-bot dungeon operations; latest requested preset won and no stuck state/extra click was reported.
+- [x] Move persistent survivor/bootstrap handoff state into `botOperation.safety` in 0.8.20 while preserving old physical timing through a one-gate hydration bridge.
+- [ ] Runtime-test 0.8.20 safety migration: normal 5-man, 5 -> 5, 5 -> 10 survivor/Group-8 path, aggressive Ctrl switching, and the five-player survivor handoff. Exercise special empty-group raid bootstrap before deleting the bridge.
+- [ ] Absorb `SpawnOperation.lua` into `Spawn.lua` after 0.8.20 passes, replacing hydration with direct coordinator-state reads/writes while preserving the 0.8.14 next-frame handoff.
+- [ ] Retire `PresetRebuild.lua` once its compatibility sentinel/busy checks are explicitly replaced and the direct Spawn coordinator path passes runtime.
+- [ ] Route Replace Missing / Replace Dead physical execution through the coordinator while Raid continues selecting replacement records.
+- [ ] Absorb still-live burst/survivor helpers after their state/timing responsibilities have direct Spawn ownership.
 - [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every remove-then-add operation.
 - [ ] Remove superseded scheduler definitions after proof.
 
