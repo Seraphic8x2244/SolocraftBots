@@ -16,6 +16,13 @@ local SCB_WAIT_REAL_RAID_START = SCB.PRESET_WAIT_REAL_RAID_START or "__SCB_WAIT_
 
 SCB.PRESET_WAIT_REAL_RAID_START = SCB_WAIT_REAL_RAID_START
 
+local function SCB_GetPresetSafety(create)
+    local operation = SCB.botOperation
+    if not operation or not operation.active or operation.kind ~= "preset" then return nil end
+    if create and not operation.safety then operation.safety = {} end
+    return operation.safety
+end
+
 local function SCB_IsSpawnCommandString(value)
     return type(value) == "string" and string.find(value, "^add%s+") ~= nil
 end
@@ -151,15 +158,12 @@ local function SCB_HasLaterAssignments(groups, currentGroup, maxGroup)
 end
 
 local function SCB_ResetSpawnRuntimeState()
+    local operation = SCB.botOperation
     SCB.scbExplicitPresetOperation = nil
     SCB.scbPresetBurstPlans = {}
     SCB.scbCheckPlanArmed = nil
     SCB.scbArmedPresetPlan = nil
-    SCB.scbParkSurvivorBeforeArrange = nil
-    SCB.scbRemoveSurvivorAfterG1 = nil
-    SCB.scbSurvivorRemovalWaiting = nil
-    SCB.scbSurvivorRemovalName = nil
-    SCB.scbPartySurvivorGoneAt = nil
+    if operation and operation.kind == "preset" then operation.safety = nil end
 end
 
 local SCB_073PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
@@ -187,7 +191,7 @@ function SCB_StartPresetSummonSnapshot(snapshot)
     local queue, plans, groupCount, startBotState, survivorName
     local raidCount, partyCount, needsT3Bootstrap, g, i, player
     local firstAssignment, heldAssignment, expectedBotCount, hasLater
-    local kickAllAnchorName
+    local kickAllAnchorName, safety
 
     if not valid then return false, errorText end
     if table.getn(SCB.presetSpawnQueue or {}) > 0
@@ -217,12 +221,12 @@ function SCB_StartPresetSummonSnapshot(snapshot)
     SCB.presetCombatRetryResetPending = nil
     SCB.presetLastBurstCommands = nil
     SCB.presetLastBurstRequeued = nil
-    SCB.presetExpectedBotCountBeforeHandoff = nil
-    SCB.presetSurvivorProbeRemaining = nil
-    SCB.presetBootstrapBotName = nil
-    SCB.presetSurvivorBotName = survivorName
     SCB_ResetSpawnRuntimeState()
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+
+    safety = SCB_GetPresetSafety(true)
+    if not safety then return false, SCB_L("ERR_SUMMON_BUSY") end
+    safety.survivorName = survivorName
 
     tracker = SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     if not tracker then return false, SCB_L("ERR_SUMMON_BUSY") end
@@ -258,15 +262,15 @@ function SCB_StartPresetSummonSnapshot(snapshot)
                 return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
             end
             if raidCount == 0 then table.insert(queue, SCB_CONVERT_NOW) end
-            SCB.scbParkSurvivorBeforeArrange = true
-            SCB.scbRemoveSurvivorAfterG1 = true
+            safety.parkBeforeArrange = true
+            safety.removeAfterGroupOne = true
         elseif raidCount > 0 then
         elseif partyCount > 0 then
             table.insert(queue, SCB_CONVERT_NOW)
         elseif needsT3Bootstrap then
             SCB_QueueBootstrapBurst(queue, plans)
-            SCB.scbParkSurvivorBeforeArrange = true
-            SCB.scbRemoveSurvivorAfterG1 = true
+            safety.parkBeforeArrange = true
+            safety.removeAfterGroupOne = true
         else
             firstAssignment = groups[1] and groups[1][1] or nil
             if not firstAssignment then
@@ -293,7 +297,7 @@ function SCB_StartPresetSummonSnapshot(snapshot)
                 heldAssignment = groups[1][1]
                 table.remove(groups[1], 1)
             end
-            SCB.presetExpectedBotCountBeforeHandoff = expectedBotCount
+            safety.expectedBotCountBeforeHandoff = expectedBotCount
         end
     end
 
@@ -359,8 +363,9 @@ function SCB_PresetSummonOnClick()
 end
 
 local function SCB_ShouldRemoveParkedSurvivor(head)
+    local safety = SCB_GetPresetSafety(false)
     local plan
-    if not SCB.scbRemoveSurvivorAfterG1 then return false end
+    if not safety or not safety.removeAfterGroupOne then return false end
     if head == SCB.PRESET_TRACK_ROSTER then return true end
     if head ~= SCB.PRESET_CHECK_COMBAT then return false end
     plan = SCB.scbPresetBurstPlans and SCB.scbPresetBurstPlans[1] or nil
@@ -377,7 +382,7 @@ function SCB_PresetSpawnQueueOnUpdate()
     local elapsed = arg1 or 0
     local queue = SCB.presetSpawnQueue or {}
     local head, plan, retry, bootstrapName
-    local now, settleDelay
+    local now, settleDelay, safety
 
     if SCB_PresetRebuildOnUpdate then SCB_PresetRebuildOnUpdate() end
     if SCB_MaintenanceReplaceOnUpdate then SCB_MaintenanceReplaceOnUpdate() end
@@ -424,12 +429,13 @@ function SCB_PresetSpawnQueueOnUpdate()
             return
 
         elseif head == SCB.PRESET_ARRANGE_PLAYERS then
-            if SCB.scbParkSurvivorBeforeArrange then
+            safety = SCB_GetPresetSafety(false)
+            if safety and safety.parkBeforeArrange then
                 if not SCB.scb072TryParkSurvivorInGroupEight
                     or not SCB.scb072TryParkSurvivorInGroupEight() then
                     return
                 end
-                SCB.scbParkSurvivorBeforeArrange = nil
+                safety.parkBeforeArrange = nil
             end
             if SCB_ArrangePresetPlayers and SCB_ArrangePresetPlayers() then
                 table.remove(queue, 1)
@@ -493,10 +499,16 @@ function SCB_PresetSpawnQueueOnUpdate()
             bootstrapName = SCB_FindFirstGroupBotName and SCB_FindFirstGroupBotName() or nil
             if not bootstrapName then return end
 
+            safety = SCB_GetPresetSafety(true)
+            if not safety then
+                SCB_AbortInvalidSchedulerItem("missing preset safety state")
+                return
+            end
+
             SCB.presetCombatRetryFailures = 0
             SCB.presetCombatRetryResetPending = nil
-            SCB.presetBootstrapBotName = bootstrapName
-            SCB.presetSurvivorBotName = bootstrapName
+            safety.bootstrapName = bootstrapName
+            safety.survivorName = bootstrapName
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
                 queue[1] = SCB_WAIT_RAID
             elseif ConvertToRaid then
@@ -528,39 +540,54 @@ function SCB_PresetSpawnQueueOnUpdate()
             end
 
         elseif head == SCB.PRESET_WAIT_FINAL_ROSTER then
-            if SCB_CountGroupBots and SCB_CountGroupBots() >= (SCB.presetExpectedBotCountBeforeHandoff or 0) then
+            safety = SCB_GetPresetSafety(false)
+            if not safety then
+                SCB_AbortInvalidSchedulerItem("missing preset safety state")
+                return
+            end
+            if SCB_CountGroupBots and SCB_CountGroupBots() >= (safety.expectedBotCountBeforeHandoff or 0) then
                 table.remove(queue, 1)
             else
                 return
             end
 
         elseif head == SCB.PRESET_REMOVE_SURVIVOR then
-            if SCB.presetSurvivorBotName and UninviteByName then
-                UninviteByName(SCB.presetSurvivorBotName)
+            safety = SCB_GetPresetSafety(false)
+            if not safety then
+                SCB_AbortInvalidSchedulerItem("missing preset safety state")
+                return
             end
-            SCB.scbPartySurvivorGoneAt = nil
+            if safety.survivorName and UninviteByName then
+                UninviteByName(safety.survivorName)
+            end
+            safety.partySurvivorGoneAt = nil
             table.remove(queue, 1)
             return
 
         elseif head == SCB.PRESET_WAIT_SURVIVOR_GONE then
-            if SCB.presetSurvivorBotName and SCB_GroupHasName
-                and SCB_GroupHasName(SCB.presetSurvivorBotName) then
-                SCB.scbPartySurvivorGoneAt = nil
+            safety = SCB_GetPresetSafety(false)
+            if not safety then
+                SCB_AbortInvalidSchedulerItem("missing preset safety state")
+                return
+            end
+            if safety.survivorName and SCB_GroupHasName
+                and SCB_GroupHasName(safety.survivorName) then
+                safety.partySurvivorGoneAt = nil
                 return
             end
 
             now = GetTime and GetTime() or 0
-            if not SCB.scbPartySurvivorGoneAt then
-                SCB.scbPartySurvivorGoneAt = now
+            if not safety.partySurvivorGoneAt then
+                safety.partySurvivorGoneAt = now
                 return
             end
             settleDelay = SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0
-            if GetTime and (now - SCB.scbPartySurvivorGoneAt) < settleDelay then return end
+            if GetTime and (now - safety.partySurvivorGoneAt) < settleDelay then return end
 
-            if SCB_ClearKickAllAnchor then SCB_ClearKickAllAnchor(SCB.presetSurvivorBotName) end
-            SCB.presetSurvivorBotName = nil
-            SCB.presetExpectedBotCountBeforeHandoff = nil
-            SCB.scbPartySurvivorGoneAt = nil
+            if SCB_ClearKickAllAnchor then SCB_ClearKickAllAnchor(safety.survivorName) end
+            safety.survivorName = nil
+            safety.expectedBotCountBeforeHandoff = nil
+            safety.partySurvivorGoneAt = nil
             table.remove(queue, 1)
 
         elseif SCB_IsSpawnCommandString(head) then
@@ -664,6 +691,10 @@ function SCB_GetActiveBotOperation()
     return nil
 end
 
+function SCB_GetBotOperationSafety(create)
+    return SCB_GetPresetSafety(create)
+end
+
 function SCB_SetBotOperationPhase(phase)
     local operation = SCB_GetActiveBotOperation()
     if not operation or not phase then return false end
@@ -714,6 +745,7 @@ function SCB_EndBotOperation(status, reason)
     if not operation then return nil end
 
     SCB_ClearOperationRebuild(operation)
+    operation.safety = nil
 
     endedAt = SCB_OperationNow()
     operation.active = false
@@ -754,6 +786,8 @@ local SCB_0819PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
 if SCB_0819PreviousAbortBotSpawnOperations then
     function SCB_AbortBotSpawnOperations(preserveOperation)
         local operation = SCB_GetActiveBotOperation()
+
+        if operation and operation.kind == "preset" then operation.safety = nil end
 
         if preserveOperation and operation then
             SCB_ClearOperationRebuild(operation)
@@ -1035,150 +1069,6 @@ if SCB_0819PreviousPresetSpawnQueueOnUpdate then
         SCB_SyncPresetOperationPhase()
         local result = SCB_0819PreviousPresetSpawnQueueOnUpdate()
         SCB_SyncPresetOperationPhase()
-        return result
-    end
-end
-
-local SCB_0820SafetyFields = {
-    { legacy = "presetSurvivorBotName", key = "survivorName" },
-    { legacy = "presetBootstrapBotName", key = "bootstrapName" },
-    { legacy = "presetExpectedBotCountBeforeHandoff", key = "expectedBotCountBeforeHandoff" },
-    { legacy = "presetSurvivorProbeRemaining", key = "survivorProbeRemaining" },
-    { legacy = "scbParkSurvivorBeforeArrange", key = "parkBeforeArrange" },
-    { legacy = "scbRemoveSurvivorAfterG1", key = "removeAfterGroupOne" },
-    { legacy = "scbSurvivorRemovalWaiting", key = "removalWaiting" },
-    { legacy = "scbSurvivorRemovalName", key = "removalName" },
-    { legacy = "scbSurvivorRemovalGoneAt", key = "removalGoneAt" },
-    { legacy = "scbPartySurvivorGoneAt", key = "partySurvivorGoneAt" },
-}
-
-local function SCB_ClearLegacyPresetSafetyFields()
-    local i
-    for i = 1, table.getn(SCB_0820SafetyFields) do
-        SCB[SCB_0820SafetyFields[i].legacy] = nil
-    end
-end
-
-local function SCB_LegacyPresetSafetyHasState()
-    local i
-    for i = 1, table.getn(SCB_0820SafetyFields) do
-        if SCB[SCB_0820SafetyFields[i].legacy] ~= nil then return true end
-    end
-    return false
-end
-
-function SCB_GetBotOperationSafety(create)
-    local operation = SCB_GetActiveBotOperation()
-    if not operation or operation.kind ~= "preset" then return nil end
-    if create and not operation.safety then operation.safety = {} end
-    return operation.safety
-end
-
-local function SCB_CaptureLegacyPresetSafety(operation)
-    local safety, i, field, value, hasState
-
-    if not operation or operation.kind ~= "preset" then
-        SCB_ClearLegacyPresetSafetyFields()
-        return nil
-    end
-
-    safety = {}
-    hasState = false
-    for i = 1, table.getn(SCB_0820SafetyFields) do
-        field = SCB_0820SafetyFields[i]
-        value = SCB[field.legacy]
-        if value ~= nil then
-            safety[field.key] = value
-            hasState = true
-        end
-    end
-
-    operation.safety = hasState and safety or nil
-    SCB_ClearLegacyPresetSafetyFields()
-    return operation.safety
-end
-
-local function SCB_HydrateLegacyPresetSafety(operation)
-    local safety, i, field
-
-    SCB_ClearLegacyPresetSafetyFields()
-    if not operation or operation.kind ~= "preset" then return end
-
-    safety = operation.safety
-    if not safety then return end
-
-    for i = 1, table.getn(SCB_0820SafetyFields) do
-        field = SCB_0820SafetyFields[i]
-        SCB[field.legacy] = safety[field.key]
-    end
-end
-
-local SCB_0820PreviousEndBotOperation = SCB_EndBotOperation
-function SCB_EndBotOperation(status, reason)
-    local operation = SCB_GetActiveBotOperation()
-    if operation then operation.safety = nil end
-    SCB_ClearLegacyPresetSafetyFields()
-    return SCB_0820PreviousEndBotOperation(status, reason)
-end
-
-local SCB_0820PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
-if SCB_0820PreviousAbortBotSpawnOperations then
-    function SCB_AbortBotSpawnOperations(preserveOperation)
-        local operation = SCB_GetActiveBotOperation()
-        if operation and operation.kind == "preset" then operation.safety = nil end
-        SCB_ClearLegacyPresetSafetyFields()
-        return SCB_0820PreviousAbortBotSpawnOperations(preserveOperation)
-    end
-end
-
-local SCB_0820PreviousStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
-if SCB_0820PreviousStartPresetSummonSnapshot then
-    function SCB_StartPresetSummonSnapshot(snapshot)
-        local operation = SCB_GetActiveBotOperation()
-        local ok, errorText
-
-        if operation and operation.kind == "preset" then
-            operation.safety = nil
-            SCB_ClearLegacyPresetSafetyFields()
-        end
-
-        ok, errorText = SCB_0820PreviousStartPresetSummonSnapshot(snapshot)
-        operation = SCB_GetActiveBotOperation()
-
-        if ok and operation and operation.kind == "preset" then
-            SCB_CaptureLegacyPresetSafety(operation)
-        else
-            SCB_ClearLegacyPresetSafetyFields()
-        end
-        return ok, errorText
-    end
-end
-
-local SCB_0820PreviousPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
-if SCB_0820PreviousPresetSpawnQueueOnUpdate then
-    function SCB_PresetSpawnQueueOnUpdate()
-        local operation = SCB_GetActiveBotOperation()
-        local hadSafety = operation and operation.kind == "preset" and operation.safety ~= nil
-        local result
-
-        if operation and operation.kind == "preset" then
-            SCB_HydrateLegacyPresetSafety(operation)
-        else
-            SCB_ClearLegacyPresetSafetyFields()
-        end
-
-        result = SCB_0820PreviousPresetSpawnQueueOnUpdate()
-        operation = SCB_GetActiveBotOperation()
-
-        if operation and operation.kind == "preset" then
-            if hadSafety or SCB_LegacyPresetSafetyHasState() then
-                SCB_CaptureLegacyPresetSafety(operation)
-            else
-                SCB_ClearLegacyPresetSafetyFields()
-            end
-        else
-            SCB_ClearLegacyPresetSafetyFields()
-        end
         return result
     end
 end

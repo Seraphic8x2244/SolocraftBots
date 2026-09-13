@@ -91,6 +91,7 @@ if SCB_072PreviousPresetSpawnQueueOnUpdate then
         local elapsed = arg1 or 0
         local head, plan, retry
         local result
+        local safety = SCB_GetBotOperationSafety and SCB_GetBotOperationSafety(false) or nil
 
         if not SCB.scbExplicitPresetOperation then
             return SCB_072PreviousPresetSpawnQueueOnUpdate()
@@ -121,7 +122,7 @@ if SCB_072PreviousPresetSpawnQueueOnUpdate then
         -- WAIT_RAID normally falls straight through into ARRANGE_PLAYERS. When
         -- a safety/bootstrap exists, consume the completed barrier ourselves so
         -- the next frame can park it in G8 before any real group is touched.
-        if SCB.scbParkSurvivorBeforeArrange
+        if safety and safety.parkBeforeArrange
             and head == SCB_WAIT_RAID
             and GetNumRaidMembers and GetNumRaidMembers() > 0 then
             table.remove(queue, 1)
@@ -129,9 +130,9 @@ if SCB_072PreviousPresetSpawnQueueOnUpdate then
             return
         end
 
-        if SCB.scbParkSurvivorBeforeArrange and head == SCB.PRESET_ARRANGE_PLAYERS then
+        if safety and safety.parkBeforeArrange and head == SCB.PRESET_ARRANGE_PLAYERS then
             if not SCB.scb072TryParkSurvivorInGroupEight() then return end
-            SCB.scbParkSurvivorBeforeArrange = nil
+            safety.parkBeforeArrange = nil
             -- Continue into the existing human-arrangement barrier.
         end
 
@@ -140,7 +141,7 @@ if SCB_072PreviousPresetSpawnQueueOnUpdate then
         -- Before advancing beyond G1, wait for one real G1 bot, remove the G8
         -- safety member, and wait only for Blizzard roster disappearance. No
         -- hidden target/world probe is used.
-        if SCB.scbRemoveSurvivorAfterG1 and not SCB.presetLastBurstRequeued then
+        if safety and safety.removeAfterGroupOne and not SCB.presetLastBurstRequeued then
             plan = SCB.scbPresetBurstPlans and SCB.scbPresetBurstPlans[1] or nil
             if head == SCB.PRESET_TRACK_ROSTER
                 or (head == SCB.PRESET_CHECK_COMBAT and plan and plan.group and plan.group > 1) then

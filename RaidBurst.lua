@@ -6,6 +6,11 @@ local SCB = SoloCraftBots
 local SCB_WAIT_RAID = "__SCB_WAIT_RAID__"
 local SCB_WAIT_BOOTSTRAP = "__SCB_WAIT_BOOTSTRAP__"
 
+local function SCB_CurrentPresetSafety(create)
+    if SCB_GetBotOperationSafety then return SCB_GetBotOperationSafety(create) end
+    return nil
+end
+
 local function SCB_IsSpawnCommandString(value)
     return type(value) == "string" and string.find(value, "^add%s+") ~= nil
 end
@@ -90,6 +95,7 @@ local function SCB_RewriteSurvivorQueueForGroupEight(tracker, useKickAllAnchor)
     local handoffIndex = SCB_FindQueueIndex(queue, SCB.PRESET_WAIT_FINAL_ROSTER)
     local arrangeIndex, checkIndex, commandEnd
     local heldCommand, groups, g1Count, i
+    local safety
 
     if not handoffIndex then return true, false end
     if queue[handoffIndex + 1] ~= SCB.PRESET_REMOVE_SURVIVOR
@@ -134,12 +140,14 @@ local function SCB_RewriteSurvivorQueueForGroupEight(tracker, useKickAllAnchor)
         end
     end
 
-    SCB.presetExpectedBotCountBeforeHandoff = nil
-    SCB.scbParkSurvivorBeforeArrange = true
-    SCB.scbRemoveSurvivorAfterG1 = true
-    SCB.scbSurvivorRemovalWaiting = nil
-    SCB.scbSurvivorRemovalName = nil
-    SCB.scbSurvivorRemovalGoneAt = nil
+    safety = SCB_CurrentPresetSafety(true)
+    if not safety then return false, false end
+    safety.expectedBotCountBeforeHandoff = nil
+    safety.parkBeforeArrange = true
+    safety.removeAfterGroupOne = true
+    safety.removalWaiting = nil
+    safety.removalName = nil
+    safety.removalGoneAt = nil
     return true, true
 end
 
@@ -262,7 +270,8 @@ end
 
 local function SCB_TryParkSurvivorInGroupEight(name)
     local group, raidIndex
-    name = name or SCB.presetSurvivorBotName or SCB.presetBootstrapBotName
+    local safety = SCB_CurrentPresetSafety(false)
+    name = name or (safety and safety.survivorName) or (safety and safety.bootstrapName)
     if not name then return false end
     if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
 
@@ -296,22 +305,23 @@ local function SCB_HasRealGroupOneBot(survivorName)
 end
 
 local function SCB_TryRemoveParkedSurvivor()
-    local name = SCB.scbSurvivorRemovalName
-        or SCB.presetSurvivorBotName
-        or SCB.presetBootstrapBotName
+    local safety = SCB_CurrentPresetSafety(false)
+    local name = safety and (safety.removalName or safety.survivorName or safety.bootstrapName) or nil
     local now, settleDelay, nextHead
 
+    if not safety then return true end
+
     if not name then
-        SCB.scbRemoveSurvivorAfterG1 = nil
-        SCB.scbSurvivorRemovalWaiting = nil
-        SCB.scbSurvivorRemovalName = nil
-        SCB.scbSurvivorRemovalGoneAt = nil
+        safety.removeAfterGroupOne = nil
+        safety.removalWaiting = nil
+        safety.removalName = nil
+        safety.removalGoneAt = nil
         return true
     end
 
-    if SCB.scbSurvivorRemovalWaiting then
+    if safety.removalWaiting then
         if SCB_GroupHasName and SCB_GroupHasName(name) then
-            SCB.scbSurvivorRemovalGoneAt = nil
+            safety.removalGoneAt = nil
             return false
         end
 
@@ -321,21 +331,21 @@ local function SCB_TryRemoveParkedSurvivor()
         nextHead = SCB.presetSpawnQueue and SCB.presetSpawnQueue[1] or nil
         if nextHead == SCB.PRESET_CHECK_COMBAT and GetTime then
             now = GetTime()
-            if not SCB.scbSurvivorRemovalGoneAt then
-                SCB.scbSurvivorRemovalGoneAt = now
+            if not safety.removalGoneAt then
+                safety.removalGoneAt = now
                 return false
             end
             settleDelay = SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0
-            if (now - SCB.scbSurvivorRemovalGoneAt) < settleDelay then return false end
+            if (now - safety.removalGoneAt) < settleDelay then return false end
         end
 
         if SCB_ClearKickAllAnchor then SCB_ClearKickAllAnchor(name) end
-        SCB.presetSurvivorBotName = nil
-        SCB.presetBootstrapBotName = nil
-        SCB.scbRemoveSurvivorAfterG1 = nil
-        SCB.scbSurvivorRemovalWaiting = nil
-        SCB.scbSurvivorRemovalName = nil
-        SCB.scbSurvivorRemovalGoneAt = nil
+        safety.survivorName = nil
+        safety.bootstrapName = nil
+        safety.removeAfterGroupOne = nil
+        safety.removalWaiting = nil
+        safety.removalName = nil
+        safety.removalGoneAt = nil
         SCB_BurstDebug("Safety " .. tostring(name) .. " removed after real G1 join")
         return true
     end
@@ -344,9 +354,9 @@ local function SCB_TryRemoveParkedSurvivor()
     if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
     if UninviteByName then
         UninviteByName(name)
-        SCB.scbSurvivorRemovalWaiting = true
-        SCB.scbSurvivorRemovalName = name
-        SCB.scbSurvivorRemovalGoneAt = nil
+        safety.removalWaiting = true
+        safety.removalName = name
+        safety.removalGoneAt = nil
         return false
     end
     return false
@@ -358,7 +368,7 @@ if SCB_072PreviousStartPresetSummonSnapshot then
         local anchorBefore = SCB_GetKickAllAnchorForFreshBuild
             and SCB_GetKickAllAnchorForFreshBuild() or nil
         local ok, errorText = SCB_072PreviousStartPresetSummonSnapshot(snapshot)
-        local tracker, useKickAllAnchor, transformed
+        local tracker, useKickAllAnchor, transformed, safety
 
         if not ok then return ok, errorText end
         tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
@@ -376,9 +386,10 @@ if SCB_072PreviousStartPresetSummonSnapshot then
             SCB.scbEditorLayoutTrackerRevision = tracker.layoutRevision or 0
         end
 
+        safety = SCB_CurrentPresetSafety(false)
         useKickAllAnchor = anchorBefore
-            and SCB.presetSurvivorBotName
-            and anchorBefore == SCB.presetSurvivorBotName
+            and safety and safety.survivorName
+            and anchorBefore == safety.survivorName
 
         ok, transformed = SCB_RewriteSurvivorQueueForGroupEight(tracker, useKickAllAnchor)
         if not ok then
@@ -387,11 +398,14 @@ if SCB_072PreviousStartPresetSummonSnapshot then
         end
 
         if not transformed then
-            SCB.scbParkSurvivorBeforeArrange = nil
-            SCB.scbRemoveSurvivorAfterG1 = nil
-            SCB.scbSurvivorRemovalWaiting = nil
-            SCB.scbSurvivorRemovalName = nil
-            SCB.scbSurvivorRemovalGoneAt = nil
+            safety = SCB_CurrentPresetSafety(false)
+            if safety then
+                safety.parkBeforeArrange = nil
+                safety.removeAfterGroupOne = nil
+                safety.removalWaiting = nil
+                safety.removalName = nil
+                safety.removalGoneAt = nil
+            end
         end
 
         if not SCB_BuildPresetBurstPlans(tracker) then
