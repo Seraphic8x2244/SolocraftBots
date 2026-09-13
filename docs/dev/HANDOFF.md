@@ -1,20 +1,21 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.21-dev`
+Current addon line: `0.8.22-dev`
 Behavioural reference: `main` 0.7.14
 
 ## Last runtime-verified point
 
-0.8.20 coordinator-owned survivor/bootstrap state passed every currently available survivor-path test.
+0.8.21 Spawn/coordinator absorption is runtime-proven, including the previously deferred empty-group 40-man bootstrap path.
 
 Verified by user:
-- 5-man -> 5-man overwrite passed with survivor handling;
-- 5-man -> 10-man overwrite passed with survivor / conversion / Group-8 handling;
-- repeated 10-man -> 10-man -> 10-man Ctrl-overwrite stress testing passed with survivor handling;
-- no Lua errors, stuck/busy state, extra-click requirement or wrong final preset were reported.
+- the previously tested 5/10-man survivor paths remained stable through the coordinator consolidation;
+- fresh 40-man preset summon while completely solo inside Molten Core correctly used the temporary bootstrap bot, converted/formatted the raid and completed the 40-man summon;
+- during that fresh MC bootstrap, SoloCraft returned `Cannot add bots while any party member is in combat` five times; SCB recovered the rejected/failed group automatically and completed the operation rather than losing group identity or becoming stuck;
+- a subsequent destructive 40-man preset summon in the same raid correctly detected the saved raid-ID context, kicked the existing bots and rebuilt the requested preset fresh **without** using the bootstrap path;
+- no Lua errors, permanent busy state or manual second-click recovery were reported.
 
-The special empty-group raid bootstrap path has **not** yet been runtime-tested because the user was not near a 40-man raid location. Record that as deferred coverage, not as a blocker for structural consolidation that leaves the bootstrap code/order unchanged.
+This closes the explicit empty-group T3/40-man bootstrap coverage gap that remained after 0.8.20. The combat rejection during that test is useful positive evidence that retry/burst state remains coherent under a real server-side add failure.
 
 ## Current architecture decision
 
@@ -24,37 +25,37 @@ The special empty-group raid bootstrap path has **not** yet been runtime-tested 
 
 Ctrl-forced preset replacement replaces the desired operation handled by the same coordinator rather than starting a second top-level operation identity. Already-sent server commands remain physical facts that must resolve/expire before the coordinator can safely change direction.
 
-## Current functional gate — 0.8.21-dev
+## Current functional gate — 0.8.22-dev
 
-0.8.21 removes the temporary `SpawnOperation.lua` file by absorbing its complete coordinator implementation into the end of `Spawn.lua` at the same effective load position.
+0.8.22 removes the temporary 0.8.20 survivor/bootstrap hydration bridge and makes the live preset pipeline use `botOperation.safety` directly.
 
-- `SpawnOperation.lua` is removed from the TOC and repository.
-- The operation coordinator still wraps the same authoritative Spawn scheduler in the same order as 0.8.20.
-- `botOperation.rebuild` and `botOperation.safety` ownership is unchanged.
-- The 0.8.20 safety hydration/capture compatibility bridge is intentionally retained unchanged for this gate; direct coordinator-state reads/writes are deferred to the next functional step.
-- No physical summon/rebuild/survivor timing, pending-add recovery, identity-burst ordering, maintenance execution or removal-settle policy is intentionally changed.
-- Existing `Spawn.lua` executable lines were preserved; only comments were trimmed while the former coordinator file was appended.
+- `Spawn.lua` creates and consumes survivor/bootstrap state directly on the active preset operation.
+- The Group-8 park/remove helpers in `RaidBurst.lua` now read/write that same coordinator safety table directly.
+- The superseded preset-scheduler wrapper still present in `RaidRefill.lua` was updated to use the same safety API so no misleading legacy safety-field ownership remains there.
+- The historical global fields such as `presetSurvivorBotName`, `scbParkSurvivorBeforeArrange`, `scbRemoveSurvivorAfterG1`, `scbSurvivorRemovalWaiting` and `scbPartySurvivorGoneAt` are no longer the live persistent handoff path.
+- Operation completion, abort and forced replacement clear `operation.safety` directly; there is no per-frame hydrate/capture cycle.
+- A survivor queue marker encountered without an active coordinator safety table now fails closed as invalid scheduler state instead of silently treating missing values as nil/zero.
+- Pending-add recovery, burst identity, combat retry, conversion, Group-8 parking and the 3.0-second remove -> next-add boundary are intentionally unchanged.
 
-Functional commit: `e9be73637d84655227900d9af11ed94af52acb63` (`Absorb SpawnOperation into Spawn`).
+Functional commit: `21cebdf1adc4d7366b89ff212ce7c7e244adb96c` (`Use coordinator safety state directly`).
 
-## 0.8.21 runtime gate
+## 0.8.22 runtime gate
 
-Because this is intended to be structural/load-order preserving, use a compact regression set:
+This is the first build with no compatibility hydration layer, so re-check the paths that actually consume safety state:
 
-1. normal 5-man summon;
-2. 5-man -> 5-man overwrite with survivor;
-3. 5-man -> 10-man survivor/conversion overwrite;
-4. one aggressive Ctrl-switch between 10-man presets while an operation is in flight;
-5. confirm ordinary summoning still works after the Ctrl test and no permanent busy state appears.
+1. 5-man -> 5-man overwrite with survivor handoff;
+2. 5-man -> 10-man overwrite with survivor / conversion / Group-8 park-and-remove;
+3. fresh empty-group 40-man summon in MC or another bootstrap-triggering raid when convenient; the bootstrap path is already proven on 0.8.21, so this is specifically the direct-state regression check;
+4. one aggressive in-flight Ctrl overwrite to confirm replacement clears old safety state and the latest preset still wins;
+5. if a real combat-add rejection occurs again, confirm the failed group retries without losing the safety member or operation state.
 
-The empty-group 40-man bootstrap remains deferred coverage and must be exercised before the compatibility safety bridge is finally deleted or before main promotion.
+The fresh 40-man bootstrap does not need to be repeated immediately if travel is inconvenient; it is now proven on 0.8.21 and remains a promotion-level regression case.
 
 ## Following functional steps
 
-After 0.8.21 passes:
+After 0.8.22 passes:
 
-- replace the 0.8.20 safety hydration/capture bridge with direct coordinator-state access in a separate runtime-gated change;
-- retire `PresetRebuild.lua` only when its compatibility sentinel/busy checks have been replaced explicitly and runtime-proven;
+- retire the superseded `PresetRebuild.lua` implementation once its remaining compatibility sentinel/busy-check dependency is replaced explicitly; its final public functions are already superseded by the Spawn coordinator;
 - route Replace Missing / Replace Dead physical execution through the same coordinator while Raid continues choosing replacement records;
 - remove redundant RaidBurst/RaidRefill scheduler wrappers only after their remaining identity/maintenance responsibilities have a clear owner;
 - resume remaining RaidIdentity -> Raid consolidation once operation ownership is no longer ambiguous.
