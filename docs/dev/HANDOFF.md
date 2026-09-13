@@ -1,21 +1,20 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.20-dev`
+Current addon line: `0.8.21-dev`
 Behavioural reference: `main` 0.7.14
 
 ## Last runtime-verified point
 
-0.8.19 coordinator-owned rebuild lifecycle passed its runtime gate strongly.
+0.8.20 coordinator-owned survivor/bootstrap state passed every currently available survivor-path test.
 
 Verified by user:
-- normal 5-man summon remained good;
-- 5-man -> 5-man overwrite remained good;
-- 5-man -> 10-man survivor/conversion overwrite remained good;
-- switching between different 10-man presets while one was still in flight correctly resolved to the latest requested preset;
-- repeated deliberately unreasonable Ctrl-click summon interruptions with 10 bots in a dungeon produced no reported Lua errors, stuck/busy state, extra-click requirement or wrong final preset.
+- 5-man -> 5-man overwrite passed with survivor handling;
+- 5-man -> 10-man overwrite passed with survivor / conversion / Group-8 handling;
+- repeated 10-man -> 10-man -> 10-man Ctrl-overwrite stress testing passed with survivor handling;
+- no Lua errors, stuck/busy state, extra-click requirement or wrong final preset were reported.
 
-This is sufficient to treat the preset rebuild transition as coordinator-owned. Do not add more local Ctrl/rebuild patches to the old pipeline.
+The special empty-group raid bootstrap path has **not** yet been runtime-tested because the user was not near a 40-man raid location. Record that as deferred coverage, not as a blocker for structural consolidation that leaves the bootstrap code/order unchanged.
 
 ## Current architecture decision
 
@@ -25,33 +24,36 @@ This is sufficient to treat the preset rebuild transition as coordinator-owned. 
 
 Ctrl-forced preset replacement replaces the desired operation handled by the same coordinator rather than starting a second top-level operation identity. Already-sent server commands remain physical facts that must resolve/expire before the coordinator can safely change direction.
 
-## Current functional gate — 0.8.20-dev
+## Current functional gate — 0.8.21-dev
 
-0.8.20 moves survivor/bootstrap handoff state under the same operation object.
+0.8.21 removes the temporary `SpawnOperation.lua` file by absorbing its complete coordinator implementation into the end of `Spawn.lua` at the same effective load position.
 
-- `botOperation.safety` is now the persistent owner of the safety-member name, bootstrap name, raid park/remove flags, survivor-removal wait/settle state, and the five-player survivor handoff count/timestamp.
-- The proven `Spawn.lua` / `RaidBurst.lua` physical sequencing is intentionally unchanged in this gate.
-- A narrow compatibility bridge in `SpawnOperation.lua` hydrates the historical field names only while a scheduler frame executes, captures any mutations back into `botOperation.safety`, then clears the legacy fields again. They are no longer persistent owners between frames.
-- Ctrl replacement and normal abort/session completion clear coordinator safety state so a later operation cannot inherit a previous survivor/bootstrap.
-- The bridge explicitly preserves safety state created by the rebuild -> replacement-queue handoff inside the same frame; an off-branch candidate that could overwrite that newly-created state was caught and discarded before publication.
-- `PresetRebuild.lua`, `RaidBurst.lua` and `RaidRefill.lua` remain present for this gate. No physical timing or identity-burst code moved in 0.8.20.
+- `SpawnOperation.lua` is removed from the TOC and repository.
+- The operation coordinator still wraps the same authoritative Spawn scheduler in the same order as 0.8.20.
+- `botOperation.rebuild` and `botOperation.safety` ownership is unchanged.
+- The 0.8.20 safety hydration/capture compatibility bridge is intentionally retained unchanged for this gate; direct coordinator-state reads/writes are deferred to the next functional step.
+- No physical summon/rebuild/survivor timing, pending-add recovery, identity-burst ordering, maintenance execution or removal-settle policy is intentionally changed.
+- Existing `Spawn.lua` executable lines were preserved; only comments were trimmed while the former coordinator file was appended.
 
-Functional commit: `86b408191fdd1e9bc0680d0da696a90c28d51a1a` (`Move survivor handoff state into coordinator`).
+Functional commit: `e9be73637d84655227900d9af11ed94af52acb63` (`Absorb SpawnOperation into Spawn`).
 
-## 0.8.20 runtime gate
+## 0.8.21 runtime gate
 
-1. Normal 5-man preset summon.
-2. 5-man -> 5-man overwrite.
-3. 5-man -> 10-man overwrite with the retained survivor / Group-8 safety path.
-4. Repeat aggressive Ctrl-switching between 10-man presets while adds/rebuilds are in flight; latest requested preset must still win without a stuck state or extra click.
-5. Exercise a 5-man survivor replacement path if convenient, because its final-bot handoff now persists through `botOperation.safety` too.
-6. Before removing the compatibility bridge, separately exercise the special empty-group raid bootstrap path in a location that actually uses it.
+Because this is intended to be structural/load-order preserving, use a compact regression set:
+
+1. normal 5-man summon;
+2. 5-man -> 5-man overwrite with survivor;
+3. 5-man -> 10-man survivor/conversion overwrite;
+4. one aggressive Ctrl-switch between 10-man presets while an operation is in flight;
+5. confirm ordinary summoning still works after the Ctrl test and no permanent busy state appears.
+
+The empty-group 40-man bootstrap remains deferred coverage and must be exercised before the compatibility safety bridge is finally deleted or before main promotion.
 
 ## Following functional steps
 
-After 0.8.20 passes:
+After 0.8.21 passes:
 
-- absorb the temporary coordinator implementation into `Spawn.lua` and replace compatibility hydration with direct coordinator-state reads/writes, while preserving the proven next-frame rebuild handoff;
+- replace the 0.8.20 safety hydration/capture bridge with direct coordinator-state access in a separate runtime-gated change;
 - retire `PresetRebuild.lua` only when its compatibility sentinel/busy checks have been replaced explicitly and runtime-proven;
 - route Replace Missing / Replace Dead physical execution through the same coordinator while Raid continues choosing replacement records;
 - remove redundant RaidBurst/RaidRefill scheduler wrappers only after their remaining identity/maintenance responsibilities have a clear owner;
