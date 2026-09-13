@@ -155,13 +155,14 @@ Owns developer diagnostics and debug UI.
 - [x] Preserve bot logical order resolution within subgroup while ignoring humans.
 - [x] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model as superseded.
 - [x] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners: three-human BWL test passed on 0.8.5-dev.
+- [ ] Improve raid-layout validation wording: replace the vague `Cannot resolve the current party layout` message with text that explains the actionable requirement — all present players must be assigned to explicit raid preset slots before SCB can resolve/summon the raid layout.
 
 ### Phase G — Spawn consolidation
 
 - [x] Keep final `Spawn.lua` scheduler as the proven base.
 - [x] Absorb `PresetRebuild.lua` in 0.8.11-dev, preserving the 3-second rebuild settle and party-to-raid transition barrier. **Historical completion; rolled back in 0.8.12-dev after runtime hang.**
 - [x] Re-prove the separate `PresetRebuild.lua` handoff after the 0.8.12 rollback. 0.8.14-dev passed clean 5-man, 5-man overwrite, 5 -> 10 survivor/conversion, and repeated A -> B -> C overwrite tests without a second click.
-- [x] Verify 0.8.15 settle placement: during 5 -> 10 overwrite, the survivor moved to G8 promptly once raid conversion was visible while the original teardown settle continued; after the parked safety bot was kicked, the following summon burst respected the removal -> next-add delay.
+- [x] Verify 0.8.15 settle placement: during 5 -> 10 overwrite, the survivor moved to G8 promptly once raid conversion was visible while the original teardown settle continued; after the parked safety bot was kicked, the following burst respected the removal -> next-add delay.
 - [x] Move Spawn scheduler cleanup ownership out of late `RaidIdentity.lua` and into `Spawn.lua` in 0.8.16-dev.
 - [x] Add a 0.8.17 rebuild-recovery state for aborted-but-already-sent bot adds: hold replacement snapshot until `pendingBotAdds` resolves/expires, kick arrived old bots, then reuse the normal roster-disappearance + settle path.
 - [ ] Runtime-test 0.8.17 forced retry: start 5-man, Ctrl-click a different preset after add commands are sent but before joins appear; original bots should arrive, be removed automatically, then replacement should summon after the normal settle without a third click.
