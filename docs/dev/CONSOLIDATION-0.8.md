@@ -2,7 +2,7 @@
 
 Status: implementation in progress on dev
 Behavioural reference: 0.7.14
-Current development line: 0.8.22-dev
+Current development line: 0.8.23-dev
 
 ## Purpose
 
@@ -35,8 +35,11 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 - explicit burst plan + SoloCraft join-message order is the primary identity source;
 - Blizzard roster reinforces/verifies identity and live location, but does not compete to consume pending assignments;
 - resolved role is `confirmedRole` when available, otherwise `assumedRole`, while assumed role is retained;
-- every remove-then-add lifecycle waits for roster disappearance plus a shared 3.0-second settle before the next add; conversion, subgroup movement and non-add observation may occur during that settle;
-- a client-side abort cannot recall add commands already sent to SoloCraft; forced replacement must first resolve/expire those in-flight adds, tear down any resulting old bots, then apply the normal removal-settle barrier;
+- the shared 3.0-second settle protects **capacity reuse** after observed roster disappearance; unrelated additions may overlap only while they do not depend on the freed slot;
+- `bootstrap` is one temporary-continuity role whose origin may be fresh summon or retained old bot; target preset topology determines party/raid behavior;
+- 5-man bootstrap handling must remain party-only and reserve one final required bot assignment dynamically from actual human occupancy;
+- raid rebuild should reuse an existing bot bootstrap when one is needed rather than manufacture another temporary bot;
+- a client-side abort cannot recall add commands already sent to SoloCraft; forced replacement must first resolve/expire those in-flight adds and reconcile physical state before consuming capacity for the replacement;
 - target ownership should be coarse rather than micro-modular;
 - `Location.lua` and `Comms.lua` are not mandatory merges into `Presets.lua`: decide after non-preset runtime code has been removed from Presets and the resulting size/cohesion is known.
 
@@ -44,8 +47,8 @@ See `TARGET-0.8.md` for the concise target model. Key rules:
 
 The 0.7.14 static/source audit is complete. The main architectural knots were:
 
-1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime. The 0.8.11 direct absorption of PresetRebuild was rolled back after a client hang, so 0.8.18 introduced a staged operation coordinator instead. 0.8.19 moved pending-add recovery, rebuild teardown/settle and next-frame handoff state into `botOperation.rebuild`; aggressive Ctrl-switch stress testing passed. 0.8.20 moved survivor/bootstrap handoff state into `botOperation.safety`; 0.8.21 absorbed the temporary coordinator file into Spawn and runtime-proved the empty-group 40-man MC bootstrap, including combat-add retry recovery. 0.8.22 removes the temporary safety hydration bridge and uses coordinator safety state directly;
-2. bot identity is split across the current `Raid.lua` owner, the transitional `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers. The former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have been reduced/absorbed. The 0.8.16 in-flight summon race no longer blocks architecture work because the coordinator path through 0.8.21 has passed repeated forced-replacement and 40-man retry testing; remaining RaidIdentity consolidation is sequenced after the direct operation-state migration;
+1. preset summon scheduling has legacy definitions in Presets/RaidBurst/RaidRefill while Spawn installs the final authoritative runtime. The 0.8.11 direct absorption of PresetRebuild was rolled back after a client hang, so 0.8.18 introduced a staged operation coordinator instead. 0.8.19 moved pending-add recovery, rebuild teardown/settle and next-frame handoff state into `botOperation.rebuild`; 0.8.20 moved survivor/bootstrap state into `botOperation.safety`; 0.8.21 absorbed the temporary coordinator file into Spawn and proved the empty-group 40-man MC bootstrap plus combat-add retry; 0.8.22 removed the safety hydration bridge and passed large-raid destructive/forced replacement stress; 0.8.23 runtime-proved that raid-bootstrap removal settle can overlap unrelated earlier raid bursts. The next knot is to unify fresh bootstrap, retained raid bootstrap and 5-man bootstrap as target-topology policies of one continuity lifecycle;
+2. bot identity is split across the current `Raid.lua` owner, the transitional `RaidIdentity.lua` layer, Detection/refill/tracker reconciliation and still uses a global pending FIFO with competing consumers. The former standalone `Roster.lua`, `RoleTracking.lua` and `RaidLayout.lua` layers have been reduced/absorbed. The in-flight summon race no longer blocks architecture work because coordinator replacement/retry has passed repeated forced-replacement and 40-man stress testing; remaining RaidIdentity consolidation is sequenced after Spawn/bootstrap ownership is flattened;
 3. ~~human placement is spread across Presets/RaidPlayers/RaidLayout/RaidPresentation and mixes logical intent with Blizzard row presentation;~~ 0.8.5 establishes exact logical human slots and removes RaidPresentation; 0.8.6 absorbs the separate RaidSnapshot layer into RaidPlayers; 0.8.9 folds the remaining standalone RaidLayout implementation into the late identity layer, while RaidPlayers and the combined late identity/layout owner remain transitional;
 4. ~~role detection is split across Detection/DetectionShieldSlam/DetectionLifecycle and wraps Options/roster functions late;~~ partially consolidated in 0.8.2/0.8.3: Shield Slam and lifecycle now live in `Detection.lua`, while the user-facing option bridge lives in `Options.lua`;
 5. location data and runtime correction were split across Presets/LocationZones/Location.
@@ -55,20 +58,20 @@ Full historical details remain in `ARCHITECTURE.md`.
 ## Final target ownership
 
 ### `SoloCraftBots.lua`
-Owns bootstrap, shared UI helpers, top-level event dispatch, direct bot commands and raid-mark controls where size remains reasonable.
+Owns namespace/bootstrap, shared UI helpers, top-level event dispatch, direct bot commands and raid-mark controls where size remains reasonable.
 
 ### `Presets.lua`
 Owns preset storage/editor semantics, bot logical slots, exact human logical-slot assignments and Other Players pool. Execution snapshot construction may remain here if compact. Location and preset communications may merge here only if the final file remains coherent after runtime code is extracted.
 
 ### `Spawn.lua`
-Owns one authoritative bot-lifecycle operation coordinator: clean summon, rebuild, explicit LIFO bursts, survivor/bootstrap lifecycle, conversion, human arrangement, combat gate/retry/error abort, shared 3-second removal settle, and maintenance replacement execution requested by Raid.
+Owns one authoritative bot-lifecycle operation coordinator: clean summon, rebuild, explicit LIFO bursts, unified bootstrap-continuity lifecycle, target-topology transitions, human arrangement, combat gate/retry/error abort, capacity-aware 3-second removal settle, forced replacement and maintenance replacement execution requested by Raid.
 
-The 0.8.11 direct `PresetRebuild.lua` absorption was rolled back in 0.8.12 after a client hang, so the current migration has been deliberately staged. 0.8.18 introduced transitional `SpawnOperation.lua`; 0.8.19 moved actual rebuild/pending-add/settle state into `botOperation.rebuild`; 0.8.20 moved survivor/bootstrap state into `botOperation.safety`; 0.8.21 absorbed the coordinator file back into `Spawn.lua` and proved the fresh 40-man MC bootstrap plus combat-add retry; 0.8.22 removes the hydration bridge so Spawn and Group-8 helpers use the same safety table directly. Once the 0.8.22 direct-state gate passes, retire the superseded `PresetRebuild.lua` implementation/sentinel dependency and then migrate maintenance execution.
+The migration remains deliberately staged. 0.8.18 introduced transitional `SpawnOperation.lua`; 0.8.19 moved rebuild/pending-add/settle state into `botOperation.rebuild`; 0.8.20 moved temporary safety-member state into `botOperation.safety`; 0.8.21 absorbed the coordinator into `Spawn.lua`; 0.8.22 removed the hydration bridge; 0.8.23 proved bootstrap-removal overlap. The next stage is to make fresh raid bootstrap, retained raid bootstrap and 5-man bootstrap explicit policies of one lifecycle before retiring further scheduler scaffolding.
 
 ### `Raid.lua`
 Owns observed Blizzard roster, logical/live tracker, Active Roster, bot identity, Replace Dead/Missing decisions, role state/detection and pfUI tank integration. Split only if real size/complexity proves an independent ownership boundary.
 
-`Raid.lua` was established in 0.8.7-dev from the former RoleTracking implementation. In 0.8.8-dev the separate `Roster.lua` implementation was folded into it ahead of the existing role-identity layer, so observed Live Roster and persistent Active Roster now have their intended final owner. In 0.8.9-dev the separate late `RaidLayout.lua` file was eliminated by folding its runtime into the already-late `RaidIdentity.lua`. In 0.8.16-dev that late layer stopped owning Spawn abort/session cleanup. The later coordinator stress tests resolve the earlier forced-retry blocker, but the remaining explicit identity/live-layout code stays in RaidIdentity until direct Spawn operation ownership is runtime-proven enough to avoid recreating another late wrapper dependency.
+`Raid.lua` was established in 0.8.7-dev from the former RoleTracking implementation. In 0.8.8-dev the separate `Roster.lua` implementation was folded into it ahead of the existing role-identity layer, so observed Live Roster and persistent Active Roster now have their intended final owner. In 0.8.9-dev the separate late `RaidLayout.lua` file was eliminated by folding its runtime into the already-late `RaidIdentity.lua`. In 0.8.16-dev that late layer stopped owning Spawn abort/session cleanup. The later coordinator stress tests resolve the earlier forced-retry blocker, but remaining explicit identity/live-layout code stays in RaidIdentity until Spawn/bootstrap ownership is stable enough to avoid recreating another late wrapper dependency.
 
 ### `Options.lua`
 Owns options/settings UI, chat-filter/hide-chat hooks, and the user-facing combat-confirmation option/callback.
@@ -90,9 +93,12 @@ Owns developer diagnostics and debug UI.
 - [x] Confirmed role may drive resolved maintenance role while assumed role remains retained.
 - [x] Join-message order is primary burst identity; roster is reinforcement/verification, not competing consumption.
 - [x] Final ownership should be aggressively consolidated, but file count is not a goal by itself.
-- [x] Universal 3-second remove-then-add settle approved.
-- [x] Clarify settle placement: it blocks the next add after roster disappearance; non-add conversion/subgroup movement may overlap the timer.
-- [x] Clarify forced retry: old add commands already sent to the server must resolve/expire before replacement teardown/add sequencing can proceed.
+- [x] Shared 3-second removal settle approved.
+- [x] Clarify settle placement: it protects capacity reuse after observed disappearance; non-capacity-dependent work/additions may overlap.
+- [x] Clarify forced retry: old add commands already sent to the server must resolve/expire before replacement teardown/add sequencing can safely consume capacity.
+- [x] Unify historical survivor/bootstrap/ID-anchor semantics under one bootstrap-continuity concept with target-specific topology policy.
+- [x] Protect 5-man target topology: stay party, reserve one final required bot assignment, derive pre-removal bot count from actual human occupancy.
+- [x] Prefer retaining an existing bot bootstrap over manufacturing a new one; skip bot bootstrap entirely where humans already preserve required continuity.
 - [x] Location/Comms merge into Presets left open pending final Presets size/cohesion.
 
 ### Phase C — start 0.8.0-dev
@@ -125,7 +131,7 @@ Owns developer diagnostics and debug UI.
 
 5. **Core / Commands**
    - [ ] Move direct commands/raid marks from `Commands.lua` into `SoloCraftBots.lua` if the resulting core remains readable.
-   - [ ] Move survivor/removal policy out of Commands into Spawn/Raid ownership before deleting Commands.
+   - [ ] Move bootstrap/removal policy out of Commands into Spawn/Raid ownership before deleting Commands.
 
 ### Phase E — Raid consolidation
 
@@ -133,9 +139,9 @@ Owns developer diagnostics and debug UI.
 - [x] Move observed roster + Active Roster ownership from `Roster.lua` into `Raid.lua` in 0.8.8-dev, retaining base-roster-before-role-wrapper ordering inside the combined owner.
 - [x] Remove `RaidIdentity.lua`'s post-Spawn scheduler/session cleanup wrappers in 0.8.16-dev; Spawn now owns that state cleanup directly while preserving the old effective ordering.
 - [x] Verify ordinary 0.8.16 paths: normal 5-man summon passed and 5-man -> 5-man overwrite passed. `/reload` is not an addon-update mechanism and is not counted as a code-update test.
-- [x] Resolve the failed 0.8.16 Ctrl-Summon blocker: 0.8.17 introduced pending-add recovery, 0.8.18 established one operation identity, and 0.8.19 moved the rebuild recovery into the coordinator; repeated aggressive 10-bot Ctrl-switch testing passed without a stuck state or wrong final preset.
-- [x] Treat forced-retry recovery as runtime-proven at the coordinator level through 0.8.19; do not reopen the old 0.8.17-specific gate unless a regression appears.
-- [ ] Move the remaining tracker/assumption/identity/live-layout behaviour from `RaidIdentity.lua` into `Raid.lua` after the current Spawn operation migration is stable, then remove the transitional file.
+- [x] Resolve the failed 0.8.16 Ctrl-Summon blocker: 0.8.17 introduced pending-add recovery, 0.8.18 established one operation identity, and 0.8.19 moved rebuild recovery into the coordinator; repeated aggressive 10-bot Ctrl-switch testing passed without a stuck state or wrong final preset.
+- [x] Treat forced-retry recovery as runtime-proven at the coordinator level; do not reopen the old 0.8.17-specific gate unless a regression appears.
+- [ ] Move the remaining tracker/assumption/identity/live-layout behaviour from `RaidIdentity.lua` into `Raid.lua` after current Spawn/bootstrap migration is stable, then remove the transitional file.
 - [x] Remove standalone `RaidLayout.lua` in 0.8.9-dev by folding live layout observation into the same late identity layer, preserving its late runtime position rather than moving wrappers earlier unsafely.
 - [ ] Move maintenance decision/execution split out of `RaidRefill.lua`/Presets wrappers: Raid decides records, Spawn coordinator executes physical mutation.
 - [ ] Deferred Replace Dead UX/API fallback: keep normal click conservative on `UnitIsDeadOrGhost`; improve the no-match message to make clear that no dead bot was detected; later consider Ctrl-click as a one-shot stronger scan using dead OR a valid roster unit reporting `UnitHealth == 0` with `UnitHealthMax > 0`. Verify Vanilla out-of-range health behaviour before enabling the zero-HP fallback.
@@ -172,13 +178,20 @@ Owns developer diagnostics and debug UI.
 - [x] Move persistent survivor/bootstrap handoff state into `botOperation.safety` in 0.8.20 while preserving old physical timing through a one-gate hydration bridge.
 - [x] Runtime-prove the 0.8.20 safety migration on 5 -> 5, 5 -> 10 and repeated 10-man Ctrl overwrite survivor paths.
 - [x] Absorb `SpawnOperation.lua` into `Spawn.lua` in 0.8.21 at the same effective load position while retaining the bridge for one structural gate.
-- [x] Runtime-prove the empty-group 40-man bootstrap on 0.8.21 in Molten Core; recover a group after five combat-related add rejections, then verify a saved-ID destructive 40-man rebuild correctly skips bootstrap.
+- [x] Runtime-prove the empty-group 40-man bootstrap on 0.8.21 in Molten Core; recover a group after five combat-related add rejections, then verify a saved-ID destructive 40-man rebuild correctly skips fresh bootstrap.
 - [x] Remove the hydration/capture bridge in 0.8.22 and route Spawn/RaidBurst safety reads/writes directly through `botOperation.safety`.
-- [ ] Runtime-prove 0.8.22 direct safety state: 5 -> 5 survivor, 5 -> 10 conversion/Group-8, aggressive Ctrl replacement; repeat fresh 40-man bootstrap before main promotion even though its sequencing is proven on 0.8.21.
-- [ ] Retire `PresetRebuild.lua` once its compatibility sentinel/busy checks are explicitly replaced and the direct Spawn coordinator path passes runtime.
+- [x] Runtime-prove 0.8.22 direct safety state with large-raid bootstrap, destructive rebuild and forced replacement while 34 old bots were already live; final requested preset still converged correctly.
+- [x] Refine raid-bootstrap removal in 0.8.23 so disappearance + 3.0-second settle can overlap unrelated earlier raid bursts; runtime test passed with normal G2+ cadence and exact final 40-man roster.
+- [ ] Unify bootstrap continuity in the next functional gate: fresh raid bootstrap, retained existing-raid bootstrap and 5-man bootstrap become explicit policies of one lifecycle.
+- [ ] Existing raid rebuild: when a bot bootstrap is actually needed, retain one existing bot in G8, remove the other old bots, observe teardown + 3.0 seconds, start new G1, then remove bootstrap and overlap its settle using the proven 0.8.23 rule.
+- [ ] 5-man bootstrap rebuild: remain party, reserve one required final bot assignment, fill all other required bot assignments allowed by **actual human occupancy**, remove bootstrap, observe absent + 3.0 seconds, then fill reserved assignment. Never hard-code “three then fourth”.
+- [ ] Skip bot bootstrap where present humans already preserve required topology/continuity.
+- [ ] Never convert a 5-man target to raid because Vanilla 1.12.1 has no safe raid -> party conversion.
+- [ ] Absorb transitional `SpawnBootstrap.lua` into `Spawn.lua` once the unified bootstrap lifecycle passes runtime.
+- [ ] Retire `PresetRebuild.lua` once its compatibility sentinel/busy checks are explicitly replaced and unified Spawn coordinator path passes runtime.
 - [ ] Route Replace Missing / Replace Dead physical execution through the coordinator while Raid continues selecting replacement records.
-- [ ] Absorb still-live burst/survivor helpers after their state/timing responsibilities have direct Spawn ownership.
-- [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every remove-then-add operation.
+- [ ] Absorb still-live burst/bootstrap helpers after their state/timing responsibilities have direct Spawn ownership.
+- [ ] Apply one shared `BOT_REMOVAL_SETTLE_DELAY = 3.0` policy to every **capacity-dependent** remove -> reuse boundary.
 - [ ] Remove superseded scheduler definitions after proof.
 
 ### Phase H — identity hardening
@@ -196,7 +209,7 @@ Owns developer diagnostics and debug UI.
 - [ ] Search again for repeated public function definitions.
 - [ ] Verify TOC order reflects true dependencies only.
 - [ ] Reassess final Presets size before deciding Location/Comms merge.
-- [ ] Update `ARCHITECTURE.md` from 0.7.14 audit description to the final 0.8 architecture while retaining the historical audit sections.
+- [ ] Update `ARCHITECTURE.md` from 0.7.14 audit description to the final 0.8 architecture while retaining historical audit sections.
 - [ ] Run the full regression baseline before any main promotion.
 
 ## Verification priorities
@@ -204,14 +217,18 @@ Owns developer diagnostics and debug UI.
 After each relevant phase, test only affected systems plus a small smoke set. Before main promotion, run full baseline.
 
 Highest-risk scenarios:
+- 5-man bootstrap rebuild remains party-only and reserves exactly one final required bot assignment;
+- multi-human 5-man bootstrap derives pre-removal bot count from actual occupancy rather than solo assumptions;
+- existing raid rebuild reuses an old bot bootstrap rather than manufacturing another when continuity requires one;
+- present humans already preserving topology do not cause an unnecessary bot bootstrap to be retained solely for topology;
 - 10-man dungeon from solo using first-real conversion;
-- T3 raid-zone bootstrap start;
-- preset-over-preset teardown/survivor handoff;
+- T3 raid-zone fresh bootstrap start;
+- preset-over-preset teardown/bootstrap handoff;
 - Ctrl-forced replacement after one or more old add commands have left the client but before their bots join;
 - multiple consecutive LIFO bursts with duplicated class/role assignments;
 - humans occupying arbitrary Blizzard rows while suppressing exact intended logical slots;
 - saved recurring players present vs absent across repeated preset reloads;
-- Replace Dead/Missing with shared 3-second removal settle;
+- Replace Dead/Missing with capacity-dependent 3-second removal settle;
 - combat confirmation OFF during a 40-man raid;
 - combat confirmation ON still recognizes Shield Slam and sleeps after all tracked bots are confirmed;
 - toggling combat confirmation ON/OFF from Options immediately arms/sleeps the detector correctly;
@@ -220,4 +237,4 @@ Highest-risk scenarios:
 
 ## Definition of done
 
-0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; every replacement path uses the shared removal-settle policy at the actual remove -> next-add boundary; forced retries cannot race already-sent old add commands; high-volume combat scanning is optional/dormant by construction; the patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; final Presets/Location/Comms ownership is chosen by actual size/cohesion rather than an arbitrary file-count target; historical migration notes remain recoverable; and the repo docs are enough for a fresh development session to continue safely.
+0.8 consolidation is complete when important workflows have one obvious owner; preset intent, live identity and Blizzard presentation are distinct; bot identity is burst-isolated; bootstrap continuity is one target-aware lifecycle rather than origin-specific survivor/bootstrap schedulers; every capacity-dependent replacement path uses the shared disappearance + 3.0-second settle; forced retries cannot race already-sent old add commands; high-volume combat scanning is optional/dormant by construction; patch files listed in `TARGET-0.8.md` are absorbed or explicitly justified; final Presets/Location/Comms ownership is chosen by actual size/cohesion rather than arbitrary file-count targets; historical migration notes remain recoverable; and the repo docs are enough for a fresh development session to continue safely.
