@@ -1,7 +1,7 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.18-dev`
+Current addon line: `0.8.19-dev`
 Behavioural reference: `main` 0.7.14
 
 ## Last runtime-verified point
@@ -17,8 +17,6 @@ Verified by user:
 
 This is stronger evidence than the minimum 0.8.18 gate: the coordinator-level desired-intent replacement already improves the forced in-flight preset-switch case that motivated the architecture change.
 
-0.8.17's local pending-add recovery remains underneath the coordinator and should be treated as transitional implementation, not the final ownership model.
-
 ## Current architecture decision
 
 `Spawn.lua` is the final owner of one authoritative bot-lifecycle operation coordinator for every workflow that physically adds/removes bots or waits on those consequences.
@@ -27,45 +25,36 @@ This is stronger evidence than the minimum 0.8.18 gate: the coordinator-level de
 
 Ctrl-forced preset replacement replaces the desired operation handled by the same coordinator rather than starting a second top-level operation identity. Already-sent server commands remain physical facts that must resolve/expire before the coordinator can safely change direction.
 
-## Current implementation state
+## Current functional gate — 0.8.19-dev
 
-0.8.18 introduced the coordinator foundation without changing the proven physical summon/rebuild sequencing underneath.
+0.8.19 moves the first physical preset-rebuild lifecycle state into the coordinator.
 
-- Transitional `SpawnOperation.lua` currently loads immediately after `Spawn.lua`.
-- One explicit active operation object tracks preset requests through requested / rebuild / summon / replacing / completion or abort states.
-- Ctrl-forced preset requests preserve the same operation identity and replace its desired preset intent while the existing 0.8.17 abort/rebuild machinery still handles physical teardown and pending-add recovery.
-- Existing `PresetRebuild.lua`, Spawn queue timing, survivor/bootstrap helpers, identity bursts and maintenance refill execution remain live underneath.
-- `SpawnOperation.lua` is temporary and must ultimately be absorbed into `Spawn.lua`; it is not an additional final owner.
+- `botOperation.rebuild` now owns pending already-sent add recovery, old-bot teardown observation, conversion/parking during teardown, the shared 3.0-second removal -> next-add settle, and the proven next-frame replacement-queue handoff.
+- `PresetRebuild.lua` remains loaded for one migration gate, but its final `SCB_StartPresetRebuild` / `SCB_PresetRebuildOnUpdate` functions are superseded by `SpawnOperation.lua`.
+- `SCB.presetRebuildState` is now only an active-only compatibility sentinel while a coordinator rebuild is live, so older busy checks cannot start maintenance in parallel. It no longer owns snapshot/timer/conversion/handoff state.
+- Normal fresh summons still use the existing Spawn queue directly under the same operation object.
+- Survivor/bootstrap execution inside the Spawn queue remains unchanged in this step; only the rebuild transition around it moved ownership.
+- Replace Missing / Replace Dead execution remains on the existing refill pipeline for now.
+- `SpawnOperation.lua` is still temporary and must ultimately be absorbed into `Spawn.lua` after the coordinator migration is proven.
 
-## Exact next functional step — 0.8.19-dev
-
-Move the first real physical lifecycle responsibilities into the coordinator rather than adding more edge-case patches.
-
-1. Make the coordinator own the preset rebuild transition state now held in `presetRebuildState`.
-2. Move the pending already-sent add recovery decision into that operation state.
-3. Move rebuild teardown / roster-gone observation / shared 3.0-second next-add settle state into the operation.
-4. Preserve the proven 0.8.14 next-frame handoff semantics while changing ownership; do not reintroduce a same-frame queue transplant.
-5. Preserve current survivor policy and 5 -> 10 conversion/parking behaviour exactly in this first physical migration.
-6. Do not yet migrate Replace Missing / Replace Dead execution in the same commit.
-7. Do not remove `RaidIdentity.lua`, `RaidBurst.lua` or `RaidRefill.lua` in this step.
-
-Preferred shape: the operation coordinator should call/reuse proven helper functions where practical, but `PresetRebuild.lua` must stop being an independent top-level state owner. If a temporary compatibility shim is required for one gate, keep it narrow and record it explicitly.
+Functional commit: `d5a3a06f226d37d1e9941dfc6bb3ef000d6df6ac` (`Move preset rebuild state into coordinator`).
 
 ## 0.8.19 runtime gate
 
-Minimum regression set after the physical rebuild-state migration:
+1. Normal 5-man preset summon.
+2. 5-man -> 5-man preset overwrite.
+3. 5-man -> 10-man survivor/conversion overwrite.
+4. Force a second 10-man preset while the first is still in flight and confirm the latest requested preset wins automatically.
+5. Force another preset during the rebuild/removal-settle window and confirm there is no second parallel rebuild, no stuck busy state and no extra click required.
 
-1. normal 5-man summon;
-2. 5-man -> 5-man overwrite;
-3. 5-man -> 10-man survivor/conversion overwrite;
-4. force a second 10-man preset while the first is still in flight and confirm the latest requested preset wins automatically;
-5. force another preset during the rebuild/removal-settle window and confirm there is no second parallel rebuild, no stuck busy state and no extra click required.
+If those pass, the rebuild transition is considered coordinator-owned and the next migration can move survivor/bootstrap lifecycle state itself.
 
 ## Following functional steps
 
 After 0.8.19 passes:
 
-- migrate survivor/bootstrap handoff state fully into the coordinator and absorb the temporary coordinator layer into `Spawn.lua` when safe;
+- migrate survivor/bootstrap handoff state fully into the coordinator;
+- absorb the temporary coordinator layer into `Spawn.lua` once doing so no longer recreates the 0.8.11 same-frame/load-order risk;
 - route Replace Missing / Replace Dead execution through the same coordinator while Raid continues choosing replacement records;
 - remove redundant parallel scheduler state and transitional files only after runtime proof;
 - resume remaining RaidIdentity -> Raid consolidation once operation ownership is no longer ambiguous.
