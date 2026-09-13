@@ -136,7 +136,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - When a parked survivor/bootstrap is later removed after a real Group 1 bot joins, SCB now observes that safety bot leave and waits the shared 3.0 seconds before a following summon burst.
 - If no add follows and the only remaining work is final roster tracking, no artificial 3-second delay is added.
 - The existing bootstrap-from-empty path still cannot park until raid conversion is visible, but once Blizzard exposes the raid roster it requests Group 8 immediately; it is not intentionally held behind the removal settle.
-- Runtime verification passed: in the 5-man -> 10-man overwrite, raid conversion and Group-8 parking occurred promptly during the original teardown settle, G1 began when that settle expired, and after the parked survivor was removed the following burst respected the new removal -> next-add delay. No second click or Ctrl override was required.
+- Runtime verification passed: in the 5-man -> 10-man overwrite, raid conversion and Group-8 parking occurred promptly during the original teardown settle, G1 began when that settle expired, and after the parked survivor was removed the following burst respected the removal -> next-add delay. No second click or Ctrl override was required.
 
 ## 0.8.16-dev — move Spawn cleanup out of late RaidIdentity
 
@@ -173,3 +173,28 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Audit cross-version Comms handling for exact human slots before main promotion; do not silently degrade exact-slot intent.
 - ~~Absorb `PresetRebuild.lua` into `Spawn.lua` during the summon state-machine consolidation rather than merely concatenating files.~~ Completed in 0.8.11-dev, then explicitly rolled back in 0.8.12-dev after the runtime hang. The ordinary separate rebuild handoff and corrected settle placement are proven through 0.8.15, but 0.8.17 now adds a further forced-retry recovery responsibility that must also be proven before any re-absorption is reconsidered.
 - Keep all historical audit notes; do not rewrite old observations as though the target architecture had always existed.
+
+## 0.8.18-dev — introduce one top-level bot operation
+
+- Added transitional `SpawnOperation.lua` immediately after `Spawn.lua`.
+- Introduced one explicit active operation object with begin / replace-intent / phase / complete / abort lifecycle helpers.
+- Preset summon/rebuild requests now enter through that operation identity while the proven physical 0.8.17 sequencing remains underneath.
+- Ctrl-forced preset replacement keeps the same operation identity and replaces its desired preset intent rather than creating a second top-level operation.
+- Runtime verification passed: normal 5-man, 5-man -> 5-man, 5-man -> 10-man survivor/conversion, and an in-flight switch between two different 10-man presets all completed correctly. No Lua error or stuck state was reported.
+
+## 0.8.19-dev — move preset rebuild state into the coordinator
+
+- `botOperation.rebuild` became the authoritative owner of pending already-sent add recovery, old-bot teardown observation, party-to-raid conversion/parking during teardown, the shared 3.0-second remove -> next-add settle, and the proven next-frame replacement-queue handoff.
+- `SCB.presetRebuildState` was reduced to an active-only compatibility sentinel so older busy checks cannot start another physical mutation in parallel; snapshot/timer/conversion/handoff state no longer lives there.
+- Existing Spawn queue, burst identity and survivor/bootstrap execution remained unchanged.
+- Runtime verification passed strongly. The user repeatedly interrupted 10-bot dungeon summon/rebuild operations with deliberately unreasonable Ctrl-click preset switches; the latest requested preset still won automatically and no Lua errors, permanent busy state, wrong final preset or extra click were reported.
+- This result closes the rebuild-ownership gate. Further Ctrl/rebuild edge cases should be handled by the coordinator architecture rather than local patches to `PresetRebuild.lua`.
+
+## 0.8.20-dev — move survivor/bootstrap handoff state into the coordinator
+
+- `botOperation.safety` now persistently owns the safety-member name, bootstrap name, raid park/remove flags, survivor-removal wait/settle state, and five-player survivor handoff count/timestamp.
+- The proven Spawn/RaidBurst physical sequencing is unchanged for this gate.
+- A narrow compatibility bridge hydrates the historical global field names only while a scheduler frame executes, captures mutations back into `botOperation.safety`, then clears those globals. They are no longer persistent state owners between frames.
+- Ctrl replacement, abort and operation completion clear the coordinator safety state so no later operation can inherit a stale survivor/bootstrap.
+- An off-branch candidate was caught before publication because its outer frame capture could erase safety created by the nested rebuild -> replacement-queue handoff. The published candidate distinguishes pre-existing frame safety from newly-created same-frame safety and preserves the latter.
+- Runtime verification pending. Primary checks are 5-man, 5 -> 5, 5 -> 10 survivor/Group-8 handoff and aggressive in-flight Ctrl switching. The special empty-group raid bootstrap path remains an explicit check before the compatibility bridge is removed.
