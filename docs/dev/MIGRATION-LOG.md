@@ -50,7 +50,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Blizzard raid rows/subgroup positions remain observed as `current*` runtime fields and no longer permute tracker logical assignments or the working preset.
 - Removed `RaidPresentation.lua` and its 0.7.14 green-pulse/live-row editor model; that design was explicitly superseded by the approved logical-slot model.
 - Existing bot finalization still uses bot-only subgroup order, preserving the useful property that humans are ignored when resolving bot order inside a subgroup.
-- Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before the user chooses a specific slot.
+- Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before a raid preset can summon.
 - BWL runtime test passed with three humans total. Two humans deliberately occupied Mage logical slots and self occupied a Priest logical slot; Blizzard placed humans independently in the live raid rows while SCB still suppressed the intended logical bot slots.
 - An apparent Priest-replacement failure was traced to cross-version preset communication involving an older client, not the local 0.8.5 summon path. The alternate request flow produced the correct result. Cross-version preset comms therefore remain a compatibility item to audit before 0.8 main promotion.
 
