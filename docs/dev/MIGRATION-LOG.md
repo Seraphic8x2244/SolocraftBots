@@ -217,3 +217,24 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Survivor queue markers that require handoff state now fail closed if the active operation has no safety table instead of silently interpreting missing state as nil/zero.
 - Pending-add recovery, burst identity, combat retry, party-to-raid conversion, Group-8 sequencing and the shared 3.0-second remove -> next-add boundary are intentionally unchanged.
 - Runtime verification pending. Primary regression checks are 5 -> 5 survivor handoff, 5 -> 10 conversion/Group-8 handoff, one aggressive in-flight Ctrl replacement, and a later fresh 40-man bootstrap direct-state check before main promotion.
+
+## 0.8.23-dev — overlap raid-bootstrap settle with unrelated bursts
+
+- Added transitional `SpawnBootstrap.lua` immediately after `Spawn.lua` as a one-gate refinement; it is not intended to become a permanent owner.
+- Refined the removal-settle interpretation for the temporary raid bootstrap: disappearance + 3.0-second accounting protects reuse of the bootstrap's capacity, not unrelated earlier raid additions.
+- Bootstrap remains parked in the proven G8 location. Once a genuine G1 bot exists and combat permits, bootstrap removal is requested.
+- Bootstrap disappearance and its settle clock are polled during ordinary scheduler/group waits. Earlier preset bursts continue at the normal one-second cadence while they still fit without consuming the bootstrap's slot.
+- The final capacity-filling preset bot burst, or final roster tracking when no later bot burst exists, remains blocked until bootstrap disappearance + 3.0 seconds is complete.
+- Runtime verification passed in Molten Core: fresh solo 40-man bootstrap completed with no visible three-second pause between G1 and G2, normal later-group cadence continued, and the final requested 40-man roster was exact with no bootstrap left behind.
+- The immediately preceding 0.8.22 stress also proved direct safety state under a completed-40 -> different-40 rebuild, a forced 40-man replacement while 34 old bots were already live, and a subsequent fresh bootstrap re-run.
+
+## Bootstrap-continuity direction agreed after 0.8.23
+
+- Long-term target terminology is `bootstrap`: a temporary bot occupant used to establish or preserve required party/raid/instance continuity. Fresh T3 bootstrap, retained raid survivor/anchor, saved-instance safety member and 5-man survivor are origin/policy variants of one lifecycle rather than separate permanent mechanisms.
+- A bot bootstrap exists only when continuity requires one. If present humans already preserve required topology, do not retain an extra bot solely for topology.
+- When a bot bootstrap is required, prefer reusing an existing bot over manufacturing a new one.
+- Target preset topology is authoritative. Bootstrap state by itself must never imply raid conversion.
+- For a 5-man target, remain party. Reserve one required final bot assignment while bootstrap occupies one slot; fill every other required bot assignment that fits beside the actual present humans; remove bootstrap; observe absent + wait 3.0 seconds; then fill the reserved assignment. Never hard-code the one-human case as “three then fourth”.
+- For a raid-sized target with an existing raid, retain one existing bot bootstrap in G8 when needed, remove the other old bots, observe teardown + wait 3.0 seconds before new G1, then remove bootstrap after genuine G1 exists and overlap its settle using the proven 0.8.23 capacity rule.
+- For a fresh raid start with no suitable existing member, manufacture a bootstrap only to establish the raid, then converge on the same raid-bootstrap lifecycle.
+- This unified bootstrap lifecycle should be implemented and runtime-gated before further `PresetRebuild.lua` retirement or maintenance-scheduler migration.
