@@ -459,3 +459,162 @@ if SCB_0819PreviousPresetSpawnQueueOnUpdate then
         return result
     end
 end
+
+-- -------------------------------------------------------------------------
+-- 0.8.20: coordinator-owned survivor/bootstrap handoff state
+-- -------------------------------------------------------------------------
+--
+-- The proven Spawn/RaidBurst code still reads the historical global field names
+-- during this migration gate. Persist them only on botOperation.safety between
+-- scheduler frames: hydrate immediately before the legacy frame runs, capture
+-- mutations immediately afterward, then clear the globals again. This makes the
+-- coordinator the single persistent owner without changing the tested physical
+-- park/remove timing in the same commit.
+
+local SCB_0820SafetyFields = {
+    { legacy = "presetSurvivorBotName", key = "survivorName" },
+    { legacy = "presetBootstrapBotName", key = "bootstrapName" },
+    { legacy = "presetExpectedBotCountBeforeHandoff", key = "expectedBotCountBeforeHandoff" },
+    { legacy = "presetSurvivorProbeRemaining", key = "survivorProbeRemaining" },
+    { legacy = "scbParkSurvivorBeforeArrange", key = "parkBeforeArrange" },
+    { legacy = "scbRemoveSurvivorAfterG1", key = "removeAfterGroupOne" },
+    { legacy = "scbSurvivorRemovalWaiting", key = "removalWaiting" },
+    { legacy = "scbSurvivorRemovalName", key = "removalName" },
+    { legacy = "scbSurvivorRemovalGoneAt", key = "removalGoneAt" },
+    { legacy = "scbPartySurvivorGoneAt", key = "partySurvivorGoneAt" },
+}
+
+local function SCB_ClearLegacyPresetSafetyFields()
+    local i
+    for i = 1, table.getn(SCB_0820SafetyFields) do
+        SCB[SCB_0820SafetyFields[i].legacy] = nil
+    end
+end
+
+local function SCB_LegacyPresetSafetyHasState()
+    local i
+    for i = 1, table.getn(SCB_0820SafetyFields) do
+        if SCB[SCB_0820SafetyFields[i].legacy] ~= nil then return true end
+    end
+    return false
+end
+
+function SCB_GetBotOperationSafety(create)
+    local operation = SCB_GetActiveBotOperation()
+    if not operation or operation.kind ~= "preset" then return nil end
+    if create and not operation.safety then operation.safety = {} end
+    return operation.safety
+end
+
+local function SCB_CaptureLegacyPresetSafety(operation)
+    local safety, i, field, value, hasState
+
+    if not operation or operation.kind ~= "preset" then
+        SCB_ClearLegacyPresetSafetyFields()
+        return nil
+    end
+
+    safety = {}
+    hasState = false
+    for i = 1, table.getn(SCB_0820SafetyFields) do
+        field = SCB_0820SafetyFields[i]
+        value = SCB[field.legacy]
+        if value ~= nil then
+            safety[field.key] = value
+            hasState = true
+        end
+    end
+
+    operation.safety = hasState and safety or nil
+    SCB_ClearLegacyPresetSafetyFields()
+    return operation.safety
+end
+
+local function SCB_HydrateLegacyPresetSafety(operation)
+    local safety, i, field
+
+    SCB_ClearLegacyPresetSafetyFields()
+    if not operation or operation.kind ~= "preset" then return end
+
+    safety = operation.safety
+    if not safety then return end
+
+    for i = 1, table.getn(SCB_0820SafetyFields) do
+        field = SCB_0820SafetyFields[i]
+        SCB[field.legacy] = safety[field.key]
+    end
+end
+
+local SCB_0820PreviousEndBotOperation = SCB_EndBotOperation
+function SCB_EndBotOperation(status, reason)
+    local operation = SCB_GetActiveBotOperation()
+    if operation then operation.safety = nil end
+    SCB_ClearLegacyPresetSafetyFields()
+    return SCB_0820PreviousEndBotOperation(status, reason)
+end
+
+local SCB_0820PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
+if SCB_0820PreviousAbortBotSpawnOperations then
+    function SCB_AbortBotSpawnOperations(preserveOperation)
+        local operation = SCB_GetActiveBotOperation()
+        if operation and operation.kind == "preset" then operation.safety = nil end
+        SCB_ClearLegacyPresetSafetyFields()
+        return SCB_0820PreviousAbortBotSpawnOperations(preserveOperation)
+    end
+end
+
+local SCB_0820PreviousStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
+if SCB_0820PreviousStartPresetSummonSnapshot then
+    function SCB_StartPresetSummonSnapshot(snapshot)
+        local operation = SCB_GetActiveBotOperation()
+        local ok, errorText
+
+        if operation and operation.kind == "preset" then
+            operation.safety = nil
+            SCB_ClearLegacyPresetSafetyFields()
+        end
+
+        ok, errorText = SCB_0820PreviousStartPresetSummonSnapshot(snapshot)
+        operation = SCB_GetActiveBotOperation()
+
+        if ok and operation and operation.kind == "preset" then
+            SCB_CaptureLegacyPresetSafety(operation)
+        else
+            SCB_ClearLegacyPresetSafetyFields()
+        end
+        return ok, errorText
+    end
+end
+
+local SCB_0820PreviousPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
+if SCB_0820PreviousPresetSpawnQueueOnUpdate then
+    function SCB_PresetSpawnQueueOnUpdate()
+        local operation = SCB_GetActiveBotOperation()
+        local hadSafety = operation and operation.kind == "preset" and operation.safety ~= nil
+        local result
+
+        if operation and operation.kind == "preset" then
+            SCB_HydrateLegacyPresetSafety(operation)
+        else
+            SCB_ClearLegacyPresetSafetyFields()
+        end
+
+        result = SCB_0820PreviousPresetSpawnQueueOnUpdate()
+        operation = SCB_GetActiveBotOperation()
+
+        if operation and operation.kind == "preset" then
+            if hadSafety or SCB_LegacyPresetSafetyHasState() then
+                SCB_CaptureLegacyPresetSafety(operation)
+            else
+                -- A rebuild can create a replacement queue (and its new safety
+                -- state) inside this same scheduler frame. The wrapped start
+                -- already captured that state canonically; do not overwrite it
+                -- merely because its compatibility globals are now clear.
+                SCB_ClearLegacyPresetSafetyFields()
+            end
+        else
+            SCB_ClearLegacyPresetSafetyFields()
+        end
+        return result
+    end
+end
