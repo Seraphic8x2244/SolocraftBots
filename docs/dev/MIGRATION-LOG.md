@@ -50,7 +50,7 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Blizzard raid rows/subgroup positions remain observed as `current*` runtime fields and no longer permute tracker logical assignments or the working preset.
 - Removed `RaidPresentation.lua` and its 0.7.14 green-pulse/live-row editor model; that design was explicitly superseded by the approved logical-slot model.
 - Existing bot finalization still uses bot-only subgroup order, preserving the useful property that humans are ignored when resolving bot order inside a subgroup.
-- Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before a raid preset can summon.
+- Historical presets with stored `playerSlots` retain those values as logical assignments. Group-only legacy assignments without an exact slot now require explicit slot placement before the user chooses a specific slot.
 - BWL runtime test passed with three humans total. Two humans deliberately occupied Mage logical slots and self occupied a Priest logical slot; Blizzard placed humans independently in the live raid rows while SCB still suppressed the intended logical bot slots.
 - An apparent Priest-replacement failure was traced to cross-version preset communication involving an older client, not the local 0.8.5 summon path. The alternate request flow produced the correct result. Cross-version preset comms therefore remain a compatibility item to audit before 0.8 main promotion.
 
@@ -198,3 +198,22 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - Ctrl replacement, abort and operation completion clear the coordinator safety state so no later operation can inherit a stale survivor/bootstrap.
 - An off-branch candidate was caught before publication because its outer frame capture could erase safety created by the nested rebuild -> replacement-queue handoff. The published candidate distinguishes pre-existing frame safety from newly-created same-frame safety and preserves the latter.
 - Runtime verification pending. Primary checks are 5-man, 5 -> 5, 5 -> 10 survivor/Group-8 handoff and aggressive in-flight Ctrl switching. The special empty-group raid bootstrap path remains an explicit check before the compatibility bridge is removed.
+
+## 0.8.21-dev — absorb coordinator into Spawn and prove 40-man bootstrap
+
+- Removed temporary `SpawnOperation.lua` and appended its coordinator implementation to `Spawn.lua` at the same effective load position.
+- Kept the 0.8.20 hydration/capture bridge unchanged in this gate so file absorption and state-model cleanup were not mixed into one runtime risk.
+- Runtime verification passed the previously-tested survivor/rebuild paths and closed the outstanding 40-man bootstrap coverage gap.
+- Fresh summon while completely solo inside Molten Core correctly created the temporary bootstrap bot, converted/formatted the raid and completed the 40-man preset.
+- During that fresh bootstrap SoloCraft returned `Cannot add bots while any party member is in combat` five times. SCB recovered the rejected group automatically and completed the operation without losing burst identity, requiring a second click or remaining stuck.
+- A subsequent destructive 40-man preset summon in the same saved raid-ID context correctly kicked the existing bots and rebuilt fresh without using the bootstrap path.
+
+## 0.8.22-dev — use coordinator safety state directly
+
+- Removed the 0.8.20 per-frame survivor/bootstrap hydrate/capture bridge.
+- `Spawn.lua` now creates and consumes the active preset operation's `botOperation.safety` table directly.
+- Group-8 park/remove helpers in `RaidBurst.lua` use the same coordinator safety table directly; the superseded preset scheduler wrapper in `RaidRefill.lua` was updated as well so it no longer refers to the historical safety globals.
+- Operation completion, abort and forced replacement clear coordinator safety state directly.
+- Survivor queue markers that require handoff state now fail closed if the active operation has no safety table instead of silently interpreting missing state as nil/zero.
+- Pending-add recovery, burst identity, combat retry, party-to-raid conversion, Group-8 sequencing and the shared 3.0-second remove -> next-add boundary are intentionally unchanged.
+- Runtime verification pending. Primary regression checks are 5 -> 5 survivor handoff, 5 -> 10 conversion/Group-8 handoff, one aggressive in-flight Ctrl replacement, and a later fresh 40-man bootstrap direct-state check before main promotion.
