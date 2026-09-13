@@ -138,6 +138,7 @@ Owns developer diagnostics and debug UI.
 - [ ] Move the remaining tracker/assumption/identity/live-layout behaviour from `RaidIdentity.lua` into `Raid.lua` only after the 0.8.17 gate passes, then remove the transitional file.
 - [x] Remove standalone `RaidLayout.lua` in 0.8.9-dev by folding live layout observation into the same late identity layer, preserving its late runtime position rather than moving wrappers earlier unsafely.
 - [ ] Move maintenance from `RaidRefill.lua`/Presets wrappers.
+- [ ] Deferred Replace Dead UX/API fallback: keep normal click conservative on `UnitIsDeadOrGhost`; improve the no-match message to make clear that no dead bot was detected; later consider Ctrl-click as a one-shot stronger scan using dead OR a valid roster unit reporting `UnitHealth == 0` with `UnitHealthMax > 0`. Verify Vanilla out-of-range health behaviour before enabling the zero-HP fallback.
 - [ ] Move role evidence/lifecycle from `Detection.lua` into the final Raid owner if size remains coherent.
 - [ ] Move pfUI role integration fully into the final Raid implementation; current pfUI integration already resides in Raid.
 - [ ] Replace roster wrapper chain with one explicit coordinator.
