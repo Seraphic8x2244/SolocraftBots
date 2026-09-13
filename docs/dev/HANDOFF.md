@@ -6,17 +6,16 @@ Behavioural reference: `main` 0.7.14
 
 ## Last runtime-verified point
 
-0.8.22 direct coordinator safety-state migration passed its available runtime gate strongly, including large-raid bootstrap/rebuild/forced-replacement stress.
+0.8.23 bootstrap-removal overlap is runtime-proven in Molten Core.
 
-Verified by user in Molten Core:
+Verified by user:
 - fresh solo -> 40-man bootstrap summon completed correctly;
-- completed 40-man -> different 40-man destructive rebuild completed correctly without bootstrap in the saved-ID context;
-- Ctrl-forcing a different 40-man while the first operation already had 34 bots live in the raid still converged automatically on the correct final requested preset; both already-materialized and still-in-flight old state were recovered without a second click;
-- after the destructive/forced tests, returning completely solo and running a fresh bootstrap summon again worked normally;
-- the bootstrap reliably remained able to force formation of the T3 raid group;
-- no Lua errors, permanent busy state, stale-safety leak or wrong final preset were reported.
+- after real G1 formed, the temporary bootstrap was removed without forcing an otherwise unnecessary 3-second pause before G2;
+- normal one-second raid burst cadence continued while bootstrap disappearance/accounting settled in parallel;
+- final 40-man composition was correct and no bootstrap remained;
+- 0.8.22 had already passed completed-40 -> different-40 destructive rebuild, a forced 40-man replacement while 34 old bots were already live, and a later fresh bootstrap re-run without Lua errors, stale safety state, extra-click recovery or wrong final preset.
 
-Earlier 0.8.22 small-group survivor regression tests were already proven through the 0.8.20/0.8.21 line; the next small-group pass remains useful before promotion, but the direct-safety migration itself is considered passed.
+This closes the 0.8.23 overlap gate. The next architecture work should unify the different historical survivor/bootstrap cases into one explicit bootstrap-continuity model before retiring more scheduler scaffolding.
 
 ## Current architecture decision
 
@@ -26,48 +25,72 @@ Earlier 0.8.22 small-group survivor regression tests were already proven through
 
 Ctrl-forced preset replacement replaces the desired operation handled by the same coordinator rather than starting a second top-level operation identity. Already-sent server commands remain physical facts that must resolve/expire before the coordinator can safely change direction.
 
-Removal-settle rule is now refined: the 3.0-second roster-disappearance settle protects **capacity reuse**, not every unrelated add. Ordinary replacement/survivor handoff still gates the next replacement add. Temporary bootstrap removal may settle in parallel with earlier preset bursts while spare target capacity remains, but the final capacity-filling preset bot burst (or final roster tracking) must not cross that settle boundary.
+Removal-settle rule is capacity-based: the 3.0-second roster-disappearance settle protects **reuse of capacity freed by a removed bot**. It is not a blanket ban on unrelated additions. Ordinary replacement and 5-man bootstrap handoff still gate the capacity-dependent replacement slot; raid-bootstrap removal may settle in parallel with earlier bursts that do not need that slot.
 
-## Current functional gate — 0.8.23-dev
+## Unified bootstrap model
 
-0.8.23 implements the bootstrap-only settle refinement without changing ordinary survivor/replacement behavior.
+`bootstrap` is the preferred umbrella term for a temporary bot occupant used to preserve required group/instance continuity while a preset transition is rebuilt. How the bot originated is secondary.
 
-- Bootstrap remains parked in the proven Group-8 location; moving it to the eventual final logical group is deliberately deferred because it is not required for the timing gain.
-- As soon as a real Group-1 bot exists and combat permits, SCB requests bootstrap removal.
-- Bootstrap roster disappearance and the 3.0-second accounting window are polled every scheduler frame, including during normal one-second group waits.
-- Earlier preset bot bursts may continue while that bootstrap settle is still running.
-- The final remaining preset bot burst is treated as the capacity-filling burst and must wait until bootstrap disappearance + 3.0 seconds are complete. This is derived from the remaining explicit burst plans rather than hard-coded group numbers, so human-heavy later groups remain safe.
-- If no later bot burst exists, final roster tracking waits for bootstrap settle instead.
-- Ordinary survivor removal continues to delegate to the unchanged 0.8.22 strict next-add barrier.
-- Combat retry, explicit burst identity, forced-replacement recovery and the ordinary 1.0-second inter-group cadence are otherwise unchanged.
+Possible origins:
+- **fresh T3/raid bootstrap:** no suitable group exists, so SCB creates a temporary bot to form the party/raid and allow the raid-sized summon path;
+- **existing raid bootstrap:** reuse one existing bot instead of kicking every bot and manufacturing another temporary member;
+- **instance-continuity bootstrap:** retain an existing bot when removing it would risk losing the required party/raid/instance state;
+- **5-man bootstrap:** retain an existing party bot while the other required bot slots are rebuilt.
+
+A bot bootstrap should exist only when it is actually needed. If present humans already guarantee the required party/raid continuity, SCB does not need to retain an extra bot merely for topology.
+
+Prefer reusing an existing bot when a bootstrap is needed. Manufacture a new bootstrap only when there is no suitable existing occupant and group formation requires one.
+
+The **target preset determines topology and parking policy**:
+
+### 5-man target
+- remain a party; never convert to raid merely because bootstrap logic is active;
+- the bootstrap stays in the party/G1 because parties have no subgroup parking;
+- reserve exactly **one required final bot assignment** while the bootstrap occupies one party slot;
+- fill every other required bot assignment that fits alongside the present humans and bootstrap;
+- remove the bootstrap;
+- observe it absent and wait the full 3.0-second capacity-reuse settle;
+- summon the one reserved final bot assignment.
+
+Do **not** hard-code “summon three, then the fourth”. With multiple humans, the number of pre-bootstrap-removal bot assignments is lower. The rule is one reserved final bot slot, not a fixed bot count.
+
+### Raid-sized target (>5)
+When a bot bootstrap is needed and a raid already exists, retain one existing bot rather than creating a new one. Park it in G8 when possible, remove the other old bots, observe their teardown and wait the normal 3.0-second settle before beginning the new G1 burst.
+
+Once a genuine new G1 bot exists, remove the bootstrap. Its disappearance + 3.0-second accounting window may overlap later raid bursts while spare target capacity remains. The first burst that actually depends on the bootstrap's freed slot must wait if that settle is still incomplete.
+
+For a normal 40-man build the bootstrap settle should naturally finish long before the final capacity-filling burst, so no visible extra pause is expected.
+
+### Fresh raid start
+If no existing group member can preserve/establish the required raid state, create a temporary bootstrap, convert/form the raid, then enter the same raid-bootstrap lifecycle above.
+
+## Current implementation state — 0.8.23-dev
+
+0.8.23 implements only the raid-bootstrap removal-overlap refinement:
+- bootstrap remains parked in the proven G8 location;
+- bootstrap removal begins after real G1 exists;
+- removal disappearance + settle are polled during ordinary group waits;
+- earlier raid bursts may continue while spare capacity remains;
+- the final capacity-filling preset burst/final tracking remains gated by unfinished bootstrap settle;
+- ordinary survivor/5-man handoff still uses the older strict path.
 
 Functional commit: `a0df882da609dffb2be1a916d8f6b36941ac5cb7` (`Overlap bootstrap removal settle with raid bursts`).
 
-Implementation note: `SpawnBootstrap.lua` is intentionally a one-gate transitional extension loaded immediately after `Spawn.lua`. If runtime proof passes, absorb it into Spawn before further scheduler-file retirement; do not let it become a permanent parallel owner.
+`SpawnBootstrap.lua` is intentionally transitional. Do not treat it as a new permanent owner.
 
-## 0.8.23 runtime gate
+## Next functional gate
 
-The most useful test is a fresh empty-group 40-man bootstrap in MC while the character is already there:
+The next step should implement the unified bootstrap-continuity rules rather than immediately deleting `PresetRebuild.lua`.
 
-1. start completely solo and summon the 40-man preset;
-2. bootstrap should join, raid conversion/Group-8 parking should occur, then real G1 should begin normally;
-3. bootstrap should be kicked once a real G1 bot exists;
-4. **G2 must not pause for the bootstrap's 3-second removal settle** — normal one-second group cadence should continue through the earlier groups;
-5. by the final 40-man burst the bootstrap settle should naturally be complete, so there should normally be no visible extra pause at all;
-6. final roster must contain the exact requested preset with no bootstrap left behind;
-7. if combat delays bootstrap removal, earlier groups may continue, but the final bot burst must wait rather than overrun capacity.
+Primary requirements:
+1. existing raid + bots: if a bot bootstrap is actually needed, reuse one existing bot, park it in G8, kick the other old bots, observe teardown + 3.0 seconds, then start new G1; do not manufacture another bootstrap;
+2. after real G1 exists, remove the raid bootstrap and reuse the proven 0.8.23 overlap rule for later bursts;
+3. 5-man target: remain party, reserve one required final bot assignment dynamically, rebuild all other required bot assignments, remove bootstrap, observe absent + 3.0 seconds, then summon the reserved final assignment;
+4. human count must drive how many bot assignments can be filled before bootstrap removal; never hard-code a solo-player count;
+5. do not retain/create a bot bootstrap when existing humans already preserve the required topology/continuity;
+6. never convert a 5-man target to raid because Vanilla 1.12.1 has no safe raid -> party conversion path.
 
-For a later 15/20-player bootstrap-capable path, expected behavior is equivalent: the final capacity-filling bot burst is the only burst that can be delayed by unfinished bootstrap accounting.
-
-## Following functional steps
-
-After 0.8.23 passes:
-
-- absorb the proven `SpawnBootstrap.lua` refinement into `Spawn.lua` rather than retaining another late patch layer;
-- retire the superseded `PresetRebuild.lua` implementation once its remaining compatibility sentinel/busy-check dependency is replaced explicitly; its final public functions are already superseded by the Spawn coordinator;
-- route Replace Missing / Replace Dead physical execution through the same coordinator while Raid continues choosing replacement records;
-- remove redundant RaidBurst/RaidRefill scheduler wrappers only after their remaining identity/maintenance responsibilities have a clear owner;
-- resume remaining RaidIdentity -> Raid consolidation once operation ownership is no longer ambiguous.
+After this unified lifecycle is runtime-proven, absorb the proven `SpawnBootstrap.lua` logic into `Spawn.lua`, then resume retirement of `PresetRebuild.lua` and migration of Replace Missing/Dead execution into the same coordinator.
 
 ## Deferred UX / maintenance items
 

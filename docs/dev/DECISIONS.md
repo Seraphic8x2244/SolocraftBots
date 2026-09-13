@@ -100,5 +100,33 @@ The bootstrap may remain parked in Group 8 for this refinement. Moving it to the
 
 **Reason:** a 15/20/40-player preset can continue building earlier groups during the bootstrap's server-accounting window. Stalling G2 immediately after bootstrap removal creates dead time without increasing safety; the actual safety requirement is that the operation must not consume the final freed slot before SoloCraft has settled the removal.
 
+## 2026-09-13 - Bootstrap is a continuity role, not an origin-specific mechanism
+**Decision:** use `bootstrap` as the semantic umbrella for a temporary bot occupant whose purpose is to preserve or establish required party/raid/instance continuity while a preset transition is rebuilt. Whether the bot was newly summoned or retained from the old group is an origin detail, not a different lifecycle concept.
+
+A bot bootstrap should exist only when continuity actually needs one. If existing humans already preserve the required party/raid state, SCB does not need to retain an extra bot solely for topology. When a bot bootstrap is required, prefer reusing an existing bot over manufacturing a new one. A new bootstrap is created only when no suitable existing occupant exists and group formation requires one.
+
+**Target topology owns bootstrap policy:** bootstrap state must never imply raid conversion by itself.
+
+For a **5-man target**:
+- remain a party; never convert to raid for bootstrap handling because Vanilla 1.12.1 has no safe raid -> party conversion path;
+- the bootstrap remains in the party/G1 because a party has no subgroup parking;
+- while the bootstrap occupies one slot, reserve exactly one required final bot assignment;
+- fill every other required bot assignment that fits alongside present humans and the bootstrap;
+- remove the bootstrap, observe it absent, wait the full 3.0-second capacity-reuse settle, then summon that one reserved assignment.
+
+The implementation must derive the pre-removal bot count from the actual preset/human occupancy. Do not hard-code the solo-player case as “summon three, then the fourth”: with multiple humans, fewer bots fit before bootstrap removal. The invariant is **one reserved final bot assignment**, not a fixed number of earlier summons.
+
+For a **raid-sized target**:
+- if an existing raid requires a bot bootstrap to preserve continuity, retain one existing bot, park it in G8 when possible, and remove the other old bots;
+- observe the old-bot teardown and wait 3.0 seconds before beginning the new G1, because those removed slots are immediately being reused;
+- once a genuine new G1 bot exists, remove the bootstrap;
+- allow bootstrap disappearance + settle to overlap later raid bursts that do not need its capacity, but gate the first capacity-dependent burst if the settle is still incomplete.
+
+For a **fresh solo raid start**, manufacture a temporary bootstrap only because there is no existing occupant available to establish the required raid state. After raid formation, the path should converge on the same raid-bootstrap lifecycle rather than remain a separate mechanism.
+
+**Supersedes/refines:** long-term architectural distinctions between “survivor”, “T3 bootstrap”, “saved-ID anchor” and similar temporary safety members. Historical field/function names may remain during migration, but the target model is one bootstrap-continuity concept with target-specific topology/capacity policy.
+
+**Reason:** the safety problem is continuity plus one temporarily occupied roster slot. Treating each origin as a separate mechanism duplicates timing/state logic and makes multi-human capacity reasoning error-prone. One bootstrap model lets the coordinator reason from the target preset and actual human occupancy instead.
+
 ## Change-control rule
 Every functional addon change bumps version in the same commit. Documentation-only audit/decision commits do not bump addon version. Any future semantic reversal must be logged here with both old and new rule.
