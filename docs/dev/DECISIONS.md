@@ -72,5 +72,20 @@ Supporting locale/assets/bindings remain separate. Split a large owner later onl
 
 **Supersedes:** earlier proposed separate `Location.lua`, `PresetPlayers.lua`/`RaidPlayers.lua`, `RaidIdentity.lua`, `RaidMaintenance.lua`, `RoleDetection.lua`, `Comms.lua`, `Commands.lua` and pfUI/options separation as the desired final structure.
 
+## 2026-09-13 - One coordinator owns physical bot lifecycle execution
+**Decision:** `Spawn.lua` will own one authoritative active operation coordinator/state machine for every workflow that physically mutates the bot roster by sending bot add/remove commands or waiting on the consequences of those commands.
+
+The coordinator accepts different operation intents rather than starting independent pipelines. At minimum these intents include preset summon/rebuild, Replace Missing, Replace Dead and Ctrl-forced replacement of the current preset operation. Different situations may take different state paths, but they share one operation object and one lifecycle policy for pending already-sent adds, combat gates, removals, roster disappearance, 3-second settle, conversion, survivor/bootstrap handling, burst sending, join/identity verification and completion/abort.
+
+**Raid/Spawn boundary:** `Raid.lua` owns observation and maintenance decisions: Active Roster, dead/missing candidates, logical replacement identity/class/role/group and role resolution. Raid requests an operation from Spawn. Raid does not retain an independent physical replacement scheduler, removal timer or add/settle pipeline once migration is complete.
+
+**Forced replacement rule:** Ctrl-click while an operation is active replaces the desired operation handled by the same coordinator. It must not create a second parallel scheduler. Add commands that already reached SoloCraft cannot be recalled; they remain facts that the coordinator must resolve/expire before teardown and the new desired operation can proceed.
+
+**Migration rule:** do not rewrite the working summon system in one step. Introduce the operation object around proven paths first; centralize shared abort/pending-add/removal/settle rules; migrate preset rebuild/survivor/bootstrap; then route Replace Missing/Dead execution through the same coordinator; delete the superseded parallel scheduler state only after runtime proof at each gate.
+
+**Supersedes/refines:** the earlier architectural wording that Spawn owns one authoritative *preset* summon state machine while Replace Dead/Missing may keep a separate execution pipeline in Raid/refill code. The coarse file ownership decision remains valid; this change clarifies the boundary between Raid decision-making and Spawn execution.
+
+**Reason:** recent forced-resummon testing exposed exactly the class of race created by overlapping pipeline ownership: local state can be aborted/restarted while server-side adds, survivor/rebuild state or another scheduler remain active. One physical-operation owner makes current intent, already-issued commands and remove/add safety boundaries explicit.
+
 ## Change-control rule
 Every functional addon change bumps version in the same commit. Documentation-only audit/decision commits do not bump addon version. Any future semantic reversal must be logged here with both old and new rule.
