@@ -87,5 +87,18 @@ The coordinator accepts different operation intents rather than starting indepen
 
 **Reason:** recent forced-resummon testing exposed exactly the class of race created by overlapping pipeline ownership: local state can be aborted/restarted while server-side adds, survivor/rebuild state or another scheduler remain active. One physical-operation owner makes current intent, already-issued commands and remove/add safety boundaries explicit.
 
+## 2026-09-13 - Bootstrap settle protects capacity reuse, not unrelated bursts
+**Decision:** retain the 3.0-second roster-disappearance settle as the safety boundary for reusing capacity freed by a removed bot, but do not interpret it as a blanket requirement to stop every unrelated bot add.
+
+For ordinary replacement and survivor handoff, the next replacement add directly depends on the removed bot's capacity, so the established rule remains: observe the removed bot absent, wait 3.0 seconds, then add the replacement.
+
+The raid bootstrap is different because it is a temporary extra member used only to create/convert the raid. Once a real Group 1 bot exists, SCB may request bootstrap removal and let its disappearance + 3.0-second accounting window run in parallel with earlier preset bursts while spare target capacity still exists. SCB must still block before the **final preset bot burst that fills the intended composition**, or before final roster tracking if no later bot burst exists, until bootstrap removal has been observed and the 3.0-second settle has completed.
+
+The bootstrap may remain parked in Group 8 for this refinement. Moving it to the eventual final logical subgroup is not required to obtain the overlap and is deferred unless runtime evidence gives that move a separate benefit.
+
+**Refines:** the 2026-09-10 universal remove-then-add wording above. That earlier rule remains correct for capacity-dependent replacement, but was too broad when applied to unrelated additions that do not yet reuse the removed bootstrap's capacity.
+
+**Reason:** a 15/20/40-player preset can continue building earlier groups during the bootstrap's server-accounting window. Stalling G2 immediately after bootstrap removal creates dead time without increasing safety; the actual safety requirement is that the operation must not consume the final freed slot before SoloCraft has settled the removal.
+
 ## Change-control rule
 Every functional addon change bumps version in the same commit. Documentation-only audit/decision commits do not bump addon version. Any future semantic reversal must be logged here with both old and new rule.
