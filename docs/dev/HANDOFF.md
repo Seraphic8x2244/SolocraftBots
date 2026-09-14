@@ -1,7 +1,7 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.24-dev`
+Current addon line: `0.8.25-dev`
 Behavioural reference: `main` 0.7.14
 
 ## Last runtime-verified point
@@ -75,34 +75,30 @@ For a normal 40-man build the bootstrap settle should naturally finish long befo
 ### Fresh raid start
 If no existing group member can preserve/establish the required raid state, create a temporary bootstrap, convert/form the raid, then enter the same raid-bootstrap lifecycle above.
 
-## Current implementation state — 0.8.24-dev
+## Current implementation state — 0.8.25-dev
 
-0.8.24 extends the proven 0.8.23 overlap behavior to retained preset-rebuild anchors:
-- `SpawnBootstrap.lua` currently loads after `Commands.lua` so it can extend the existing safe Kick All policy without duplicating that implementation;
-- while a preset rebuild is active, a bot bootstrap is retained whenever continuity requires one and no other human already preserves the group;
-- raid-sized rebuilds reuse an existing bot bootstrap and classify it into the same coordinator safety state used by fresh T3 bootstrap;
-- retained raid bootstraps use the proven G8 + post-G1 removal + overlap lifecycle;
-- the existing 5-man queue math reserves one final logical bot assignment dynamically rather than assuming a one-human fixed count;
-- manual Kick All and non-preset removals retain their existing policy.
+0.8.25 is a structural absorption of the runtime-proven 0.8.24 bootstrap layer:
+- removed `SpawnBootstrap.lua` from the TOC and repository;
+- moved the retained-bootstrap decision directly into Commands' existing safe Kick All policy;
+- appended the proven retained-bootstrap classification and raid bootstrap removal-overlap scheduler logic to `Spawn.lua`;
+- preserved the existing `Spawn.lua` body byte-for-byte before the appended section;
+- preserved the existing `Commands.lua` body and inserted only the retained-bootstrap decision;
+- no `PresetRebuild.lua` retirement or maintenance-scheduler migration is included in this build.
 
-Functional commit: `aa96f9136cee600cee0a09e50fe95fe6f606154f` (`Unify retained preset bootstrap continuity`).
+Functional commit: `b38acce40c3f6447acb878324dcd7859e74671d3` (`Absorb bootstrap continuity into permanent owners`).
 
-`SpawnBootstrap.lua` remains intentionally transitional. Do not treat it as a permanent owner.
+## Current runtime gate — 0.8.25 structural smoke
 
-## Next functional gate — structural bootstrap absorption
+Because this build is intended to be behavior-preserving, compact runtime coverage is sufficient:
 
-The next build should be behavior-preserving only:
-
-1. absorb the proven bootstrap classification/removal-overlap scheduler logic from `SpawnBootstrap.lua` into `Spawn.lua`;
-2. keep the retained-bootstrap decision beside Commands' existing safe Kick All policy until survivor/removal policy itself is later moved into final Spawn ownership;
-3. remove `SpawnBootstrap.lua` from the TOC/repository;
-4. preserve the exact 0.8.24 capacity rule, raid G8 behavior, 5-man party topology and dynamic reserved-final-assignment behavior;
-5. do **not** retire `PresetRebuild.lua` in the same build;
-6. runtime-smoke at least one 5-man rebuild, one retained 40-man rebuild, and one Ctrl-forced replacement after the structural move.
+1. completed 5-man dungeon preset -> different 5-man preset; verify party topology, retained bootstrap, strict final-slot settle and exact final roster;
+2. completed raid preset -> different raid preset; verify one retained G8 bootstrap, normal initial teardown settle, post-G1 bootstrap removal and normal later burst cadence;
+3. Ctrl-force a different raid preset while the rebuild is in flight; verify latest preset wins with no stale bootstrap, second click or stuck state;
+4. if convenient, one fresh solo T3/40-man bootstrap confirms the manufactured-bootstrap origin still uses the same absorbed lifecycle.
 
 Multi-human 5-man coverage remains desirable before main promotion, specifically to prove the already-dynamic pre-bootstrap-removal bot count against real human occupancy.
 
-After the structural absorption passes, resume retirement of `PresetRebuild.lua`, then migration of Replace Missing/Dead physical execution into the same coordinator.
+If 0.8.25 passes, the next architectural step is retirement of the remaining `PresetRebuild.lua` compatibility sentinel/busy layer in a separately runtime-gated build. Do not combine that retirement with maintenance migration.
 
 ## Deferred UX / maintenance items
 
