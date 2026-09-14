@@ -1072,3 +1072,182 @@ if SCB_0819PreviousPresetSpawnQueueOnUpdate then
         return result
     end
 end
+
+-- -------------------------------------------------------------------------
+-- Bootstrap continuity (absorbed from SpawnBootstrap.lua in 0.8.25).
+-- -------------------------------------------------------------------------
+
+local SCB_0824PreviousStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
+if SCB_0824PreviousStartPresetSummonSnapshot then
+    function SCB_StartPresetSummonSnapshot(snapshot)
+        local ok, errorText = SCB_0824PreviousStartPresetSummonSnapshot(snapshot)
+        local safety, anchorName, size
+
+        if not ok then return ok, errorText end
+
+        safety = SCB_GetBotOperationSafety and SCB_GetBotOperationSafety(false) or nil
+        anchorName = SCB_GetKickAllAnchorForFreshBuild
+            and SCB_GetKickAllAnchorForFreshBuild() or nil
+        size = tonumber(snapshot and snapshot.size) or 0
+
+        if safety and anchorName and safety.survivorName == anchorName then
+            safety.bootstrapName = anchorName
+            safety.bootstrapTopology = size > 5 and "raid" or "party"
+            safety.bootstrapOrigin = "retained"
+            if SCB_DebugLog then
+                SCB_DebugLog(
+                    "Spawn",
+                    "Retained " .. tostring(anchorName)
+                    .. " as " .. tostring(safety.bootstrapTopology)
+                    .. " bootstrap for preset rebuild"
+                )
+            end
+        end
+
+        return ok, errorText
+    end
+end
+
+local function SCB_0823BootstrapSafety()
+    local safety = SCB_GetBotOperationSafety and SCB_GetBotOperationSafety(false) or nil
+    if not safety or not safety.bootstrapName or not safety.removeAfterGroupOne then
+        return nil
+    end
+
+    if not safety.bootstrapTopology then safety.bootstrapTopology = "raid" end
+    if not safety.bootstrapOrigin then safety.bootstrapOrigin = "created" end
+    return safety
+end
+
+local function SCB_0823HasRealGroupOneBot(bootstrapName)
+    local i, name, _, subgroup, assumption
+    if not bootstrapName or not GetNumRaidMembers or not GetRaidRosterInfo then return false end
+
+    for i = 1, GetNumRaidMembers() do
+        name = UnitName and UnitName("raid" .. i) or nil
+        _, _, subgroup = GetRaidRosterInfo(i)
+        if name and subgroup == 1 and name ~= bootstrapName
+            and SCB_IsBotName and SCB_IsBotName(name) then
+            assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
+            if not assumption or assumption.spawnKind ~= "bootstrap" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function SCB_0823FinishBootstrapRemoval(safety, name)
+    if SCB_ClearKickAllAnchor then SCB_ClearKickAllAnchor(name) end
+    safety.survivorName = nil
+    safety.bootstrapName = nil
+    safety.bootstrapTopology = nil
+    safety.bootstrapOrigin = nil
+    safety.removeAfterGroupOne = nil
+    safety.removalWaiting = nil
+    safety.removalName = nil
+    safety.removalGoneAt = nil
+    if SCB_DebugLog then
+        SCB_DebugLog("Spawn", "Bootstrap " .. tostring(name) .. " removal settle completed in parallel with preset bursts")
+    end
+end
+
+local function SCB_0823PollBootstrapRemoval()
+    local safety = SCB_0823BootstrapSafety()
+    local name, now, settleDelay
+
+    if not safety then return true end
+    name = safety.removalName or safety.bootstrapName
+    if not name then
+        safety.removeAfterGroupOne = nil
+        safety.bootstrapTopology = nil
+        safety.bootstrapOrigin = nil
+        return true
+    end
+
+    if safety.removalWaiting then
+        if SCB_GroupHasName and SCB_GroupHasName(name) then
+            safety.removalGoneAt = nil
+            return false
+        end
+
+        now = GetTime and GetTime() or 0
+        if not safety.removalGoneAt then
+            safety.removalGoneAt = now
+            return false
+        end
+
+        settleDelay = SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0
+        if not GetTime or (now - safety.removalGoneAt) >= settleDelay then
+            SCB_0823FinishBootstrapRemoval(safety, name)
+            return true
+        end
+        return false
+    end
+
+    if not SCB_0823HasRealGroupOneBot(name) then return false end
+    if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
+
+    if UninviteByName then
+        UninviteByName(name)
+        safety.removalWaiting = true
+        safety.removalName = name
+        safety.removalGoneAt = nil
+        if SCB_DebugLog then
+            SCB_DebugLog("Spawn", "Bootstrap " .. tostring(name) .. " removal requested; unrelated preset bursts may continue")
+        end
+    end
+    return false
+end
+
+local function SCB_0823CurrentBurstNeedsFreedCapacity()
+    local plans = SCB.scbPresetBurstPlans or {}
+    local current = plans[1]
+    local i, plan
+
+    if not current or current.kind ~= "preset" then return false end
+    for i = 2, table.getn(plans) do
+        plan = plans[i]
+        if plan and plan.kind == "preset" then return false end
+    end
+    return true
+end
+
+local SCB_0823PreviousTryRemoveParkedSurvivor = SCB.scb072TryRemoveParkedSurvivor
+if SCB_0823PreviousTryRemoveParkedSurvivor then
+    SCB.scb072TryRemoveParkedSurvivor = function()
+        local safety = SCB_0823BootstrapSafety()
+        local queue, head
+
+        if not safety then
+            return SCB_0823PreviousTryRemoveParkedSurvivor()
+        end
+
+        SCB_0823PollBootstrapRemoval()
+        safety = SCB_0823BootstrapSafety()
+        if not safety then return true end
+
+        queue = SCB.presetSpawnQueue or {}
+        head = queue[1]
+
+        if head == SCB.PRESET_TRACK_ROSTER then
+            return false
+        end
+
+        if head == SCB.PRESET_CHECK_COMBAT
+            and not SCB.presetLastBurstRequeued
+            and SCB_0823CurrentBurstNeedsFreedCapacity() then
+            return false
+        end
+
+        return true
+    end
+end
+
+local SCB_0823PreviousPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
+if SCB_0823PreviousPresetSpawnQueueOnUpdate then
+    function SCB_PresetSpawnQueueOnUpdate()
+        SCB_0823PollBootstrapRemoval()
+        return SCB_0823PreviousPresetSpawnQueueOnUpdate()
+    end
+end

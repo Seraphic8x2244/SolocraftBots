@@ -319,7 +319,34 @@ function SCB_CurrentRaidHasSavedID()
     return matched
 end
 
+local function SCB_ActivePresetRebuildSnapshot()
+    local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
+    local intent = operation and operation.desiredIntent or nil
+    local snapshot = intent and intent.snapshot or nil
+
+    if not operation or operation.kind ~= "preset" or not operation.rebuild or not snapshot then
+        return nil
+    end
+    return snapshot
+end
+
+local function SCB_PresetNeedsRetainedBootstrap()
+    local snapshot = SCB_ActivePresetRebuildSnapshot()
+    local size, context, raidCount
+
+    if not snapshot then return false end
+    size = tonumber(snapshot.size) or 0
+
+    if size > 5 then return true end
+
+    context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    return size > 0 and size <= 5 and context and context.inInstance and raidCount == 0
+end
+
 function SCB_SurvivorSafetyRequired()
+    if SCB_PresetNeedsRetainedBootstrap() then return true end
+
     local context = SCB_GetLocationContext()
     if not context.inInstance then return false end
 
