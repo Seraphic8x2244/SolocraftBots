@@ -238,3 +238,94 @@ This file is append-only project memory for the consolidation. Existing audit/de
 - For a raid-sized target with an existing raid, retain one existing bot bootstrap in G8 when needed, remove the other old bots, observe teardown + wait 3.0 seconds before new G1, then remove bootstrap after genuine G1 exists and overlap its settle using the proven 0.8.23 capacity rule.
 - For a fresh raid start with no suitable existing member, manufacture a bootstrap only to establish the raid, then converge on the same raid-bootstrap lifecycle.
 - This unified bootstrap lifecycle should be implemented and runtime-gated before further `PresetRebuild.lua` retirement or maintenance-scheduler migration.
+
+## 0.8.24-dev — unify retained bootstrap continuity
+
+- Unified existing-bot continuity with the bootstrap lifecycle rather than treating retained survivors/anchors as a separate mechanism.
+- Raid rebuilds retain an existing bot when continuity requires it, park it in G8, tear down the remaining old bots, observe disappearance and wait the normal 3.0-second teardown settle before new G1.
+- Once a genuine new G1 exists, the retained bootstrap is removed and its own capacity-reuse settle can overlap unrelated later raid bursts.
+- Genuine 5-man rebuilds stay party, reserve exactly one final bot assignment, fill the others around the retained bootstrap, remove it, observe absence + wait 3.0 seconds, then summon the reserved final bot.
+- Runtime verification passed strongly: completed 40-man -> different 40-man, Ctrl-forced replacement during retained 40-man rebuild, and completed 5-man -> different 5-man all converged correctly with no stale bootstrap or second click.
+- Functional commit: `aa96f9136cee600cee0a09e50fe95fe6f606154f`.
+
+## 0.8.25-dev — absorb bootstrap continuity into permanent owners
+
+- Removed transitional `SpawnBootstrap.lua`.
+- Moved the retained-bootstrap decision into the existing command-side Kick All safety policy.
+- Moved the proven retained-bootstrap classification and bootstrap removal-overlap lifecycle into `Spawn.lua`.
+- Preserved the existing physical behaviour rather than redesigning it during file absorption.
+- Raid rebuild and forced replacement runtime checks passed. The equivalent 5-man path was subsequently re-proven on the later 0.8.27 architecture.
+- Functional commit: `b38acce40c3f6447acb878324dcd7859e74671d3`.
+
+## 0.8.26-dev — route maintenance through the bot coordinator
+
+- Moved user-facing Replace Missing / Replace Dead physical lifecycle onto `botOperation(kind="maintenance")`.
+- `Raid.lua`/Active Roster remains responsible for deciding which logical slots need replacement and for class/role/group metadata; the coordinator owns remove -> observe -> settle -> add -> subgroup move -> identity bind -> complete/fail.
+- Missing and Dead are collected together at click via the existing Active Roster maintenance scan.
+- Dead removals observe actual Blizzard-roster departure before the exact 3.0-second capacity-reuse settle begins.
+- Replacement bursts are group-scoped, use explicit assumed-spawn identity plans, and wait one second after final subgroup placement before binding authoritative order.
+- Added bounded failure paths: 15-second removal timeout, 12-second replacement-arrival timeout, 15-second subgroup-move timeout.
+- Local-player combat remains an absolute block. Extended remote-only combat state may permit a server-authoritative attempt after 10 seconds when the player is personally clear, avoiding an indefinite Vanilla stale-combat hang.
+- Maintenance abort is isolated from the legacy global abort path so retry failure cannot destroy persistent preset tracker state.
+- Later runtime verification in a 10-man dungeon raid passed with multiple dead bots replaced successfully across two raid groups.
+- Functional commit: `2bf114e66f407ec9193287009e7db367693ac503`.
+
+## 0.8.27-dev — retire superseded preset rebuild layer
+
+- Removed `PresetRebuild.lua` from the TOC and repository after static inspection showed its pending-add recovery, teardown, conversion, G8 parking, 3.0-second settle and next-frame handoff responsibilities were all authoritatively owned by the later `Spawn.lua` coordinator implementation.
+- No replacement runtime logic was added in this gate; it was a true retirement of superseded code.
+- Runtime verification passed: completed 5-man -> different 5-man; fresh 10-man dungeon summon after zoning; completed 10-man -> different 10-man; and multiple dead replacements across two raid groups on the 0.8.26 maintenance coordinator.
+- This is the latest fully runtime-proven point before the next structural move.
+- Functional commit: `cbf370074edea2f4615e1cd97f93e5a019675fdc`.
+
+## 0.8.28-dev — collapse refill bridge into the burst transition layer
+
+- Removed `RaidRefill.lua` from the TOC and repository.
+- Audited its contents and found the early refill/preset-scheduler wrappers were obsolete historical layers because later `Spawn.lua` definitions already owned the final scheduler behaviour.
+- Preserved the live 0.8.26 maintenance coordinator and moved it into `RaidBurst.lua` at the same effective pre-Spawn load position rather than changing ownership and wrapper order simultaneously.
+- Stripped a large amount of obsolete `RaidBurst.lua` wrapper archaeology, retaining only the survivor/bootstrap helpers still consumed by Spawn plus the proven maintenance coordinator.
+- Net result was a substantial code reduction while preserving the known final runtime entry points.
+- 0.8.28 is structural and has not yet received its own runtime pass; runtime behaviour directly beneath it is proven through 0.8.27.
+- Functional commit: `d5934b484cff5f74c49ae57fd829d56a33af3eb4`.
+
+## Final six-file architecture agreed after 0.8.28
+
+This decision supersedes earlier cautious sizing notes where they conflict. The goal is not minimum file count for its own sake; the goal is six clear subsystem owners with transitional layers removed.
+
+Final non-locale Lua target:
+
+```text
+SoloCraftBots.lua
+Presets.lua
+Roster.lua
+Spawn.lua
+Communication.lua
+Options.lua
+```
+
+Approved collapses:
+- `Raid.lua` + `RaidPlayers.lua` + `RaidIdentity.lua` + `Detection.lua` -> `Roster.lua`. `Roster` is preferred over `Raid` because the owner represents live party and raid state. Detection is roster evidence/classification, not a standalone subsystem.
+- `RaidBurst.lua` -> `Spawn.lua`. Spawn is the final physical bot-lifecycle owner, including bootstrap/survivor mechanics and maintenance execution.
+- `Comms.lua` + `Commands.lua` + `ChatFeedback.lua` -> `Communication.lua`. The final owner is deliberately bidirectional: outbound commands/comms and incoming feedback/parsing.
+- `Debug.lua` -> `Options.lua` as a clearly separated Developer/Debug section at the end.
+- Tutorial/onboarding/help code currently living in `Presets.lua` -> `Options.lua`; the user intends to expand this system later.
+- `Location.lua` -> `Presets.lua`. Location is now treated as preset-selection/capacity policy: zone -> preset group, valid sizes and optional auto-swap.
+- Remove legacy `refillState` / `replaceDeadState` physical scheduler compatibility machinery from `Presets.lua` once call-site audit proves it is no longer required.
+
+Ownership boundary to preserve:
+- `Presets.lua` owns desired/configured group structure and location/preset policy.
+- `Roster.lua` owns the real current party/raid roster, observed identities, subgroup positions, human/bot/dead/missing state and logical association.
+- `Spawn.lua` owns physical mutation and timing.
+- `Communication.lua` owns interaction with bots/server/addon peers and interpretation of feedback.
+- `Options.lua` owns settings, tutorial/help and developer tools.
+- `SoloCraftBots.lua` remains core/bootstrap/common plumbing.
+
+Recommended migration order after 0.8.28:
+1. absorb `RaidBurst.lua` into `Spawn.lua`, then smoke-test preset rebuild and multi-group maintenance;
+2. fold `RaidPlayers.lua`, `RaidIdentity.lua` and `Detection.lua` into the current Raid owner, remove dead wrappers, then rename the stable merged owner to `Roster.lua`;
+3. merge `Comms.lua`, `Commands.lua` and `ChatFeedback.lua` into `Communication.lua`;
+4. fold `Debug.lua` and tutorials/onboarding into `Options.lua`;
+5. fold `Location.lua` into `Presets.lua` and remove obsolete preset-local maintenance compatibility code after dependency audit;
+6. run one consolidated regression pass before considering `main` promotion.
+
+Do not rewrite historical entries above to make this final target appear preordained. The architecture changed as runtime evidence and user design decisions accumulated.
