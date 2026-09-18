@@ -839,6 +839,9 @@ local function SCB_BindAssumedSpawnName(name, intent)
     intent.name = name
     intent.boundAt = GetTime and GetTime() or 0
     SCB.assumedRolesByName[name] = intent
+    if intent.role == "tank" and intent.spawnKind ~= "bootstrap" and SCB_MarkPfUITank then
+        SCB_MarkPfUITank(name)
+    end
     return true
 end
 function SCB_BindNextAssumedSpawnName(name)
@@ -908,29 +911,48 @@ if SCB_OriginalBuildLiveRoster then
     end
 end
 
-function SCB_ApplyLivePfUITankRoles()
-    local roles, roster, i, member, name, frame
-    if not pfUI or not pfUI.uf or not pfUI.uf.raid or type(pfUI.uf.raid.tankrole) ~= "table" then return end
+function SCB_MarkPfUITank(name)
+    local roles
+    if not name then return false end
+    if not pfUI or not pfUI.uf or not pfUI.uf.raid or type(pfUI.uf.raid.tankrole) ~= "table" then return false end
+
     roles = pfUI.uf.raid.tankrole
-    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    if roles[name] == true then return false end
+
+    -- pfUI's own tank toggle is name-based. SCB only needs to set the tank once
+    -- when that known tank identity appears; unrelated roster changes must not
+    -- rebuild or refresh the whole raid.
+    roles[name] = true
     SCB.pfuiAutoTanks = SCB.pfuiAutoTanks or {}
-    for name in pairs(SCB.pfuiAutoTanks) do roles[name] = nil end
-    SCB.pfuiAutoTanks = {}
-    for i = 1, table.getn(roster and roster.members or {}) do
-        member = roster.members[i]
-        if member and member.name and member.spawnKind ~= "bootstrap" and SCB_GetResolvedLiveRole(member) == "tank" then
-            roles[member.name] = true; SCB.pfuiAutoTanks[member.name] = true
-        end
+    SCB.pfuiAutoTanks[name] = true
+
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 and pfUI.uf.raid.Show then
+        pfUI.uf.raid:Show()
     end
-    if GetNumRaidMembers and GetNumRaidMembers() > 0 and pfUI.uf.raid.Show then pfUI.uf.raid:Show() end
-    if pfUI.uf.RefreshUnit and pfUI.uf.frames then
-        for i = 1, table.getn(pfUI.uf.frames) do
-            frame = pfUI.uf.frames[i]
-            if frame and frame.label and (frame.label == "party" or frame.label == "raid") then pfUI.uf:RefreshUnit(frame, "all") end
-        end
-    end
+    return true
 end
-function SCB_ApplyTrackedPfUITankRoles(tracker) SCB_ApplyLivePfUITankRoles() end
+
+-- Compatibility entry point for older callers that already have an authoritative
+-- tracker. It only marks previously-unmarked tanks; it never clears/rebuilds the
+-- table and never forces RefreshUnit across raid frames.
+function SCB_ApplyTrackedPfUITankRoles(tracker)
+    local i, assignment, player
+    if not tracker or not tracker.ready then return false end
+
+    for i = 1, table.getn(tracker.assignments or {}) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.botName and assignment.role == "tank" then
+            SCB_MarkPfUITank(assignment.botName)
+        end
+    end
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        if player and player.name and player.role == "tank" then
+            SCB_MarkPfUITank(player.name)
+        end
+    end
+    return true
+end
 
 function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     local roster, used, replacements = nil, {}, {}
@@ -965,7 +987,6 @@ if SCB_OriginalTryFinalizeRaidRoleTracking then
             if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
             if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
         end
-        if ready then SCB_ApplyLivePfUITankRoles() end
         return ready
     end
 end
@@ -986,7 +1007,6 @@ if SCB_OriginalHandleRosterChange then
         SCB_BindAssumptionsFromRosterDelta(previousNames)
         SCB_OriginalHandleRosterChange()
         SCB_PruneAssumedRolesToCurrentRoster()
-        SCB_ApplyLivePfUITankRoles()
     end
 end
 
@@ -1348,7 +1368,6 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     end
 
     if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
-    if SCB_ApplyLivePfUITankRoles then SCB_ApplyLivePfUITankRoles() end
     if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
 
     return oldConfirmed ~= state.confirmedRole
@@ -2314,6 +2333,9 @@ function SCB_HandleAssumedRoleSystemMessage(text)
     intent.name = name
     intent.boundAt = GetTime and GetTime() or 0
     SCB.assumedRolesByName[name] = intent
+    if intent.role == "tank" and intent.spawnKind ~= "bootstrap" and SCB_MarkPfUITank then
+        SCB_MarkPfUITank(name)
+    end
 
     localSlot = SCB_GroupLocalSlot(intent.slotIndex)
     if intent.slotIndex and intent.group then
