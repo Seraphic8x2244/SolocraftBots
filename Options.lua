@@ -275,6 +275,7 @@ function SCB_SetDeveloperDebugEnabled(enabled)
     if SCB_LayoutCommandUI then SCB_LayoutCommandUI() end
     if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
     if SCB_UpdateLayoutDebugBorders then SCB_UpdateLayoutDebugBorders() end
+    if SCB_UpdateDebugTimerState then SCB_UpdateDebugTimerState() end
 
     if SCB.developerDebugEnabled then
         SCB_Print(SCB_L("DEBUG_MODE_ENABLED"))
@@ -1342,4 +1343,13 @@ end
 
 local debugUpdateFrame = CreateFrame("Frame", "SoloCraftBotsDebugUpdateFrame", UIParent)
 debugUpdateFrame:SetScript("OnUpdate", SCB_DebugOnUpdate)
+debugUpdateFrame:Hide()
+
+function SCB_UpdateDebugTimerState()
+    if SCB.developerDebugEnabled then
+        debugUpdateFrame:Show()
+    else
+        debugUpdateFrame:Hide()
+    end
+end
 end

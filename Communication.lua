@@ -239,6 +239,7 @@ local function BeginOutgoing(mode, target, snapshot)
         tx = NextTransactionID(), deadline = Now() + COMM_TIMEOUT,
     }
     SCB.commOutgoing[mode] = out
+    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     SCB_CommsSetButtonPending(mode, true)
 
     if mode == "R" and snapshot.size > 5 then
@@ -453,6 +454,7 @@ function SCB_CommsShowPrompt(incoming)
     local snapshot = incoming.snapshot
     local counts = snapshot.roleCounts or {}
     SCB.commPromptTransaction = incoming
+    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     if incoming.mode == "S" then
         frame.title:SetText(string.format(SCB_L("COMM_PROMPT_SEND"), incoming.sender))
         frame.accept.label:SetText(SCB_L("BUTTON_SAVE"))
@@ -674,6 +676,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             sender = sender, tx = tx, mode = offerMode,
             deadline = Now() + COMM_TIMEOUT,
         }
+        if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
         SendControl("H", tx, sender, "READY")
         return
     end
@@ -745,6 +748,20 @@ end
 
 local commFrame = CreateFrame("Frame", "SoloCraftBotsCommsFrame", UIParent)
 commFrame:RegisterEvent("CHAT_MSG_ADDON")
+
+local function SCB_CommsHasTimedWork()
+    local _, value
+    for _, value in pairs(SCB.commOutgoing or {}) do if value then return true end end
+    if next(SCB.commOffers or {}) then return true end
+    if next(SCB.commAssemblies or {}) then return true end
+    if SCB.commPromptTransaction and not SCB.commPromptTransaction.done then return true end
+    return false
+end
+
+function SCB_CommsWakeTimer()
+    commFrame:Show()
+end
+
 commFrame:SetScript("OnEvent", function()
     if event == "CHAT_MSG_ADDON" then SCB_CommsOnAddonMessage(arg1, arg2, arg3, arg4) end
 end)
@@ -788,7 +805,10 @@ commFrame:SetScript("OnUpdate", function()
 
     incoming = SCB.commPromptTransaction
     if incoming and not incoming.done and now >= incoming.deadline then FinishIncoming(incoming, "TIMEOUT") end
+
+    if not SCB_CommsHasTimedWork() then commFrame:Hide() end
 end)
+commFrame:Hide()
 
 -- -------------------------------------------------------------------------
 -- Direct bot commands (absorbed from Commands.lua in 0.8.33).

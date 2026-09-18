@@ -51,11 +51,12 @@ function SCB_CollectGroupMembers()
             unit = "raid" .. i
             name = UnitName(unit)
             if name then
-                local _, _, subgroup = GetRaidRosterInfo(i)
+                local _, memberRank, subgroup = GetRaidRosterInfo(i)
                 table.insert(members, {
                     unit = unit,
                     name = name,
                     subgroup = subgroup,
+                    rank = memberRank,
                     isSelf = playerName and name == playerName or false,
                     isBot = SCB_IsBotName(name),
                     dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit) and true or false,
@@ -430,11 +431,11 @@ function SCB_InitializeActiveRosterFromObserved(observed)
     return true
 end
 
-function SCB_SyncActiveRosterFromObserved()
-    local roster, observed, now, id, slot, member, bound, i
+function SCB_SyncActiveRosterFromObserved(observed)
+    local roster, now, id, slot, member, bound, i
     if SCB.activeRosterReconcilePending or SCB.activeRosterTransition then return end
     roster = SCB_EnsureActiveRosterDB()
-    observed = SCB_GetLiveRoster(true)
+    observed = observed or SCB_GetLiveRoster(true)
     if not roster.active then
         if not roster.suppressed then SCB_InitializeActiveRosterFromObserved(observed) end
         return
@@ -517,13 +518,13 @@ function SCB_BindReplacementToActiveSlot(slotID, newName, group)
     return true
 end
 
-function SCB_GetActiveMaintenanceRecords()
+function SCB_GetActiveMaintenanceRecords(observed, syncFirst)
     local roster = SCB_EnsureActiveRosterDB()
-    local observed, missing, dead, unavailableMissing, unavailableDead = nil, {}, {}, {}, {}
+    local missing, dead, unavailableMissing, unavailableDead = {}, {}, {}, {}
     local id, slot, member, replacement
     if not roster.active or SCB.activeRosterTransition then return missing, dead, unavailableMissing, unavailableDead end
-    SCB_SyncActiveRosterFromObserved()
-    observed = SCB_GetLiveRoster(false)
+    if syncFirst ~= false then SCB_SyncActiveRosterFromObserved(observed) end
+    observed = observed or SCB_GetLiveRoster(false)
     for id, slot in pairs(roster.slots or {}) do
         if slot and slot.expected then
             replacement = SCB_BuildActiveReplacementRecord(slot)
@@ -776,10 +777,28 @@ function SCB_QueueAutoLootApply()
     frame:Show()
 end
 
-function SCB_ApplyAutoPromotePlayers()
-    local count, i, name, rank, playerName
+function SCB_ApplyAutoPromotePlayers(observed)
+    local count, i, name, rank, playerName, member
     if not SoloCraftBotsDB or not SoloCraftBotsDB.options or not SoloCraftBotsDB.options.autoPromotePlayers then return end
-    if not GetNumRaidMembers or not GetRaidRosterInfo or not PromoteToAssistant then return end
+    if not PromoteToAssistant then return end
+
+    if observed and observed.mode == "raid" then
+        local isLeader = false
+        for i = 1, table.getn(observed.members or {}) do
+            member = observed.members[i]
+            if member and member.isSelf and member.rank == 2 then isLeader = true; break end
+        end
+        if not isLeader then return end
+        for i = 1, table.getn(observed.members or {}) do
+            member = observed.members[i]
+            if member and member.isHuman and not member.isSelf and member.rank == 0 then
+                PromoteToAssistant(member.name)
+            end
+        end
+        return
+    end
+
+    if not GetNumRaidMembers or not GetRaidRosterInfo then return end
     count = GetNumRaidMembers()
     if count == 0 then return end
     playerName = UnitName("player")
@@ -793,9 +812,45 @@ function SCB_ApplyAutoPromotePlayers()
     end
 end
 
+local function SCB_BuildRosterDelta(previous, observed)
+    local delta = { added = {}, removed = {}, botChanged = false, humanChanged = false, rankChanged = false }
+    local name, member, old
+
+    if not previous then
+        for name, member in pairs(observed and observed.byName or {}) do
+            delta.added[name] = true
+            if member.isBot then delta.botChanged = true else delta.humanChanged = true end
+        end
+        return delta
+    end
+
+    for name, member in pairs(observed and observed.byName or {}) do
+        old = previous.byName and previous.byName[name] or nil
+        if not old then
+            delta.added[name] = true
+            if member.isBot then delta.botChanged = true else delta.humanChanged = true end
+        elseif not member.isBot and old.rank ~= member.rank then
+            delta.rankChanged = true
+        end
+    end
+    for name, member in pairs(previous.byName or {}) do
+        if not (observed and observed.byName and observed.byName[name]) then
+            delta.removed[name] = true
+            if member.isBot then delta.botChanged = true else delta.humanChanged = true end
+        end
+    end
+    return delta
+end
+
 function SCB_HandleRosterChange()
-    local current = SCB_GetRosterNames()
+    local previousObserved = SCB.lastHandledLiveRoster
+    local observed = SCB_RefreshLiveRoster()
+    local current = {}
     local name, scbBotAdded
+
+    observed.delta = SCB_BuildRosterDelta(previousObserved, observed)
+    for name in pairs(observed.byName or {}) do current[name] = true end
+
     SCB_EnsureSessionDB()
     if SCB.pendingBotAdds > 0 and GetTime and SCB.pendingBotAddsExpires > 0 and GetTime() > SCB.pendingBotAddsExpires then
         SCB.pendingBotAdds = 0; SCB.pendingBotAddsExpires = 0
@@ -810,12 +865,21 @@ function SCB_HandleRosterChange()
             end
         end
     end
-    SCB_ApplyAutoPromotePlayers()
+
+    if observed.delta.humanChanged or observed.delta.rankChanged then
+        SCB_ApplyAutoPromotePlayers(observed)
+    end
+
     SCB.lastRoster = current
+    SCB.lastHandledLiveRoster = observed
     if scbBotAdded then SCB_ApplyAutoLootMethod(); SCB_QueueAutoLootApply() end
-    SCB_RefreshLiveRoster()
-    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved(observed) end
+    if SCB_QueueRefillButtonRefresh then
+        SCB_QueueRefillButtonRefresh(0.15)
+    elseif SCB_RefreshRefillButton then
+        SCB_RefreshRefillButton(observed, false)
+    end
+    return observed
 end
 
 -- -------------------------------------------------------------------------
@@ -851,9 +915,13 @@ function SCB_BindNextAssumedSpawnName(name)
     intent = table.remove(SCB.pendingAssumedSpawns, 1)
     return SCB_BindAssumedSpawnName(name, intent)
 end
-local function SCB_PruneAssumedRolesToCurrentRoster()
-    local current = SCB_GetRosterNames and SCB_GetRosterNames() or {}
+local function SCB_PruneAssumedRolesToCurrentRoster(observed)
+    local current = observed and observed.byName or nil
     local name
+    if not current then
+        observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+        current = observed and observed.byName or {}
+    end
     for name in pairs(SCB.assumedRolesByName or {}) do if not current[name] then SCB.assumedRolesByName[name] = nil end end
 end
 function SCB_HandleAssumedRoleSystemMessage(text)
@@ -1004,9 +1072,11 @@ local SCB_OriginalHandleRosterChange = SCB_HandleRosterChange
 if SCB_OriginalHandleRosterChange then
     function SCB_HandleRosterChange()
         local previousNames = SCB.lastRoster
+        local observed
         SCB_BindAssumptionsFromRosterDelta(previousNames)
-        SCB_OriginalHandleRosterChange()
-        SCB_PruneAssumedRolesToCurrentRoster()
+        observed = SCB_OriginalHandleRosterChange()
+        SCB_PruneAssumedRolesToCurrentRoster(observed)
+        return observed
     end
 end
 
@@ -1367,7 +1437,13 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
             .. " confirmed=" .. tostring(state.confirmedRole or "?"))
     end
 
-    if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
+    local liveMember = SCB.liveRoster and SCB.liveRoster.byName and SCB.liveRoster.byName[name] or nil
+    if liveMember then
+        liveMember.roleEvidence = state.byRole
+        liveMember.confirmedRole = state.confirmedRole
+        liveMember.roleCandidate = state.candidateRole
+        liveMember.resolvedRole = SCB_GetResolvedLiveRole and SCB_GetResolvedLiveRole(liveMember) or (state.confirmedRole or liveMember.assumedRole)
+    end
     if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
 
     return oldConfirmed ~= state.confirmedRole
@@ -1537,7 +1613,11 @@ if SCB_OriginalHandleAssumedRoleSystemMessage_Detection then
         local changed = SCB_OriginalHandleAssumedRoleSystemMessage_Detection(text)
         if changed then
             SCB_LinkAssumptionsToTrackerSlots()
-            if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+            if SCB_QueuePresetRoleIndicatorsRefresh then
+                SCB_QueuePresetRoleIndicatorsRefresh(0.05)
+            elseif SCB_RefreshPresetRoleIndicators then
+                SCB_RefreshPresetRoleIndicators()
+            end
         end
         return changed
     end
@@ -1547,14 +1627,18 @@ local SCB_OriginalHandleRosterChange_Detection = SCB_HandleRosterChange
 if SCB_OriginalHandleRosterChange_Detection then
     function SCB_HandleRosterChange()
         local result = SCB_OriginalHandleRosterChange_Detection()
-        local current = SCB_GetRosterNames and SCB_GetRosterNames() or {}
+        local current = result and result.byName or {}
         local name
 
         SCB_LinkAssumptionsToTrackerSlots()
         for name in pairs(SCB.roleEvidenceByName or {}) do
             if not current[name] then SCB.roleEvidenceByName[name] = nil end
         end
-        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+        if SCB_QueuePresetRoleIndicatorsRefresh then
+            SCB_QueuePresetRoleIndicatorsRefresh(0.15)
+        elseif SCB_RefreshPresetRoleIndicators then
+            SCB_RefreshPresetRoleIndicators()
+        end
         return result
     end
 end
@@ -1647,6 +1731,12 @@ function SCB_RefreshPresetRoleIndicators()
     local size = SCB_CurrentPresetSize and SCB_CurrentPresetSize() or 0
     local i, row, assignment, name, stage, color
 
+    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
+        SCB.presetRoleIndicatorsDirty = true
+        return
+    end
+    SCB.presetRoleIndicatorsDirty = nil
+
     for i = 1, 40 do
         row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
         if row then
@@ -1676,6 +1766,29 @@ function SCB_RefreshPresetRoleIndicators()
             end
         end
     end
+end
+
+function SCB_QueuePresetRoleIndicatorsRefresh(delay)
+    local frame
+    SCB.presetRoleIndicatorsDirty = true
+    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then return end
+
+    frame = SCB.presetRoleIndicatorRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsPresetRoleIndicatorRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.15) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshPresetRoleIndicators()
+        end)
+        SCB.presetRoleIndicatorRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.15
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 local SCB_OriginalCreatePresetUI_Detection = SCB_CreatePresetUI
@@ -1748,8 +1861,8 @@ local function SCB_LiveBotNeedsRoleConfirmation(member)
     return false
 end
 
-local function SCB_RebuildRoleDetectionPendingNames()
-    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+local function SCB_RebuildRoleDetectionPendingNames(observed)
+    local roster = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     local pending = {}
     local i, member, key
 
@@ -1785,7 +1898,7 @@ local function SCB_SetRoleDetectionEventsEnabled(enabled, reason)
     end
 end
 
-function SCB_RefreshRoleDetectionLifecycle()
+function SCB_RefreshRoleDetectionLifecycle(observed)
     local enabled = SCB_EnsureRoleDetectionOption()
     local pending
 
@@ -1795,8 +1908,29 @@ function SCB_RefreshRoleDetectionLifecycle()
         return
     end
 
-    pending = SCB_RebuildRoleDetectionPendingNames()
+    pending = SCB_RebuildRoleDetectionPendingNames(observed)
     SCB_SetRoleDetectionEventsEnabled(pending, "Combat role scanning sleeping; all tracked bots confirmed")
+end
+
+local function SCB_QueueRoleDetectionLifecycleRefresh(delay)
+    local frame
+    if not SCB_EnsureRoleDetectionOption() then return end
+    frame = SCB.roleDetectionLifecycleRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsRoleDetectionLifecycleRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.15) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshRoleDetectionLifecycle(SCB.liveRoster)
+        end)
+        SCB.roleDetectionLifecycleRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.15
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 local function SCB_CombatSourceNeedsRoleConfirmation(text)
@@ -1823,7 +1957,7 @@ local SCB_PreviousHandleRosterChange_Lifecycle = SCB_HandleRosterChange
 if SCB_PreviousHandleRosterChange_Lifecycle then
     function SCB_HandleRosterChange()
         local result = SCB_PreviousHandleRosterChange_Lifecycle()
-        SCB_RefreshRoleDetectionLifecycle()
+        SCB_QueueRoleDetectionLifecycleRefresh(0.15)
         return result
     end
 end
@@ -1839,8 +1973,13 @@ end
 
 local SCB_PreviousRefreshPresetRoleIndicators_Lifecycle = SCB_RefreshPresetRoleIndicators
 function SCB_RefreshPresetRoleIndicators()
-    local result = SCB_PreviousRefreshPresetRoleIndicators_Lifecycle()
+    local result
     local i, row
+    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
+        SCB.presetRoleIndicatorsDirty = true
+        return
+    end
+    result = SCB_PreviousRefreshPresetRoleIndicators_Lifecycle()
     if not SCB_EnsureRoleDetectionOption() then
         for i = 1, 40 do
             row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
@@ -2489,9 +2628,11 @@ end
 
 local function SCB_RefreshTrackerLiveLayout()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-    local positions, changed = SCB_BuildLiveRaidPositions(), false
+    local positions, changed
     local i, player, assignment, name, live, assumption
     if not tracker or not tracker.ready or tracker.mode ~= "raid" then return false end
+    positions = SCB_BuildLiveRaidPositions()
+    changed = false
 
     for i = 1, table.getn(tracker.players or {}) do
         player = tracker.players[i]
@@ -2532,6 +2673,25 @@ local function SCB_RefreshTrackerLiveLayout()
     return changed
 end
 
+local function SCB_QueueTrackerLiveLayoutRefresh(delay)
+    local frame = SCB.trackerLiveLayoutRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsTrackerLiveLayoutRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.15) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshTrackerLiveLayout()
+        end)
+        SCB.trackerLiveLayoutRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.15
+    frame.scbElapsed = 0
+    frame:Show()
+end
+
 local SCB_PreviousTryFinalizeRaidRoleTracking_Layout = SCB_TryFinalizeRaidRoleTracking
 if SCB_PreviousTryFinalizeRaidRoleTracking_Layout then
     function SCB_TryFinalizeRaidRoleTracking()
@@ -2545,7 +2705,7 @@ local SCB_PreviousHandleRosterChange_Layout = SCB_HandleRosterChange
 if SCB_PreviousHandleRosterChange_Layout then
     function SCB_HandleRosterChange()
         local result = SCB_PreviousHandleRosterChange_Layout()
-        SCB_RefreshTrackerLiveLayout()
+        SCB_QueueTrackerLiveLayoutRefresh(0.15)
         return result
     end
 end

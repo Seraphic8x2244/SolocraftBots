@@ -2421,14 +2421,14 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     return missing
 end
 
-function SCB_RefreshReplaceDeadButton()
+function SCB_RefreshReplaceDeadButton(observed, syncFirst)
     local button = SCB.replaceDeadButton
     local missing, dead, unavailableMissing, unavailableDead
     local missingCount, deadCount, unavailableCount
     if not button then return end
 
     if SCB_GetActiveMaintenanceRecords then
-        missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
+        missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords(observed, syncFirst)
     else
         missing, dead, unavailableMissing, unavailableDead = {}, {}, {}, {}
     end
@@ -2463,8 +2463,29 @@ function SCB_RefreshReplaceDeadButton()
     SCB_RefreshVisibleTooltip(button)
 end
 
-function SCB_RefreshRefillButton()
-    SCB_RefreshReplaceDeadButton()
+function SCB_RefreshRefillButton(observed, syncFirst)
+    SCB_RefreshReplaceDeadButton(observed, syncFirst)
+end
+
+function SCB_QueueRefillButtonRefresh(delay)
+    local frame
+    if not SCB.replaceDeadButton then return end
+    frame = SCB.refillButtonRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsRefillButtonRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.15) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshRefillButton(SCB.liveRoster, false)
+        end)
+        SCB.refillButtonRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.15
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 function SCB_StartRefillAssignments(assignments)
@@ -2479,6 +2500,7 @@ function SCB_StartRefillAssignments(assignments)
     end
     for i = 1, table.getn(assignments) do table.insert(remaining, assignments[i]) end
     SCB.refillState = { active = true, phase = "nextgroup", cooldown = 0, fixedAssignments = remaining }
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return true
 end
 
@@ -3101,6 +3123,7 @@ function SCB_QueuePresetSpawn(commands)
     for i = 1, table.getn(commands) do
         table.insert(SCB.presetSpawnQueue, commands[i])
     end
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
 end
 
 
@@ -3691,6 +3714,7 @@ function SCB_SetPresetPanelShown(show)
         SCB_RefreshPresetPlayers()
         SCB_RefreshPresetSummonWarning()
         SCB.presetPanel:Show()
+        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
         SCB_SetPresetToggleDirection(true)
         if SCB_MaybeStartPresetTutorial then SCB_MaybeStartPresetTutorial() end
     else

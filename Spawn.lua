@@ -982,6 +982,7 @@ function SCB_StartPresetSummonSnapshot(snapshot)
     SCB.presetSpawnQueue = queue
     SCB.scbPresetBurstPlans = plans
     SCB.scbExplicitPresetOperation = true
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     SCB.scbCheckPlanArmed = nil
     SCB.scbArmedPresetPlan = nil
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
@@ -1383,6 +1384,7 @@ function SCB_BeginBotOperation(kind, intent)
         updatedAt = SCB_OperationNow(),
     }
     SCB.botOperation = operation
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return operation
 end
 
@@ -1730,6 +1732,9 @@ if SCB_0819PreviousPresetSpawnQueueOnUpdate then
         SCB_SyncPresetOperationPhase()
         local result = SCB_0819PreviousPresetSpawnQueueOnUpdate()
         SCB_SyncPresetOperationPhase()
+        if not SCB_GetActiveBotOperation() and not SCB_HasLegacyPhysicalBotRuntime() then
+            if SCB.presetSpawnQueueFrame then SCB.presetSpawnQueueFrame:Hide() end
+        end
         return result
     end
 end

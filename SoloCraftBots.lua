@@ -1418,6 +1418,11 @@ function SCB_CreateUI()
 
     SCB.presetSpawnQueueFrame = CreateFrame("Frame", "SoloCraftBotsPresetSpawnQueueFrame", UIParent)
     SCB.presetSpawnQueueFrame:SetScript("OnUpdate", SCB_PresetSpawnQueueOnUpdate)
+    SCB.presetSpawnQueueFrame:Hide()
+
+    function SCB_WakePresetSpawnScheduler()
+        if SCB.presetSpawnQueueFrame then SCB.presetSpawnQueueFrame:Show() end
+    end
 
     SCB_RestorePosition()
     SCB_RefreshDistanceButtons()
@@ -1561,12 +1566,12 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "PARTY_LEADER_CHANGED" then
         SCB_ApplyAutoPromotePlayers()
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
-        SCB_HandleRosterChange()
-        if SCB.presetPanel then
+        local observed = SCB_HandleRosterChange()
+        if SCB.presetPanel and SCB.presetPanel:IsShown()
+            and (not observed or not observed.delta or observed.delta.humanChanged) then
             SCB_RefreshPresetPlayers()
         end
         SCB_TryFinalizeRaidRoleTracking()
-        SCB_RefreshRefillButton()
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
         SCB_DebugUnitFlags(arg1)
