@@ -353,3 +353,17 @@ Do not rewrite historical entries above to make this final target appear preorda
 - `SCB_ApplyTrackedPfUITankRoles()` remains only as an idempotent compatibility/fallback path for authoritative tracker names (including human tank assignments); it only sets previously-unset tank names and does not clear/rebuild the table or refresh every raid frame.
 - Ordinary roster changes and combat-role evidence no longer cause pfUI tank-role reconciliation.
 - Static follow-up audit found additional roster-event amplification: repeated Live Roster rebuilds, 40-row role-indicator refreshes, full live-layout scans, auto-promote scans and optional role-detection rebuilds. These are recorded separately for post-0.8.36 cleanup rather than bundled into this runtime gate.
+
+## 0.8.37-dev — consolidated runtime tracking optimisation
+
+- Combined the planned tracking/performance phases into one rollbackable runtime commit.
+- The normal roster-event path now builds one canonical Live Roster observation and passes/reuses it for Active Roster and maintenance state instead of forcing repeated fresh roster builds.
+- Roster deltas use the last handled Blizzard roster-event snapshot, so explicit safety/maintenance polls cannot corrupt change detection.
+- Auto-promote work is limited to human membership/rank changes during roster handling; bot-only churn no longer causes a full promotion scan.
+- Preset player rows no longer refresh for bot-only roster events.
+- Preset role indicators, Replace Dead/Missing button state, optional role-detection lifecycle, and observational live-layout updates are debounced/coalesced during roster storms.
+- Hidden preset role-indicator UI is left dirty for the next visible refresh rather than swept while off-screen.
+- Combat-role evidence updates the cached Live Roster member directly instead of forcing a complete roster rebuild.
+- The preset/spawn scheduler, communications timeout/chunk worker, and developer debug updater now sleep while idle and wake only when their timed work is active.
+- Spawn/maintenance safety barriers that intentionally require fresh arrivals/departures/combat/subgroup/capacity observation are unchanged.
+- Wrapper-chain flattening is deliberately deferred until this performance build is runtime-proven.

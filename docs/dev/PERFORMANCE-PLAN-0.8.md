@@ -5,6 +5,28 @@ Baseline: 0.8.36-dev runtime `4381a87d909e888c753b80fb356c6fb2180357c1`
 
 ## Goal
 
+
+## Implementation status — 0.8.37-dev
+
+The originally separate 0.8.37-0.8.41 performance phases were intentionally combined into one runtime build at the user's request so the performance work can be tested as one rollback unit.
+
+Runtime commit: `4c3fc45259558886bd8e6af5fd5aea59c2b1f08c`
+
+Implemented in the combined pass:
+- one canonical Live Roster build at the start of the normal Blizzard roster-event path;
+- Active Roster and maintenance-button consumers can reuse that observation instead of forcing fresh rebuilds;
+- roster deltas are based on the last handled roster-event snapshot rather than arbitrary polling snapshots;
+- auto-promote consumes the canonical raid observation and only runs from roster handling when human membership/rank state changed;
+- bot-only roster churn no longer rebuilds Preset player rows;
+- role-indicator, Replace button, optional role-detection lifecycle, and observational tracker-layout refreshes are coalesced during roster storms;
+- hidden Presets role-indicator UI is marked dirty instead of being swept off-screen;
+- combat-role evidence updates the cached member directly instead of rebuilding the whole Live Roster;
+- preset/spawn scheduler, communications timer, and developer-debug updater sleep while idle and explicitly wake when work begins;
+- physical-operation barriers that intentionally require fresh observation were left unchanged.
+
+Deferred:
+- historical wrapper-chain flattening remains a separate structural cleanup after this runtime behaviour is proven.
+
 Reduce unnecessary roster scans, UI refreshes and permanent per-frame polling without changing logical-slot, identity, maintenance, survivor or spawn-order semantics.
 
 The core rule is:
