@@ -337,3 +337,11 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Removed standalone `Location.lua` and `ChatFeedback.lua` from the repository/TOC.
 - TOC now loads the six agreed non-locale Lua owners: `SoloCraftBots.lua`, `Presets.lua`, `Roster.lua`, `Spawn.lua`, `Communication.lua`, and `Options.lua`.
 - Behaviour is intentionally unchanged; this build completes structural ownership consolidation only. Post-consolidation slot-editor/UI cleanup and the full regression pass remain separate work.
+
+## 0.8.35-dev — pace mass Kick All teardown
+
+- Changed only non-dead `Kick All` teardown to issue at most five `UninviteByName` requests per 0.10 seconds.
+- The first batch may fire immediately; later batches do not catch up after frame stalls, preventing a lag spike from collapsing several batches into one burst.
+- Preset replacement inherits this pacing because its destructive rebuild path calls the same `SCB_KickBots(false)` entry point and already waits for live roster teardown before the existing removal-settle gate.
+- `Kick Dead` / maintenance dead removal is intentionally unchanged in this A/B build so repeated disconnects during mass Kick All can be isolated.
+- Survivor selection and Kick All anchor behaviour are unchanged.
