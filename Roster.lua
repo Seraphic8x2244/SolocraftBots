@@ -138,8 +138,8 @@ function SCB_GetTrackedRosterAssociation(name, isBot)
     return nil
 end
 
-function SCB_BuildLiveRoster()
-    local rawMembers = SCB_CollectGroupMembers()
+function SCB_BuildLiveRoster(rawMembers)
+    rawMembers = rawMembers or SCB_CollectGroupMembers()
     local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     local previousRevision = SCB.liveRoster and SCB.liveRoster.revision or 0
@@ -158,6 +158,7 @@ function SCB_BuildLiveRoster()
         humanCount = 0,
     }
     local i, member, className, classFile, association, knownBots
+    local assumption, slot, state
 
     for i = 1, 8 do roster.groups[i] = {} end
     if SoloCraftBotsDB and SoloCraftBotsDB.session then
@@ -197,6 +198,44 @@ function SCB_BuildLiveRoster()
             member.origin = "player"
         end
 
+        -- Former RoleTracking/Detection wrappers now enrich this one snapshot.
+        assumption = member.name and SCB.assumedRolesByName and SCB.assumedRolesByName[member.name] or nil
+        slot = nil
+        if assumption then
+            member.assumedRole = assumption.role
+            member.assumedExtra = assumption.extra
+            member.assumedClass = assumption.class or member.assumedClass
+            member.assumedRoleSource = "spawn"
+            member.spawnKind = assumption.spawnKind
+        elseif member.isBot and SCB_GetActiveSlotByName then
+            slot = SCB_GetActiveSlotByName(member.name)
+            if slot and slot.role then
+                member.assumedRole = slot.role
+                member.assumedExtra = slot.extra
+                member.assumedRoleSource = "active"
+            end
+        elseif member.assumedRole then
+            member.assumedRoleSource = member.assumedRoleSource or "preset"
+        end
+
+        if member.isBot and member.name then
+            state = SCB.roleEvidenceByName and SCB.roleEvidenceByName[member.name] or nil
+            slot = slot or (SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(member.name) or nil)
+            if state then
+                member.roleEvidence = state.byRole
+                member.confirmedRole = state.confirmedRole
+                member.roleCandidate = state.candidateRole
+            elseif slot then
+                member.roleEvidence = slot.roleEvidence
+                member.confirmedRole = slot.confirmedRole
+            end
+        end
+        if SCB_GetResolvedLiveRole then
+            member.resolvedRole = SCB_GetResolvedLiveRole(member)
+        else
+            member.resolvedRole = member.confirmedRole or member.assumedRole
+        end
+
         table.insert(roster.members, member)
         roster.byName[member.name] = member
         roster.count = roster.count + 1
@@ -214,8 +253,8 @@ function SCB_BuildLiveRoster()
     return roster
 end
 
-function SCB_RefreshLiveRoster()
-    SCB.liveRoster = SCB_BuildLiveRoster()
+function SCB_RefreshLiveRoster(rawMembers)
+    SCB.liveRoster = SCB_BuildLiveRoster(rawMembers)
     return SCB.liveRoster
 end
 
@@ -355,6 +394,7 @@ function SCB_EstablishActiveRosterFromTracker(tracker)
                 id = assignment.slotIndex, expected = true, currentName = assignment.botName,
                 class = SCB_ActiveObservedClass(member) or assignment.class,
                 role = assignment.role, extra = assignment.extra,
+                assumedRole = assignment.role, confirmedRole = nil, roleEvidence = nil, detected = nil,
                 currentGroup = member and member.currentGroup or assignment.group or 1,
                 intendedGroup = assignment.group, source = "preset", trackerSlotIndex = assignment.slotIndex,
                 state = member and member.dead and "dead" or "alive", lastSeenAt = GetTime and GetTime() or 0,
@@ -390,7 +430,10 @@ end
 
 function SCB_AdoptObservedBotIntoActiveRoster(member, roster)
     local slot, slotID, now
+    local assumption
     if not member or not member.isBot then return nil end
+    assumption = member.name and SCB.assumedRolesByName and SCB.assumedRolesByName[member.name] or nil
+    if assumption and assumption.spawnKind == "bootstrap" then return nil end
     roster = roster or SCB_EnsureActiveRosterDB()
     now = GetTime and GetTime() or 0
     slot, slotID = SCB_FindMissingActiveSlot(roster, member.currentGroup)
@@ -496,7 +539,7 @@ end
 function SCB_BindReplacementToActiveSlot(slotID, newName, group)
     local roster = SCB_EnsureActiveRosterDB()
     local slot = roster.slots and roster.slots[slotID]
-    local tracker, i, assignment
+    local tracker, i, assignment, assumption
     if not slot or not newName then return false end
     slot.currentName = newName
     slot.currentGroup = group or slot.currentGroup or 1
@@ -515,6 +558,12 @@ function SCB_BindReplacementToActiveSlot(slotID, newName, group)
             end
         end
     end
+    assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[newName] or nil
+    if assumption and assumption.role then slot.assumedRole = assumption.role end
+    slot.role = slot.assumedRole or slot.role
+    slot.confirmedRole = nil
+    slot.roleEvidence = nil
+    slot.detected = nil
     return true
 end
 
@@ -844,16 +893,22 @@ end
 
 function SCB_HandleRosterChange()
     local previousObserved = SCB.lastHandledLiveRoster
-    local observed = SCB_RefreshLiveRoster()
-    local current = {}
-    local name, scbBotAdded
+    local previousNames = SCB.lastRoster
+    local rawMembers = SCB_CollectGroupMembers()
+    local observed, current, name, scbBotAdded
 
+    if SCB_BindAssumptionsFromRosterDelta then
+        SCB_BindAssumptionsFromRosterDelta(previousNames, rawMembers)
+    end
+    observed = SCB_RefreshLiveRoster(rawMembers)
+    current = {}
     observed.delta = SCB_BuildRosterDelta(previousObserved, observed)
     for name in pairs(observed.byName or {}) do current[name] = true end
 
     SCB_EnsureSessionDB()
     if SCB.pendingBotAdds > 0 and GetTime and SCB.pendingBotAddsExpires > 0 and GetTime() > SCB.pendingBotAddsExpires then
-        SCB.pendingBotAdds = 0; SCB.pendingBotAddsExpires = 0
+        SCB.pendingBotAdds = 0
+        SCB.pendingBotAddsExpires = 0
     end
     if SCB.lastRoster and SCB.pendingBotAdds > 0 then
         for name in pairs(current) do
@@ -865,10 +920,7 @@ function SCB_HandleRosterChange()
             end
         end
     end
-
-    if observed.delta.humanChanged or observed.delta.rankChanged then
-        SCB_ApplyAutoPromotePlayers(observed)
-    end
+    if observed.delta.humanChanged or observed.delta.rankChanged then SCB_ApplyAutoPromotePlayers(observed) end
 
     SCB.lastRoster = current
     SCB.lastHandledLiveRoster = observed
@@ -879,9 +931,22 @@ function SCB_HandleRosterChange()
     elseif SCB_RefreshRefillButton then
         SCB_RefreshRefillButton(observed, false)
     end
+
+    -- Former RoleTracking -> Detection -> lifecycle -> layout wrapper order.
+    if SCB_PruneAssumedRolesToCurrentRoster then SCB_PruneAssumedRolesToCurrentRoster(observed) end
+    if SCB_LinkAssumptionsToTrackerSlots then SCB_LinkAssumptionsToTrackerSlots() end
+    for name in pairs(SCB.roleEvidenceByName or {}) do
+        if not observed.byName[name] then SCB.roleEvidenceByName[name] = nil end
+    end
+    if SCB_QueuePresetRoleIndicatorsRefresh then
+        SCB_QueuePresetRoleIndicatorsRefresh(0.15)
+    elseif SCB_RefreshPresetRoleIndicators then
+        SCB_RefreshPresetRoleIndicators()
+    end
+    if SCB_QueueRoleDetectionLifecycleRefresh then SCB_QueueRoleDetectionLifecycleRefresh(0.15) end
+    if SCB_QueueTrackerLiveLayoutRefresh then SCB_QueueTrackerLiveLayoutRefresh(0.15) end
     return observed
 end
-
 -- -------------------------------------------------------------------------
 -- Role identity / pfUI integration (former RoleTracking.lua)
 -- -------------------------------------------------------------------------
@@ -915,7 +980,7 @@ function SCB_BindNextAssumedSpawnName(name)
     intent = table.remove(SCB.pendingAssumedSpawns, 1)
     return SCB_BindAssumedSpawnName(name, intent)
 end
-local function SCB_PruneAssumedRolesToCurrentRoster(observed)
+function SCB_PruneAssumedRolesToCurrentRoster(observed)
     local current = observed and observed.byName or nil
     local name
     if not current then
@@ -933,9 +998,9 @@ function SCB_HandleAssumedRoleSystemMessage(text)
     if SCB.assumedRolesByName[name] then return false end
     return SCB_BindNextAssumedSpawnName(name)
 end
-local function SCB_BindAssumptionsFromRosterDelta(previousNames)
+function SCB_BindAssumptionsFromRosterDelta(previousNames, members)
     local newMembers, used, consumed = {}, {}, {}
-    local members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
+    members = members or (SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {})
     local qi, mi, intent, member, _, classFile, wantedClass, chosen
     if not previousNames or table.getn(SCB.pendingAssumedSpawns or {}) == 0 then return end
     for mi = 1, table.getn(members) do
@@ -956,27 +1021,6 @@ local function SCB_BindAssumptionsFromRosterDelta(previousNames)
         if chosen then used[chosen] = true; SCB_BindAssumedSpawnName(newMembers[chosen].name, intent); table.insert(consumed, qi) end
     end
     for qi = table.getn(consumed), 1, -1 do table.remove(SCB.pendingAssumedSpawns, consumed[qi]) end
-end
-
-local SCB_OriginalBuildLiveRoster = SCB_BuildLiveRoster
-if SCB_OriginalBuildLiveRoster then
-    function SCB_BuildLiveRoster()
-        local roster = SCB_OriginalBuildLiveRoster()
-        local i, member, assumption, slot
-        for i = 1, table.getn(roster and roster.members or {}) do
-            member = roster.members[i]
-            assumption = member and SCB.assumedRolesByName[member.name] or nil
-            if assumption then
-                member.assumedRole = assumption.role; member.assumedExtra = assumption.extra; member.assumedClass = assumption.class or member.assumedClass
-                member.assumedRoleSource = "spawn"; member.spawnKind = assumption.spawnKind
-            elseif member and member.isBot and SCB_GetActiveSlotByName then
-                slot = SCB_GetActiveSlotByName(member.name)
-                if slot and slot.role then member.assumedRole = slot.role; member.assumedExtra = slot.extra; member.assumedRoleSource = "active" end
-            elseif member and member.assumedRole then member.assumedRoleSource = member.assumedRoleSource or "preset" end
-            if member then member.resolvedRole = SCB_GetResolvedLiveRole(member) end
-        end
-        return roster
-    end
 end
 
 function SCB_MarkPfUITank(name)
@@ -1046,40 +1090,6 @@ function SCB_ReconcileTrackerFromAssumedRoles(tracker)
     return true
 end
 
-local SCB_OriginalTryFinalizeRaidRoleTracking = SCB_TryFinalizeRaidRoleTracking
-if SCB_OriginalTryFinalizeRaidRoleTracking then
-    function SCB_TryFinalizeRaidRoleTracking()
-        local ready = SCB_OriginalTryFinalizeRaidRoleTracking()
-        local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-        if ready and tracker and SCB_ReconcileTrackerFromAssumedRoles(tracker) then
-            if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
-            if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
-        end
-        return ready
-    end
-end
-
-local SCB_OriginalAdoptObservedBotIntoActiveRoster = SCB_AdoptObservedBotIntoActiveRoster
-if SCB_OriginalAdoptObservedBotIntoActiveRoster then
-    function SCB_AdoptObservedBotIntoActiveRoster(member, roster)
-        local assumption = member and member.name and SCB.assumedRolesByName[member.name] or nil
-        if assumption and assumption.spawnKind == "bootstrap" then return nil end
-        return SCB_OriginalAdoptObservedBotIntoActiveRoster(member, roster)
-    end
-end
-
-local SCB_OriginalHandleRosterChange = SCB_HandleRosterChange
-if SCB_OriginalHandleRosterChange then
-    function SCB_HandleRosterChange()
-        local previousNames = SCB.lastRoster
-        local observed
-        SCB_BindAssumptionsFromRosterDelta(previousNames)
-        observed = SCB_OriginalHandleRosterChange()
-        SCB_PruneAssumedRolesToCurrentRoster(observed)
-        return observed
-    end
-end
-
 SCB.REPLACE_REMOVAL_SETTLE_DELAY = 3.0
 local SCB_OriginalMaintenanceReplaceOnUpdate = SCB_MaintenanceReplaceOnUpdate
 if SCB_OriginalMaintenanceReplaceOnUpdate then
@@ -1098,20 +1108,6 @@ if SCB_OriginalMaintenanceReplaceOnUpdate then
         return SCB_OriginalMaintenanceReplaceOnUpdate()
     end
 end
-
-local SCB_OriginalCreateRaidRoleTracker = SCB_CreateRaidRoleTracker
-if SCB_OriginalCreateRaidRoleTracker then
-    function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
-        SCB_ClearPendingAssumedSpawns()
-        return SCB_OriginalCreateRaidRoleTracker(slots, size, occupied, group, snapshot)
-    end
-end
-local SCB_OriginalStartRefillAssignments = SCB_StartRefillAssignments
-if SCB_OriginalStartRefillAssignments then function SCB_StartRefillAssignments(assignments) SCB_ClearPendingAssumedSpawns(); return SCB_OriginalStartRefillAssignments(assignments) end end
-local SCB_OriginalAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
-if SCB_OriginalAbortBotSpawnOperations then function SCB_AbortBotSpawnOperations() SCB_ClearPendingAssumedSpawns(); return SCB_OriginalAbortBotSpawnOperations() end end
-local SCB_OriginalResetSessionState = SCB_ResetSessionState
-if SCB_OriginalResetSessionState then function SCB_ResetSessionState() SCB_ClearPendingAssumedSpawns(); SCB.assumedRolesByName = {}; return SCB_OriginalResetSessionState() end end
 
 local roleEventFrame = CreateFrame("Frame", "SoloCraftBotsRoleTrackingEventFrame", UIParent)
 roleEventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
@@ -1472,25 +1468,6 @@ end
 -- Active Roster role semantics
 -- -------------------------------------------------------------------------
 
-local SCB_OriginalEstablishActiveRosterFromTracker_Detection = SCB_EstablishActiveRosterFromTracker
-if SCB_OriginalEstablishActiveRosterFromTracker_Detection then
-    function SCB_EstablishActiveRosterFromTracker(tracker)
-        local ok = SCB_OriginalEstablishActiveRosterFromTracker_Detection(tracker)
-        local roster, id, slot
-        if not ok then return ok end
-        roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
-        for id, slot in pairs(roster and roster.slots or {}) do
-            if slot and slot.expected then
-                slot.assumedRole = slot.assumedRole or slot.role
-                slot.confirmedRole = nil
-                slot.roleEvidence = nil
-                slot.detected = nil
-            end
-        end
-        return ok
-    end
-end
-
 function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
     local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
     local assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
@@ -1508,51 +1485,6 @@ function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
     return true
 end
 
-local SCB_OriginalBindReplacementToActiveSlot_Detection = SCB_BindReplacementToActiveSlot
-if SCB_OriginalBindReplacementToActiveSlot_Detection then
-    function SCB_BindReplacementToActiveSlot(slotID, newName, group)
-        local ok = SCB_OriginalBindReplacementToActiveSlot_Detection(slotID, newName, group)
-        local slot = SCB_GetActiveSlot and SCB_GetActiveSlot(slotID) or nil
-        local assumption = newName and SCB.assumedRolesByName and SCB.assumedRolesByName[newName] or nil
-        if ok and slot then
-            if assumption and assumption.role then slot.assumedRole = assumption.role end
-            slot.role = slot.assumedRole or slot.role
-            slot.confirmedRole = nil
-            slot.roleEvidence = nil
-            slot.detected = nil
-        end
-        return ok
-    end
-end
-
-local SCB_OriginalBuildLiveRoster_Detection = SCB_BuildLiveRoster
-if SCB_OriginalBuildLiveRoster_Detection then
-    function SCB_BuildLiveRoster()
-        local roster = SCB_OriginalBuildLiveRoster_Detection()
-        local i, member, state, slot
-        for i = 1, table.getn(roster and roster.members or {}) do
-            member = roster.members[i]
-            if member and member.isBot and member.name then
-                state = SCB.roleEvidenceByName[member.name]
-                slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(member.name) or nil
-                if state then
-                    member.roleEvidence = state.byRole
-                    member.confirmedRole = state.confirmedRole
-                    member.roleCandidate = state.candidateRole
-                elseif slot then
-                    member.roleEvidence = slot.roleEvidence
-                    member.confirmedRole = slot.confirmedRole
-                end
-                if SCB_GetResolvedLiveRole then
-                    member.resolvedRole = SCB_GetResolvedLiveRole(member)
-                else
-                    member.resolvedRole = member.confirmedRole or member.assumedRole
-                end
-            end
-        end
-        return roster
-    end
-end
 
 -- -------------------------------------------------------------------------
 -- Associate name-linked spawn assumptions with preset rows for the first tick.
@@ -1604,42 +1536,6 @@ function SCB_LinkAssumptionsToTrackerSlots()
                 used[chosenName] = true
             end
         end
-    end
-end
-
-local SCB_OriginalHandleAssumedRoleSystemMessage_Detection = SCB_HandleAssumedRoleSystemMessage
-if SCB_OriginalHandleAssumedRoleSystemMessage_Detection then
-    function SCB_HandleAssumedRoleSystemMessage(text)
-        local changed = SCB_OriginalHandleAssumedRoleSystemMessage_Detection(text)
-        if changed then
-            SCB_LinkAssumptionsToTrackerSlots()
-            if SCB_QueuePresetRoleIndicatorsRefresh then
-                SCB_QueuePresetRoleIndicatorsRefresh(0.05)
-            elseif SCB_RefreshPresetRoleIndicators then
-                SCB_RefreshPresetRoleIndicators()
-            end
-        end
-        return changed
-    end
-end
-
-local SCB_OriginalHandleRosterChange_Detection = SCB_HandleRosterChange
-if SCB_OriginalHandleRosterChange_Detection then
-    function SCB_HandleRosterChange()
-        local result = SCB_OriginalHandleRosterChange_Detection()
-        local current = result and result.byName or {}
-        local name
-
-        SCB_LinkAssumptionsToTrackerSlots()
-        for name in pairs(SCB.roleEvidenceByName or {}) do
-            if not current[name] then SCB.roleEvidenceByName[name] = nil end
-        end
-        if SCB_QueuePresetRoleIndicatorsRefresh then
-            SCB_QueuePresetRoleIndicatorsRefresh(0.15)
-        elseif SCB_RefreshPresetRoleIndicators then
-            SCB_RefreshPresetRoleIndicators()
-        end
-        return result
     end
 end
 
@@ -1766,6 +1662,13 @@ function SCB_RefreshPresetRoleIndicators()
             end
         end
     end
+    if SCB_EnsureRoleDetectionOption and not SCB_EnsureRoleDetectionOption() then
+        for i = 1, 40 do
+            row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+            if row and row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
+        end
+    end
+
 end
 
 function SCB_QueuePresetRoleIndicatorsRefresh(delay)
@@ -1912,7 +1815,7 @@ function SCB_RefreshRoleDetectionLifecycle(observed)
     SCB_SetRoleDetectionEventsEnabled(pending, "Combat role scanning sleeping; all tracked bots confirmed")
 end
 
-local function SCB_QueueRoleDetectionLifecycleRefresh(delay)
+function SCB_QueueRoleDetectionLifecycleRefresh(delay)
     local frame
     if not SCB_EnsureRoleDetectionOption() then return end
     frame = SCB.roleDetectionLifecycleRefreshFrame
@@ -1951,42 +1854,6 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     local changed = SCB_PreviousAddBotRoleEvidence_Lifecycle(name, classKey, role, spell, eventName)
     SCB_RefreshRoleDetectionLifecycle()
     return changed
-end
-
-local SCB_PreviousHandleRosterChange_Lifecycle = SCB_HandleRosterChange
-if SCB_PreviousHandleRosterChange_Lifecycle then
-    function SCB_HandleRosterChange()
-        local result = SCB_PreviousHandleRosterChange_Lifecycle()
-        SCB_QueueRoleDetectionLifecycleRefresh(0.15)
-        return result
-    end
-end
-
-local SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle = SCB_HandleAssumedRoleSystemMessage
-if SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle then
-    function SCB_HandleAssumedRoleSystemMessage(text)
-        local changed = SCB_PreviousHandleAssumedRoleSystemMessage_Lifecycle(text)
-        if changed then SCB_RefreshRoleDetectionLifecycle() end
-        return changed
-    end
-end
-
-local SCB_PreviousRefreshPresetRoleIndicators_Lifecycle = SCB_RefreshPresetRoleIndicators
-function SCB_RefreshPresetRoleIndicators()
-    local result
-    local i, row
-    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
-        SCB.presetRoleIndicatorsDirty = true
-        return
-    end
-    result = SCB_PreviousRefreshPresetRoleIndicators_Lifecycle()
-    if not SCB_EnsureRoleDetectionOption() then
-        for i = 1, 40 do
-            row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
-            if row and row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
-        end
-    end
-    return result
 end
 
 detectionFrame:SetScript("OnEvent", function()
@@ -2626,7 +2493,7 @@ local function SCB_BuildLiveRaidPositions()
     return result
 end
 
-local function SCB_RefreshTrackerLiveLayout()
+function SCB_RefreshTrackerLiveLayout()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
     local positions, changed
     local i, player, assignment, name, live, assumption
@@ -2673,7 +2540,7 @@ local function SCB_RefreshTrackerLiveLayout()
     return changed
 end
 
-local function SCB_QueueTrackerLiveLayoutRefresh(delay)
+function SCB_QueueTrackerLiveLayoutRefresh(delay)
     local frame = SCB.trackerLiveLayoutRefreshFrame
     if not frame then
         frame = CreateFrame("Frame", "SoloCraftBotsTrackerLiveLayoutRefreshFrame", UIParent)
@@ -2692,21 +2559,4 @@ local function SCB_QueueTrackerLiveLayoutRefresh(delay)
     frame:Show()
 end
 
-local SCB_PreviousTryFinalizeRaidRoleTracking_Layout = SCB_TryFinalizeRaidRoleTracking
-if SCB_PreviousTryFinalizeRaidRoleTracking_Layout then
-    function SCB_TryFinalizeRaidRoleTracking()
-        local ready = SCB_PreviousTryFinalizeRaidRoleTracking_Layout()
-        if ready then SCB_RefreshTrackerLiveLayout() end
-        return ready
-    end
-end
-
-local SCB_PreviousHandleRosterChange_Layout = SCB_HandleRosterChange
-if SCB_PreviousHandleRosterChange_Layout then
-    function SCB_HandleRosterChange()
-        local result = SCB_PreviousHandleRosterChange_Layout()
-        SCB_QueueTrackerLiveLayoutRefresh(0.15)
-        return result
-    end
-end
 end

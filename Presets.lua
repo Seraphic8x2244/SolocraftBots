@@ -2149,6 +2149,7 @@ end
 -- player/party1..party4 order. Roles still come only from the preset: roster order
 -- is used solely to bind each bot name to its logical preset assignment.
 function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     local tracker = {
         version = 5,
         mode = size <= 5 and "party" or "raid",
@@ -2266,10 +2267,24 @@ function SCB_ApplyTrackedPfUITankRoles(tracker)
     end
 end
 
+local function SCB_PostFinalizeRaidRoleTracking(tracker)
+    if not tracker or not tracker.ready then return false end
+    if SCB_ReconcileTrackerFromAssumedRoles and SCB_ReconcileTrackerFromAssumedRoles(tracker) then
+        if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
+        if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
+    end
+    if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout() end
+    return true
+end
+
 function SCB_TryFinalizeRaidRoleTracking()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
-    if not tracker or tracker.ready or not tracker.assignments then return tracker and tracker.ready end
+    if not tracker or not tracker.assignments then return tracker and tracker.ready end
+    if tracker.ready then
+        SCB_PostFinalizeRaidRoleTracking(tracker)
+        return true
+    end
     if not tracker.allowFinalize then return false end
 
     expectedByGroup = {}
@@ -2280,25 +2295,17 @@ function SCB_TryFinalizeRaidRoleTracking()
     end
 
     if tracker.mode == "party" or (tracker.size or 0) <= 5 then
-        -- A party has no subgroup API, but player/party1..party4 is still the
-        -- authoritative client roster order. Filter humans and ordinal-map the
-        -- remaining bot names onto the preset's active bot assignments.
         if GetNumRaidMembers and GetNumRaidMembers() > 0 then return false end
         members = SCB_CollectGroupMembers()
         if table.getn(members) ~= (tracker.size or 0) then
             tracker.partyFullSeenAt = nil
             return false
         end
-
         actual = {}
-        for i = 1, table.getn(members) do
-            if members[i].isBot then table.insert(actual, { name = members[i].name }) end
-        end
+        for i = 1, table.getn(members) do if members[i].isBot then table.insert(actual, { name = members[i].name }) end end
         expected = expectedByGroup[1]
         if table.getn(actual) ~= table.getn(expected) then return false end
-        for ordinal = 1, table.getn(expected) do
-            expected[ordinal].botName = actual[ordinal].name
-        end
+        for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
     else
         if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
         botsByGroup = SCB_GetRaidBotsByGroup()
@@ -2310,9 +2317,7 @@ function SCB_TryFinalizeRaidRoleTracking()
         for g = 1, math.ceil((tracker.size or 0) / 5) do
             expected = expectedByGroup[g]
             actual = botsByGroup[g] or {}
-            for ordinal = 1, table.getn(expected) do
-                expected[ordinal].botName = actual[ordinal].name
-            end
+            for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
         end
     end
 
@@ -2320,11 +2325,13 @@ function SCB_TryFinalizeRaidRoleTracking()
     tracker.completedAt = GetTime and GetTime() or 0
     SCB_ApplyTrackedPfUITankRoles(tracker)
     if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
-    if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY"))) end
+    if SCB_DebugLog then
+        SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY")))
+    end
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    SCB_PostFinalizeRaidRoleTracking(tracker)
     return true
 end
-
 function SCB_GetTrackedHumanCounts(tracker)
     local counts, names, members, i, member, player
     counts = {}
@@ -2489,6 +2496,7 @@ function SCB_QueueRefillButtonRefresh(delay)
 end
 
 function SCB_StartRefillAssignments(assignments)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     local remaining = {}
     local i
     if not assignments or table.getn(assignments) == 0 then return false end
@@ -3356,6 +3364,7 @@ function SCB_BuildPresetExecutionSnapshot()
 end
 
 function SCB_HasBotSpawnOperation()
+    if SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() then return true end
     return (SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0)
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
@@ -3365,7 +3374,7 @@ function SCB_HasBotSpawnOperation()
         or (SCB.activeRosterTransition and SCB.activeRosterTransition.kind == "preset")
 end
 
-function SCB_AbortBotSpawnOperations()
+function SCB_AbortBotSpawnOperationsCore()
     -- Explicit recovery path for server-side rejection or a user-forced retry.
     -- Never leave a consumed spawn burst parked behind a roster barrier that can
     -- no longer succeed. Any bots that really did spawn are observed/adopted

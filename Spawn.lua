@@ -138,6 +138,7 @@ local function SCB_TryRemoveParkedSurvivor()
 end
 
 SCB.scb072TryParkSurvivorInGroupEight = SCB_TryParkSurvivorInGroupEight
+SCB.scb072TryRemoveParkedSurvivorBase = SCB_TryRemoveParkedSurvivor
 SCB.scb072TryRemoveParkedSurvivor = SCB_TryRemoveParkedSurvivor
 
 -- -------------------------------------------------------------------------
@@ -189,6 +190,8 @@ local function SCB_0826SetMaintenanceSentinel(operation, active)
         SCB.replaceDeadState = nil
     end
 end
+
+SCB.scb0826SetMaintenanceSentinel = SCB_0826SetMaintenanceSentinel
 
 local function SCB_0826FinishMaintenance(status, reason, userText)
     local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
@@ -627,36 +630,6 @@ function SCB_MaintenanceReplaceOnUpdate()
         "Bot maintenance stopped because its internal phase was invalid.")
 end
 
-local SCB_0826PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
-if SCB_0826PreviousAbortBotSpawnOperations then
-    function SCB_AbortBotSpawnOperations()
-        local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
-        if operation and operation.kind == "maintenance" then
-            -- Maintenance already stores its physical lifecycle in botOperation.
-            -- Do not fall through to the legacy global abort here: that path also
-            -- destroys the persistent preset tracker, which is unrelated to a
-            -- maintenance cancellation and would make a retry less recoverable.
-            SCB_0826SetMaintenanceSentinel(operation, false)
-            if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
-            if SCB_EndBotOperation then SCB_EndBotOperation("aborted", "maintenance runtime aborted") end
-            if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-            if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
-            return
-        end
-        return SCB_0826PreviousAbortBotSpawnOperations()
-    end
-end
-
-local SCB_0826PreviousResetSessionState = SCB_ResetSessionState
-if SCB_0826PreviousResetSessionState then
-    function SCB_ResetSessionState()
-        local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
-        if operation and operation.kind == "maintenance" then
-            SCB_0826SetMaintenanceSentinel(operation, false)
-        end
-        return SCB_0826PreviousResetSessionState()
-    end
-end
 end
 
 -- SoloCraft Bots - authoritative summon runtime.
@@ -827,26 +800,7 @@ local function SCB_ResetSpawnRuntimeState()
     if operation and operation.kind == "preset" then operation.safety = nil end
 end
 
-local SCB_073PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
-if SCB_073PreviousAbortBotSpawnOperations then
-    function SCB_AbortBotSpawnOperations()
-        SCB_ResetSpawnRuntimeState()
-        local result = SCB_073PreviousAbortBotSpawnOperations()
-        SCB_ResetSpawnRuntimeState()
-        if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
-        return result
-    end
-end
-
-local SCB_0816PreviousResetSessionState = SCB_ResetSessionState
-if SCB_0816PreviousResetSessionState then
-    function SCB_ResetSessionState()
-        SCB_ResetSpawnRuntimeState()
-        return SCB_0816PreviousResetSessionState()
-    end
-end
-
-function SCB_StartPresetSummonSnapshot(snapshot)
+local function SCB_StartPresetSummonSnapshotCore(snapshot)
     local valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
     local group, size, slots, occupied, tracker, groups
     local queue, plans, groupCount, startBotState, survivorName
@@ -1040,7 +994,7 @@ local function SCB_AbortInvalidSchedulerItem(item)
     SCB_Print("Summon aborted because the internal summon queue was invalid.")
 end
 
-function SCB_PresetSpawnQueueOnUpdate()
+local function SCB_PresetSpawnQueueOnUpdateCore()
     local elapsed = arg1 or 0
     local queue = SCB.presetSpawnQueue or {}
     local head, plan, retry, bootstrapName
@@ -1436,43 +1390,46 @@ function SCB_AbortBotOperation(reason)
     return SCB_EndBotOperation("aborted", reason)
 end
 
-local SCB_0819PreviousHasBotSpawnOperation = SCB_HasBotSpawnOperation
-function SCB_HasBotSpawnOperation()
-    if SCB_GetActiveBotOperation() then return true end
-    if SCB_0819PreviousHasBotSpawnOperation then
-        return SCB_0819PreviousHasBotSpawnOperation()
+function SCB_AbortBotSpawnOperations(preserveOperation)
+    local operation = SCB_GetActiveBotOperation()
+
+    if operation and operation.kind == "maintenance" then
+        SCB_ResetSpawnRuntimeState()
+        if SCB.scb0826SetMaintenanceSentinel then SCB.scb0826SetMaintenanceSentinel(operation, false) end
+        if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+        if SCB_EndBotOperation then SCB_EndBotOperation("aborted", "maintenance runtime aborted") end
+        if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
+        if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
+        SCB_ResetSpawnRuntimeState()
+        if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+        return
     end
-    return false
+
+    if operation and operation.kind == "preset" then operation.safety = nil end
+    if preserveOperation and operation then
+        SCB_ClearOperationRebuild(operation)
+        operation.phase = "replacing"
+        operation.updatedAt = SCB_OperationNow()
+    end
+
+    SCB_ResetSpawnRuntimeState()
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+    local result
+    if SCB_AbortBotSpawnOperationsCore then result = SCB_AbortBotSpawnOperationsCore() end
+    SCB_ResetSpawnRuntimeState()
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+    if not preserveOperation then SCB_AbortBotOperation("spawn runtime aborted") end
+    return result
 end
 
-local SCB_0819PreviousAbortBotSpawnOperations = SCB_AbortBotSpawnOperations
-if SCB_0819PreviousAbortBotSpawnOperations then
-    function SCB_AbortBotSpawnOperations(preserveOperation)
-        local operation = SCB_GetActiveBotOperation()
-
-        if operation and operation.kind == "preset" then operation.safety = nil end
-
-        if preserveOperation and operation then
-            SCB_ClearOperationRebuild(operation)
-            operation.phase = "replacing"
-            operation.updatedAt = SCB_OperationNow()
-        end
-
-        local result = SCB_0819PreviousAbortBotSpawnOperations()
-
-        if not preserveOperation then
-            SCB_AbortBotOperation("spawn runtime aborted")
-        end
-        return result
-    end
-end
-
-local SCB_0819PreviousResetSessionState = SCB_ResetSessionState
-if SCB_0819PreviousResetSessionState then
-    function SCB_ResetSessionState()
-        SCB_AbortBotOperation("session reset")
-        return SCB_0819PreviousResetSessionState()
-    end
+function SCB_ResetSessionState()
+    SCB_AbortBotOperation("session reset")
+    SCB_ResetSpawnRuntimeState()
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+    SCB.assumedRolesByName = {}
+    SCB_EnsureSessionDB()
+    SoloCraftBotsDB.session.knownBots = {}
+    SoloCraftBotsDB.session.state = { distance = "near" }
 end
 
 local function SCB_PresetOperationIntent(snapshot)
@@ -1726,52 +1683,29 @@ local function SCB_SyncPresetOperationPhase()
     SCB_EndBotOperation("complete", nil)
 end
 
-local SCB_0819PreviousPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
-if SCB_0819PreviousPresetSpawnQueueOnUpdate then
-    function SCB_PresetSpawnQueueOnUpdate()
-        SCB_SyncPresetOperationPhase()
-        local result = SCB_0819PreviousPresetSpawnQueueOnUpdate()
-        SCB_SyncPresetOperationPhase()
-        if not SCB_GetActiveBotOperation() and not SCB_HasLegacyPhysicalBotRuntime() then
-            if SCB.presetSpawnQueueFrame then SCB.presetSpawnQueueFrame:Hide() end
-        end
-        return result
-    end
-end
-
 -- -------------------------------------------------------------------------
 -- Bootstrap continuity (absorbed from SpawnBootstrap.lua in 0.8.25).
 -- -------------------------------------------------------------------------
 
-local SCB_0824PreviousStartPresetSummonSnapshot = SCB_StartPresetSummonSnapshot
-if SCB_0824PreviousStartPresetSummonSnapshot then
-    function SCB_StartPresetSummonSnapshot(snapshot)
-        local ok, errorText = SCB_0824PreviousStartPresetSummonSnapshot(snapshot)
-        local safety, anchorName, size
+function SCB_StartPresetSummonSnapshot(snapshot)
+    local ok, errorText = SCB_StartPresetSummonSnapshotCore(snapshot)
+    local safety, anchorName, size
+    if not ok then return ok, errorText end
 
-        if not ok then return ok, errorText end
-
-        safety = SCB_GetBotOperationSafety and SCB_GetBotOperationSafety(false) or nil
-        anchorName = SCB_GetKickAllAnchorForFreshBuild
-            and SCB_GetKickAllAnchorForFreshBuild() or nil
-        size = tonumber(snapshot and snapshot.size) or 0
-
-        if safety and anchorName and safety.survivorName == anchorName then
-            safety.bootstrapName = anchorName
-            safety.bootstrapTopology = size > 5 and "raid" or "party"
-            safety.bootstrapOrigin = "retained"
-            if SCB_DebugLog then
-                SCB_DebugLog(
-                    "Spawn",
-                    "Retained " .. tostring(anchorName)
-                    .. " as " .. tostring(safety.bootstrapTopology)
-                    .. " bootstrap for preset rebuild"
-                )
-            end
+    safety = SCB_GetBotOperationSafety and SCB_GetBotOperationSafety(false) or nil
+    anchorName = SCB_GetKickAllAnchorForFreshBuild and SCB_GetKickAllAnchorForFreshBuild() or nil
+    size = tonumber(snapshot and snapshot.size) or 0
+    if safety and anchorName and safety.survivorName == anchorName then
+        safety.bootstrapName = anchorName
+        safety.bootstrapTopology = size > 5 and "raid" or "party"
+        safety.bootstrapOrigin = "retained"
+        if SCB_DebugLog then
+            SCB_DebugLog("Spawn", "Retained " .. tostring(anchorName)
+                .. " as " .. tostring(safety.bootstrapTopology)
+                .. " bootstrap for preset rebuild")
         end
-
-        return ok, errorText
     end
+    return ok, errorText
 end
 
 local function SCB_0823BootstrapSafety()
@@ -1879,41 +1813,35 @@ local function SCB_0823CurrentBurstNeedsFreedCapacity()
     return true
 end
 
-local SCB_0823PreviousTryRemoveParkedSurvivor = SCB.scb072TryRemoveParkedSurvivor
-if SCB_0823PreviousTryRemoveParkedSurvivor then
-    SCB.scb072TryRemoveParkedSurvivor = function()
-        local safety = SCB_0823BootstrapSafety()
-        local queue, head
-
-        if not safety then
-            return SCB_0823PreviousTryRemoveParkedSurvivor()
-        end
-
-        SCB_0823PollBootstrapRemoval()
-        safety = SCB_0823BootstrapSafety()
-        if not safety then return true end
-
-        queue = SCB.presetSpawnQueue or {}
-        head = queue[1]
-
-        if head == SCB.PRESET_TRACK_ROSTER then
-            return false
-        end
-
-        if head == SCB.PRESET_CHECK_COMBAT
-            and not SCB.presetLastBurstRequeued
-            and SCB_0823CurrentBurstNeedsFreedCapacity() then
-            return false
-        end
-
+SCB.scb072TryRemoveParkedSurvivor = function()
+    local safety = SCB_0823BootstrapSafety()
+    local queue, head
+    if not safety then
+        if SCB.scb072TryRemoveParkedSurvivorBase then return SCB.scb072TryRemoveParkedSurvivorBase() end
         return true
     end
+
+    SCB_0823PollBootstrapRemoval()
+    safety = SCB_0823BootstrapSafety()
+    if not safety then return true end
+    queue = SCB.presetSpawnQueue or {}
+    head = queue[1]
+    if head == SCB.PRESET_TRACK_ROSTER then return false end
+    if head == SCB.PRESET_CHECK_COMBAT
+        and not SCB.presetLastBurstRequeued
+        and SCB_0823CurrentBurstNeedsFreedCapacity() then
+        return false
+    end
+    return true
 end
 
-local SCB_0823PreviousPresetSpawnQueueOnUpdate = SCB_PresetSpawnQueueOnUpdate
-if SCB_0823PreviousPresetSpawnQueueOnUpdate then
-    function SCB_PresetSpawnQueueOnUpdate()
-        SCB_0823PollBootstrapRemoval()
-        return SCB_0823PreviousPresetSpawnQueueOnUpdate()
+function SCB_PresetSpawnQueueOnUpdate()
+    SCB_0823PollBootstrapRemoval()
+    SCB_SyncPresetOperationPhase()
+    local result = SCB_PresetSpawnQueueOnUpdateCore()
+    SCB_SyncPresetOperationPhase()
+    if not SCB_GetActiveBotOperation() and not SCB_HasLegacyPhysicalBotRuntime() then
+        if SCB.presetSpawnQueueFrame then SCB.presetSpawnQueueFrame:Hide() end
     end
+    return result
 end
