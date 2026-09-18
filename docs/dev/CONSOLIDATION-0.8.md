@@ -1,8 +1,8 @@
 # SoloCraftBots 0.8 Consolidation Plan
 
-Status: implementation in progress on dev
+Status: six-owner structural consolidation complete on dev; post-consolidation cleanup/regression remains
 Behavioural reference: 0.7.14
-Current development line: 0.8.23-dev
+Current development line: 0.8.34-dev
 
 ## Purpose
 
@@ -109,8 +109,8 @@ Owns developer diagnostics and debug UI.
 
 1. **Location / Presets**
    - [x] Eliminate `LocationZones.lua` late correction layer.
-   - [ ] ~~Move the remaining `Location.lua` implementation into `Presets.lua` immediately.~~ Superseded as a mandatory step: reassess after Presets sheds non-preset runtime code.
-   - [ ] Centralize runtime zone strings/capacity policy in one final owner, whether that is Presets or a retained Location file.
+   - [x] Move the remaining `Location.lua` implementation into `Presets.lua` in 0.8.34-dev after final ownership was settled.
+   - [x] Centralize runtime zone strings/capacity policy in `Presets.lua`.
    - [ ] Make saved-raid safety consumers use canonical runtime location data rather than localized labels.
 
 2. **Options / Chat filter**

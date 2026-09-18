@@ -329,3 +329,11 @@ Recommended migration order after 0.8.28:
 6. run one consolidated regression pass before considering `main` promotion.
 
 Do not rewrite historical entries above to make this final target appear preordained. The architecture changed as runtime evidence and user design decisions accumulated.
+
+## 0.8.34-dev — six-owner structural consolidation complete
+
+- Absorbed the exact `Location.lua` implementation into a scoped block at the end of `Presets.lua`, preserving its former post-Presets execution order and local namespace.
+- Absorbed the exact `ChatFeedback.lua` implementation into a scoped block at the end of `Communication.lua`. Its only Options-side dependency (`SCB_DebugLog`) is runtime-resolved inside the server-rejection handler, so moving the presentation/event registration earlier does not require a late bridge.
+- Removed standalone `Location.lua` and `ChatFeedback.lua` from the repository/TOC.
+- TOC now loads the six agreed non-locale Lua owners: `SoloCraftBots.lua`, `Presets.lua`, `Roster.lua`, `Spawn.lua`, `Communication.lua`, and `Options.lua`.
+- Behaviour is intentionally unchanged; this build completes structural ownership consolidation only. Post-consolidation slot-editor/UI cleanup and the full regression pass remain separate work.
