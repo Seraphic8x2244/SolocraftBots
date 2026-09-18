@@ -251,3 +251,20 @@ Before and during each phase, add developer-only counters rather than user-facin
 - communications OnUpdate frames.
 
 A debug snapshot after a 40-man Kick All should make amplification obvious. Desired end state is approximately one roster build per roster event, with expensive UI/layout work coalesced and unrelated subsystems showing zero work for irrelevant changes.
+
+## 0.8.38-dev wrapper-flatten status
+
+Runtime commit: `8e64161e2b2ab8218ace81ec4c508776e9f2146a`
+
+The hot runtime wrapper chains are now flattened while preserving the 0.8.37 behaviour/order:
+- one explicit `SCB_HandleRosterChange()` owns roster observation, identity binding/pruning, Active Roster sync, UI invalidation queues, role-detection lifecycle queueing and layout queueing;
+- identity binding now consumes the same raw group-member snapshot as the canonical Live Roster build, removing the extra pre-build `SCB_CollectGroupMembers()` pass;
+- Live Roster identity + role-evidence enrichment is performed inside one build rather than stacked wrappers;
+- tracker finalization is one explicit base/post-finalize flow rather than Presets -> RoleTracking -> Layout wrappers;
+- Active Roster establishment, bootstrap adoption exclusion and replacement role reset are direct owner behaviour rather than wrappers;
+- the Spawn preset scheduler is one public composition around one private core; the former 0819/0823 wrapper chain is gone;
+- preset summon bootstrap handling is one public composition around one private core;
+- bot-operation status and abort/reset handling are explicit owner flows rather than layered wrappers;
+- survivor-removal fallback uses a stable base function reference rather than a Previous-wrapper closure.
+
+Still intentionally left alone in this pass: preset-editor interaction wrappers and the small combat-role/UI compatibility wrappers that are unrelated to mass roster churn. Kick All remains paced at 5 per 0.10s until 0.8.38 runtime behaviour is proven; the next A/B is restoration of same-frame mass Kick All.

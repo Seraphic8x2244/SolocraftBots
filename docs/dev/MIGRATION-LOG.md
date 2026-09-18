@@ -367,3 +367,15 @@ Do not rewrite historical entries above to make this final target appear preorda
 - The preset/spawn scheduler, communications timeout/chunk worker, and developer debug updater now sleep while idle and wake only when their timed work is active.
 - Spawn/maintenance safety barriers that intentionally require fresh arrivals/departures/combat/subgroup/capacity observation are unchanged.
 - Wrapper-chain flattening is deliberately deferred until this performance build is runtime-proven.
+
+## 0.8.38-dev — flatten hot runtime wrapper chains
+
+- Replaced the layered roster-change wrapper stack with one explicit `SCB_HandleRosterChange()` flow while preserving the 0.8.37 consumer order and debounce behaviour.
+- The roster handler now captures group members once, binds pending identities against that raw snapshot, and builds the enriched Live Roster from the same snapshot instead of scanning the group twice.
+- Folded RoleTracking and Detection Live Roster enrichment directly into `SCB_BuildLiveRoster`.
+- Folded Active Roster tracker establishment, bootstrap exclusion and replacement role-reset semantics into their owner functions.
+- Moved tracker post-finalization reconciliation/layout observation into one explicit finalization flow.
+- Flattened the Spawn scheduler and preset-summon wrapper chains into public entry points around private cores.
+- Flattened bot-operation presence/abort/reset handling and removed the historical Previous/Original closure chain from the active Spawn path.
+- Preserved maintenance abort semantics, survivor/bootstrap handling, removal settle timing and 0.8.37 idle-worker behaviour.
+- Mass Kick All pacing remains unchanged at 5 uninvites per 0.10s for this runtime gate.
