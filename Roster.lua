@@ -45,18 +45,24 @@ function SCB_CollectGroupMembers()
     local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     local i, unit, name
+    local memberRank, subgroup, groupRows
 
     if raidCount > 0 then
+        groupRows = {}
+        for i = 1, 8 do groupRows[i] = 0 end
         for i = 1, raidCount do
             unit = "raid" .. i
-            name = UnitName(unit)
+            name, memberRank, subgroup = GetRaidRosterInfo(i)
             if name then
-                local _, memberRank, subgroup = GetRaidRosterInfo(i)
+                subgroup = subgroup or 1
+                groupRows[subgroup] = (groupRows[subgroup] or 0) + 1
                 table.insert(members, {
                     unit = unit,
                     name = name,
                     subgroup = subgroup,
                     rank = memberRank,
+                    raidIndex = i,
+                    groupRow = groupRows[subgroup],
                     isSelf = playerName and name == playerName or false,
                     isBot = SCB_IsBotName(name),
                     dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit) and true or false,
@@ -158,17 +164,37 @@ function SCB_BuildLiveRoster(rawMembers)
         humanCount = 0,
     }
     local i, member, className, classFile, association, knownBots
-    local assumption, slot, state
+    local assumption, slot, state, tracker, activeRoster, id, entry
+    local trackerBotsByName, trackerHumansByName, activeSlotsByName = {}, {}, {}
 
     for i = 1, 8 do roster.groups[i] = {} end
     if SoloCraftBotsDB and SoloCraftBotsDB.session then
         knownBots = SoloCraftBotsDB.session.knownBots
     end
 
+    tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    for i = 1, table.getn(tracker and tracker.assignments or {}) do
+        entry = tracker.assignments[i]
+        if entry and entry.botName then trackerBotsByName[entry.botName] = entry end
+    end
+    for i = 1, table.getn(tracker and tracker.players or {}) do
+        entry = tracker.players[i]
+        if entry and entry.name then trackerHumansByName[entry.name] = entry end
+    end
+    activeRoster = SCB_EnsureActiveRosterDB and SCB_EnsureActiveRosterDB()
+        or (SoloCraftBotsCharDB and SoloCraftBotsCharDB.activeRoster or nil)
+    for id, slot in pairs(activeRoster and activeRoster.slots or {}) do
+        if slot and slot.expected and slot.currentName then activeSlotsByName[slot.currentName] = slot end
+    end
+
     for i = 1, table.getn(rawMembers) do
         member = rawMembers[i]
         className, classFile = UnitClass and UnitClass(member.unit)
-        association = SCB_GetTrackedRosterAssociation(member.name, member.isBot)
+        if member.isBot then
+            association = trackerBotsByName[member.name]
+        else
+            association = trackerHumansByName[member.name]
+        end
 
         member.class = className
         member.classFile = classFile
@@ -178,13 +204,15 @@ function SCB_BuildLiveRoster(rawMembers)
         member.isPresetMember = association and true or false
 
         if association then
-            member.associationSource = association.source
-            member.presetSlotIndex = association.presetSlotIndex
-            member.intendedGroup = association.intendedGroup
-            member.assumedClass = association.assumedClass
-            member.assumedRole = association.assumedRole
-            member.assumedExtra = association.assumedExtra
-            member.trackerAssignment = association.trackerEntry
+            member.associationSource = "preset"
+            member.presetSlotIndex = association.slotIndex
+            member.intendedGroup = association.group
+            member.assumedRole = association.role
+            member.assumedExtra = association.extra
+            if member.isBot then
+                member.assumedClass = association.class
+                member.trackerAssignment = association
+            end
             if member.intendedGroup then member.groupMatchesIntent = member.currentGroup == member.intendedGroup end
         end
 
@@ -207,8 +235,8 @@ function SCB_BuildLiveRoster(rawMembers)
             member.assumedClass = assumption.class or member.assumedClass
             member.assumedRoleSource = "spawn"
             member.spawnKind = assumption.spawnKind
-        elseif member.isBot and SCB_GetActiveSlotByName then
-            slot = SCB_GetActiveSlotByName(member.name)
+        elseif member.isBot then
+            slot = activeSlotsByName[member.name]
             if slot and slot.role then
                 member.assumedRole = slot.role
                 member.assumedExtra = slot.extra
@@ -220,7 +248,7 @@ function SCB_BuildLiveRoster(rawMembers)
 
         if member.isBot and member.name then
             state = SCB.roleEvidenceByName and SCB.roleEvidenceByName[member.name] or nil
-            slot = slot or (SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(member.name) or nil)
+            slot = slot or activeSlotsByName[member.name]
             if state then
                 member.roleEvidence = state.byRole
                 member.confirmedRole = state.confirmedRole
@@ -274,6 +302,27 @@ function SCB_GetLiveGroup(group, refresh)
     local roster = SCB_GetLiveRoster(refresh)
     if not roster then return nil end
     return roster.groups[group]
+end
+
+-- Membership/subgroup state is event-driven during active physical operations.
+-- The bounded fallback protects forks/transitions that miss a roster event.
+-- Combat checks are deliberately independent and are never gated by this.
+function SCB_PollOperationRosterFallback(elapsed, interval)
+    local revision = SCB.rosterEventRevision or 0
+    interval = interval or 0.25
+
+    if SCB.operationRosterSeenRevision ~= revision then
+        SCB.operationRosterSeenRevision = revision
+        SCB.operationRosterFallbackRemaining = interval
+        return SCB.liveRoster
+    end
+
+    SCB.operationRosterFallbackRemaining = (SCB.operationRosterFallbackRemaining or interval) - (elapsed or 0)
+    if SCB.operationRosterFallbackRemaining <= 0 then
+        SCB.operationRosterFallbackRemaining = interval
+        return SCB_RefreshLiveRoster()
+    end
+    return SCB.liveRoster
 end
 
 -- -------------------------------------------------------------------------
@@ -357,7 +406,7 @@ function SCB_BeginActiveRosterPresetTransition(size)
     SCB_ClearActiveRoster("preset-transition", true)
     roster = SCB_EnsureActiveRosterDB()
     roster.expectedCap = tonumber(size) or 0
-    SCB_UpdateActiveRosterLocation(roster, tonumber(size), table.getn(SCB_CollectGroupMembers()))
+    SCB_UpdateActiveRosterLocation(roster, tonumber(size), SCB.liveRoster and SCB.liveRoster.count or nil)
     SCB.activeRosterTransition = { kind = "preset", expectedCap = tonumber(size) or 0, startedAt = GetTime and GetTime() or 0 }
 end
 
@@ -377,11 +426,11 @@ local function SCB_ActiveObservedClass(member)
     return nil
 end
 
-function SCB_EstablishActiveRosterFromTracker(tracker)
-    local roster, observed, i, assignment, member, slot
+function SCB_EstablishActiveRosterFromTracker(tracker, observed)
+    local roster, i, assignment, member, slot
     if not tracker or not tracker.ready or not tracker.assignments then return false end
     roster = SCB_EnsureActiveRosterDB()
-    observed = SCB_GetLiveRoster(true)
+    observed = observed or SCB_GetLiveRoster(false) or SCB_GetLiveRoster(true)
     roster.active = true
     roster.suppressed = false
     roster.slots = {}
@@ -404,7 +453,7 @@ function SCB_EstablishActiveRosterFromTracker(tracker)
     end
     roster.updatedAt = GetTime and GetTime() or 0
     SCB.activeRosterTransition = nil
-    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton(observed, false) end
     return true
 end
 
@@ -576,12 +625,13 @@ function SCB_GetActiveMaintenanceRecords(observed, syncFirst)
     observed = observed or SCB_GetLiveRoster(false)
     for id, slot in pairs(roster.slots or {}) do
         if slot and slot.expected then
-            replacement = SCB_BuildActiveReplacementRecord(slot)
             if slot.state == "missing" then
+                replacement = SCB_BuildActiveReplacementRecord(slot)
                 if replacement then table.insert(missing, slot) else table.insert(unavailableMissing, slot) end
             else
                 member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
                 if member and member.isBot and member.dead then
+                    replacement = SCB_BuildActiveReplacementRecord(slot)
                     if replacement then table.insert(dead, slot) else table.insert(unavailableDead, slot) end
                 end
             end
@@ -600,8 +650,8 @@ function SCB_ReconcileSavedActiveRoster()
     if not roster.active then
         SCB.activeRosterReconcilePending = false
         if not roster.suppressed then SCB_InitializeActiveRosterFromObserved(observed) end
-        if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
-        if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+        if SCB_ValidateSavedSession then SCB_ValidateSavedSession(observed) end
+        if SCB_RefreshRefillButton then SCB_RefreshRefillButton(observed, false) end
         return
     end
     for id, slot in pairs(roster.slots or {}) do
@@ -614,7 +664,7 @@ function SCB_ReconcileSavedActiveRoster()
     if expectedCount > 0 and presentCount == 0 then
         SCB.activeRosterReconcilePending = false
         SCB_ClearActiveRoster("session-ended", false)
-        if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
+        if SCB_ValidateSavedSession then SCB_ValidateSavedSession(observed) end
         return
     end
     for id, slot in pairs(roster.slots or {}) do
@@ -634,9 +684,9 @@ function SCB_ReconcileSavedActiveRoster()
     end
     SCB_UpdateActiveRosterLocation(roster, nil, observed and observed.count or 0)
     SCB.activeRosterReconcilePending = false
-    SCB_SyncActiveRosterFromObserved()
-    if SCB_ValidateSavedSession then SCB_ValidateSavedSession() end
-    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    SCB_SyncActiveRosterFromObserved(observed)
+    if SCB_ValidateSavedSession then SCB_ValidateSavedSession(observed) end
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton(observed, false) end
 end
 
 function SCB_QueueActiveRosterWorldReconcile(delay)
@@ -659,47 +709,53 @@ function SCB_QueueActiveRosterWorldReconcile(delay)
     frame:Show()
 end
 
-function SCB_GroupHasBots()
-    local members = SCB_CollectGroupMembers()
-    local i
-    for i = 1, table.getn(members) do if members[i].isBot then return true end end
-    return false
+local function SCB_GroupObservation(observed)
+    observed = observed or SCB.liveRoster
+    if observed then return observed end
+    return SCB_BuildLiveRoster(SCB_CollectGroupMembers())
 end
 
-function SCB_FindFirstGroupBotName()
-    local members = SCB_CollectGroupMembers()
-    local i
-    for i = 1, table.getn(members) do if members[i].isBot then return members[i].name end end
+function SCB_GroupHasBots(observed)
+    observed = SCB_GroupObservation(observed)
+    return observed and (observed.botCount or 0) > 0 or false
+end
+
+function SCB_FindFirstGroupBotName(observed)
+    local i, member
+    observed = SCB_GroupObservation(observed)
+    for i = 1, table.getn(observed and observed.members or {}) do
+        member = observed.members[i]
+        if member and member.isBot then return member.name end
+    end
     return nil
 end
 
-function SCB_CountGroupBots()
-    local members = SCB_CollectGroupMembers()
-    local count, i = 0, nil
-    for i = 1, table.getn(members) do if members[i].isBot then count = count + 1 end end
+function SCB_CountGroupBots(observed)
+    observed = SCB_GroupObservation(observed)
+    return observed and (observed.botCount or 0) or 0
+end
+
+function SCB_CountOtherHumans(observed)
+    local count, name, member = 0, nil, nil
+    observed = SCB_GroupObservation(observed)
+    for name, member in pairs(observed and observed.humansByName or {}) do
+        if member and not member.isSelf then count = count + 1 end
+    end
     return count
 end
 
-function SCB_CountOtherHumans()
-    local members = SCB_CollectGroupMembers()
-    local count, i = 0, nil
-    for i = 1, table.getn(members) do if not members[i].isBot and not members[i].isSelf then count = count + 1 end end
-    return count
+function SCB_GroupHasName(name, observed)
+    observed = SCB_GroupObservation(observed)
+    return name and observed and observed.byName and observed.byName[name] ~= nil or false
 end
 
-function SCB_GroupHasName(name)
-    local members = SCB_CollectGroupMembers()
-    local i
-    if not name then return false end
-    for i = 1, table.getn(members) do if members[i].name == name then return true end end
-    return false
-end
-
-function SCB_GetPresetStartBotState()
-    local botCount = SCB_CountGroupBots()
-    local otherHumans = SCB_CountOtherHumans()
+function SCB_GetPresetStartBotState(observed)
+    local botCount, otherHumans
+    observed = SCB_GroupObservation(observed)
+    botCount = observed and observed.botCount or 0
+    otherHumans = SCB_CountOtherHumans(observed)
     if botCount == 0 then return "empty", nil end
-    if botCount == 1 and otherHumans == 0 then return "survivor", SCB_FindFirstGroupBotName() end
+    if botCount == 1 and otherHumans == 0 then return "survivor", SCB_FindFirstGroupBotName(observed) end
     return "blocked", nil
 end
 
@@ -715,19 +771,21 @@ function SCB_ClearKickAllAnchor(name)
     SCB_EnsureSessionDB()
     if not name or SoloCraftBotsDB.session.state.kickAllAnchorName == name then SoloCraftBotsDB.session.state.kickAllAnchorName = nil end
 end
-function SCB_GetKickAllAnchorName()
+function SCB_GetKickAllAnchorName(observed)
     local name
     SCB_EnsureSessionDB()
     name = SoloCraftBotsDB.session.state.kickAllAnchorName
     if not name then return nil end
-    if SCB_GroupHasName(name) then return name end
+    if SCB_GroupHasName(name, observed) then return name end
     SCB_ClearKickAllAnchor(name)
     return nil
 end
-function SCB_GetKickAllAnchorForFreshBuild()
-    local name = SCB_GetKickAllAnchorName()
+function SCB_GetKickAllAnchorForFreshBuild(observed)
+    local name
+    observed = SCB_GroupObservation(observed)
+    name = SCB_GetKickAllAnchorName(observed)
     if not name then return nil end
-    if SCB_CountGroupBots() == 1 and SCB_CountOtherHumans() == 0 then return name end
+    if SCB_CountGroupBots(observed) == 1 and SCB_CountOtherHumans(observed) == 0 then return name end
     return nil
 end
 
@@ -751,20 +809,29 @@ function SCB_RefreshDistanceButtons()
     SCB_RefreshVisibleTooltip(SCB.distanceButton)
 end
 
-function SCB_ValidateSavedSession()
+function SCB_ValidateSavedSession(observed)
     SCB_EnsureSessionDB()
-    local roster = SCB_GetRosterNames()
+    local roster = {}
     local known = SoloCraftBotsDB.session.knownBots
     local retained = {}
     local hasKnown = false
     local name
+    if observed and observed.byName then
+        for name in pairs(observed.byName) do roster[name] = true end
+    else
+        roster = SCB_GetRosterNames()
+    end
     for name in pairs(known) do if roster[name] then retained[name] = true; hasKnown = true end end
     if hasKnown then SoloCraftBotsDB.session.knownBots = retained else SCB_ResetSessionState() end
     SCB.lastRoster = roster
     SCB.pendingBotAdds = 0
     SCB.pendingBotAddsExpires = 0
     SCB_RefreshDistanceButtons()
-    SCB_RefreshLiveRoster()
+    if observed then
+        SCB.liveRoster = observed
+    else
+        SCB_RefreshLiveRoster()
+    end
 end
 
 function SCB_RegisterSpawnIntent()
@@ -901,6 +968,8 @@ function SCB_HandleRosterChange()
         SCB_BindAssumptionsFromRosterDelta(previousNames, rawMembers)
     end
     observed = SCB_RefreshLiveRoster(rawMembers)
+    SCB.rosterEventRevision = (SCB.rosterEventRevision or 0) + 1
+    observed.eventRevision = SCB.rosterEventRevision
     current = {}
     observed.delta = SCB_BuildRosterDelta(previousObserved, observed)
     for name in pairs(observed.byName or {}) do current[name] = true end
@@ -1109,10 +1178,6 @@ if SCB_OriginalMaintenanceReplaceOnUpdate then
     end
 end
 
-local roleEventFrame = CreateFrame("Frame", "SoloCraftBotsRoleTrackingEventFrame", UIParent)
-roleEventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-roleEventFrame:SetScript("OnEvent", function() if event == "CHAT_MSG_SYSTEM" then SCB_HandleAssumedRoleSystemMessage(arg1) end end)
-
 -- -------------------------------------------------------------------------
 -- Combat role detection (absorbed from Detection.lua in 0.8.30).
 -- Keep this scoped block to preserve the former file's local namespace.
@@ -1307,15 +1372,20 @@ end
 
 local function SCB_FindLiveBotForCombatSource(sourceName)
     local wanted = SCB_NormalizeCombatName(sourceName)
-    local members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
-    local i, member, _, classFile
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local members = roster and roster.members or {}
+    local i, member, classFile
     if not wanted then return nil, nil end
 
     for i = 1, table.getn(members) do
         member = members[i]
         if member and member.isBot and member.name
             and SCB_NormalizeCombatName(member.name) == wanted then
-            if UnitClass and member.unit then _, classFile = UnitClass(member.unit) end
+            classFile = member.classFile
+            if not classFile and UnitClass and member.unit then
+                local unused
+                unused, classFile = UnitClass(member.unit)
+            end
             return member.name, classFile and string.lower(classFile) or nil
         end
     end
@@ -1398,8 +1468,16 @@ end
 local function SCB_IsDuplicateRoleObservation(name, spell)
     local now = GetTime and GetTime() or 0
     local key = tostring(name) .. "\031" .. tostring(spell)
-    local previous = SCB.roleEvidenceRecent[key]
+    local previous, recentKey, seenAt
+    previous = SCB.roleEvidenceRecent[key]
     SCB.roleEvidenceRecent[key] = now
+    SCB.roleEvidenceRecentCount = (SCB.roleEvidenceRecentCount or 0) + 1
+    if SCB.roleEvidenceRecentCount >= 100 then
+        SCB.roleEvidenceRecentCount = 0
+        for recentKey, seenAt in pairs(SCB.roleEvidenceRecent) do
+            if (now - (seenAt or 0)) > 5 then SCB.roleEvidenceRecent[recentKey] = nil end
+        end
+    end
     return previous and (now - previous) < 0.30
 end
 
@@ -1426,7 +1504,7 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     SCB_SyncEvidenceToActiveSlot(name, state)
 
     score = state.byRole[role] or 0
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog("Detection", name .. " " .. classKey .. " " .. role
             .. " " .. spell .. " evidence=" .. tostring(score)
             .. " candidate=" .. tostring(state.candidateRole or "?")
@@ -1440,7 +1518,11 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
         liveMember.roleCandidate = state.candidateRole
         liveMember.resolvedRole = SCB_GetResolvedLiveRole and SCB_GetResolvedLiveRole(liveMember) or (state.confirmedRole or liveMember.assumedRole)
     end
-    if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+    if SCB_QueuePresetRoleIndicatorsRefresh then
+        SCB_QueuePresetRoleIndicatorsRefresh(0.05)
+    elseif SCB_RefreshPresetRoleIndicators then
+        SCB_RefreshPresetRoleIndicators()
+    end
 
     return oldConfirmed ~= state.confirmedRole
 end
@@ -1555,6 +1637,8 @@ local function SCB_UpdatePresetRoleIndicatorGeometry(row)
 
     roleSize = SCB_GetLayoutValue and SCB_GetLayoutValue("preset", "roleSize") or 24
     if roleSize < 1 then roleSize = 1 end
+    if row.scbRoleIndicatorRoleSize == roleSize then return end
+    row.scbRoleIndicatorRoleSize = roleSize
     tickSize = math.floor((roleSize * 0.375) + 0.5)
     if tickSize < 4 then tickSize = 4 end
     overlap = math.floor((tickSize * 0.22) + 0.5)
@@ -1575,10 +1659,7 @@ end
 local function SCB_CreatePresetRoleIndicatorPair(row)
     local assumed, confirmed
     if not row or not row.roleButton then return end
-    if row.scbAssumedTick and row.scbConfirmedTick then
-        SCB_UpdatePresetRoleIndicatorGeometry(row)
-        return
-    end
+    if row.scbAssumedTick and row.scbConfirmedTick then return end
 
     assumed = row.roleButton:CreateTexture(nil, "OVERLAY")
     assumed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
@@ -1594,17 +1675,24 @@ local function SCB_CreatePresetRoleIndicatorPair(row)
     SCB_UpdatePresetRoleIndicatorGeometry(row)
 end
 
-local function SCB_FindTrackerAssignmentForIndicator(slotIndex)
+local function SCB_BuildTrackerAssignmentIndicatorIndex()
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-    local i, assignment
-    if not tracker or not tracker.assignments then return nil end
-    if tracker.size and SCB_CurrentPresetSize and tracker.size ~= SCB_CurrentPresetSize() then return nil end
+    local bySlot, i, assignment
+    if not tracker or not tracker.assignments then return nil, tracker end
+    if tracker.size and SCB_CurrentPresetSize and tracker.size ~= SCB_CurrentPresetSize() then return nil, tracker end
+    bySlot = {}
     for i = 1, table.getn(tracker.assignments) do
         assignment = tracker.assignments[i]
-        if assignment and assignment.slotIndex == slotIndex and assignment.initialActive then
-            if SCB_CurrentSlotMatchesTrackerAssignment(slotIndex, assignment) then return assignment end
-            return nil
-        end
+        if assignment and assignment.slotIndex then bySlot[assignment.slotIndex] = assignment end
+    end
+    return bySlot, tracker
+end
+
+local function SCB_FindTrackerAssignmentForIndicator(slotIndex, bySlot)
+    local assignment = bySlot and bySlot[slotIndex] or nil
+    if assignment and assignment.initialActive
+        and SCB_CurrentSlotMatchesTrackerAssignment(slotIndex, assignment) then
+        return assignment
     end
     return nil
 end
@@ -1625,6 +1713,7 @@ end
 
 function SCB_RefreshPresetRoleIndicators()
     local size = SCB_CurrentPresetSize and SCB_CurrentPresetSize() or 0
+    local assignmentBySlot
     local i, row, assignment, name, stage, color
 
     if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
@@ -1632,6 +1721,7 @@ function SCB_RefreshPresetRoleIndicators()
         return
     end
     SCB.presetRoleIndicatorsDirty = nil
+    assignmentBySlot = SCB_BuildTrackerAssignmentIndicatorIndex()
 
     for i = 1, 40 do
         row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
@@ -1642,7 +1732,7 @@ function SCB_RefreshPresetRoleIndicators()
             if row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
 
             if i <= size and not row.scbPresentPlayerKey then
-                assignment = SCB_FindTrackerAssignmentForIndicator(i)
+                assignment = SCB_FindTrackerAssignmentForIndicator(i, assignmentBySlot)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
                     row.scbAssumedTick:Show()
@@ -1707,15 +1797,6 @@ local SCB_OriginalRefreshPresetSlots_Detection = SCB_RefreshPresetSlots
 if SCB_OriginalRefreshPresetSlots_Detection then
     function SCB_RefreshPresetSlots()
         local result = SCB_OriginalRefreshPresetSlots_Detection()
-        SCB_RefreshPresetRoleIndicators()
-        return result
-    end
-end
-
-local SCB_OriginalRefreshPresetPlayers_Detection = SCB_RefreshPresetPlayers
-if SCB_OriginalRefreshPresetPlayers_Detection then
-    function SCB_RefreshPresetPlayers()
-        local result = SCB_OriginalRefreshPresetPlayers_Detection()
         SCB_RefreshPresetRoleIndicators()
         return result
     end
@@ -1796,7 +1877,7 @@ local function SCB_SetRoleDetectionEventsEnabled(enabled, reason)
     end
     SCB.roleDetectionEventsEnabled = enabled
 
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog("Detection", enabled and "Combat role scanning enabled" or (reason or "Combat role scanning sleeping"))
     end
 end
@@ -1852,7 +1933,7 @@ end
 local SCB_PreviousAddBotRoleEvidence_Lifecycle = SCB_AddBotRoleEvidence
 function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     local changed = SCB_PreviousAddBotRoleEvidence_Lifecycle(name, classKey, role, spell, eventName)
-    SCB_RefreshRoleDetectionLifecycle()
+    if changed then SCB_RefreshRoleDetectionLifecycle(SCB.liveRoster) end
     return changed
 end
 
@@ -2270,7 +2351,7 @@ local function SCB_GroupLocalSlot(slotIndex)
 end
 
 local function SCB_BurstDebug(text)
-    if SCB_DebugLog then SCB_DebugLog("Burst", text) end
+    if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Burst", text) end
 end
 
 -- -------------------------------------------------------------------------
@@ -2309,12 +2390,14 @@ function SCB_BeginAssumedSpawnBurst(plan)
             else
                 groupLabel = tostring(plan.kind or "spawn")
             end
-            SCB_BurstDebug(
-                "Burst " .. tostring(plan.burstID)
-                .. " expect " .. groupLabel
-                .. " " .. tostring(intent.class or "?")
-                .. " " .. tostring(intent.role or "?")
-            )
+            if SCB.developerDebugEnabled then
+                SCB_BurstDebug(
+                    "Burst " .. tostring(plan.burstID)
+                    .. " expect " .. groupLabel
+                    .. " " .. tostring(intent.class or "?")
+                    .. " " .. tostring(intent.role or "?")
+                )
+            end
         end
     end
     return true
@@ -2349,25 +2432,26 @@ function SCB_HandleAssumedRoleSystemMessage(text)
     else
         label = tostring(intent.spawnKind or "spawn")
     end
-    SCB_BurstDebug(
+    if SCB.developerDebugEnabled then
+        SCB_BurstDebug(
         "Burst " .. tostring(intent.burstID or "?")
         .. " joined " .. tostring(name)
         .. " -> " .. label
         .. " " .. tostring(intent.class or "?")
         .. " " .. tostring(intent.role or "?")
     )
+    end
     return true
 end
 
-function SCB_ReconcileTrackerFromAssumedRoles(tracker)
+function SCB_ReconcileTrackerFromAssumedRoles(tracker, observed)
     local roster, used, replacements = nil, {}, {}
     local i, j, assignment, member, assumption, matchedName
 
-    if not tracker or not tracker.ready or tracker.scbRoleIdentityReconciled then
-        return tracker and tracker.scbRoleIdentityReconciled or false
-    end
+    if not tracker or not tracker.ready then return false end
+    if tracker.scbRoleIdentityReconciled then return false end
 
-    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    roster = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     if not roster then return false end
 
     for i = 1, table.getn(tracker.assignments or {}) do
@@ -2473,32 +2557,30 @@ end
 -- Live Blizzard raid layout observation (former RaidLayout.lua)
 -- -------------------------------------------------------------------------
 
-local function SCB_BuildLiveRaidPositions()
-    local result, groupRows = {}, {}
-    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local i, name, _, subgroup
-    for i = 1, 8 do groupRows[i] = 0 end
-    for i = 1, raidCount do
-        name = UnitName and UnitName("raid" .. i) or nil
-        _, _, subgroup = GetRaidRosterInfo(i)
-        if name and subgroup and subgroup >= 1 and subgroup <= 8 then
-            groupRows[subgroup] = groupRows[subgroup] + 1
-            result[name] = {
-                raidIndex = i,
-                group = subgroup,
-                groupRow = groupRows[subgroup],
+local function SCB_BuildLiveRaidPositions(observed)
+    local result = {}
+    local i, member
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    if not observed or observed.mode ~= "raid" then return result end
+    for i = 1, table.getn(observed.members or {}) do
+        member = observed.members[i]
+        if member and member.name and member.raidIndex and member.currentGroup then
+            result[member.name] = {
+                raidIndex = member.raidIndex,
+                group = member.currentGroup,
+                groupRow = member.groupRow,
             }
         end
     end
     return result
 end
 
-function SCB_RefreshTrackerLiveLayout()
+function SCB_RefreshTrackerLiveLayout(observed)
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
     local positions, changed
     local i, player, assignment, name, live, assumption
     if not tracker or not tracker.ready or tracker.mode ~= "raid" then return false end
-    positions = SCB_BuildLiveRaidPositions()
+    positions = SCB_BuildLiveRaidPositions(observed)
     changed = false
 
     for i = 1, table.getn(tracker.players or {}) do
@@ -2535,7 +2617,9 @@ function SCB_RefreshTrackerLiveLayout()
     if changed then
         tracker.layoutRevision = (tracker.layoutRevision or 0) + 1
         tracker.layoutUpdatedAt = GetTime and GetTime() or 0
-        SCB_BurstDebug("Observed Blizzard raid layout revision " .. tostring(tracker.layoutRevision))
+        if SCB.developerDebugEnabled then
+            SCB_BurstDebug("Observed Blizzard raid layout revision " .. tostring(tracker.layoutRevision))
+        end
     end
     return changed
 end
@@ -2550,7 +2634,7 @@ function SCB_QueueTrackerLiveLayoutRefresh(delay)
             if this.scbElapsed < (this.scbDelay or 0.15) then return end
             this.scbElapsed = 0
             this:Hide()
-            SCB_RefreshTrackerLiveLayout()
+            SCB_RefreshTrackerLiveLayout(SCB.liveRoster)
         end)
         SCB.trackerLiveLayoutRefreshFrame = frame
     end

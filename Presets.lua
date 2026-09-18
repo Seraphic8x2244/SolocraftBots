@@ -619,8 +619,7 @@ end
 
 function SCB_RefreshPresetSlots()
     local size = SCB_CurrentPresetSize()
-    local present = SCB_GetPresentHumanMap()
-    local i, slot, classInfo, roleInfo, row, playerKey, playerInfo, playerRole, blessingInfo, shamanTotems, totemInfo, totemKey
+    local i, slot, classInfo, roleInfo, row, blessingInfo, shamanTotems, totemInfo, totemKey
 
     for i = 1, 40 do
         row = SCB.presetSlotRows[i]
@@ -2199,16 +2198,16 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     return tracker
 end
 
-function SCB_GetRaidBotsByGroup()
+function SCB_GetRaidBotsByGroup(observed)
     local result = {}
-    local count = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local i, name, _, subgroup
+    local i, member, subgroup
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     for i = 1, 8 do result[i] = {} end
-    for i = 1, count do
-        name = UnitName and UnitName("raid" .. i) or nil
-        _, _, subgroup = GetRaidRosterInfo(i)
-        if name and subgroup and SCB_IsBotName(name) then
-            table.insert(result[subgroup], { name = name, raidIndex = i })
+    for i = 1, table.getn(observed and observed.members or {}) do
+        member = observed.members[i]
+        subgroup = member and (member.currentGroup or member.subgroup) or nil
+        if member and member.isBot and subgroup then
+            table.insert(result[subgroup], { name = member.name, raidIndex = member.raidIndex })
         end
     end
     return result
@@ -2267,22 +2266,27 @@ function SCB_ApplyTrackedPfUITankRoles(tracker)
     end
 end
 
-local function SCB_PostFinalizeRaidRoleTracking(tracker)
+local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
+    local reconciledNow = false
     if not tracker or not tracker.ready then return false end
-    if SCB_ReconcileTrackerFromAssumedRoles and SCB_ReconcileTrackerFromAssumedRoles(tracker) then
-        if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
-        if SCB_RefreshLiveRoster then SCB_RefreshLiveRoster() end
+    if SCB_ReconcileTrackerFromAssumedRoles then
+        reconciledNow = SCB_ReconcileTrackerFromAssumedRoles(tracker, observed) == true
     end
-    if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout() end
+    if initial or reconciledNow then
+        if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker, observed) end
+        if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout(observed) end
+    end
     return true
 end
 
-function SCB_TryFinalizeRaidRoleTracking()
+function SCB_TryFinalizeRaidRoleTracking(observed)
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
     if not tracker or not tracker.assignments then return tracker and tracker.ready end
     if tracker.ready then
-        SCB_PostFinalizeRaidRoleTracking(tracker)
+        if not tracker.scbRoleIdentityReconciled then
+            SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), false)
+        end
         return true
     end
     if not tracker.allowFinalize then return false end
@@ -2308,7 +2312,7 @@ function SCB_TryFinalizeRaidRoleTracking()
         for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
     else
         if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
-        botsByGroup = SCB_GetRaidBotsByGroup()
+        botsByGroup = SCB_GetRaidBotsByGroup(observed)
         for g = 1, math.ceil((tracker.size or 0) / 5) do
             expected = expectedByGroup[g]
             actual = botsByGroup[g] or {}
@@ -2324,12 +2328,11 @@ function SCB_TryFinalizeRaidRoleTracking()
     tracker.ready = true
     tracker.completedAt = GetTime and GetTime() or 0
     SCB_ApplyTrackedPfUITankRoles(tracker)
-    if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY")))
     end
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
-    SCB_PostFinalizeRaidRoleTracking(tracker)
+    SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), true)
     return true
 end
 function SCB_GetTrackedHumanCounts(tracker)
@@ -2358,7 +2361,8 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if not tracker or not tracker.ready or not tracker.assignments then return missing end
 
-    members = SCB_CollectGroupMembers()
+    local liveRoster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    members = liveRoster and liveRoster.members or SCB_CollectGroupMembers()
     currentNames = {}
     for i = 1, table.getn(members) do
         if members[i].name ~= ignoredBotName then currentNames[members[i].name] = true end
@@ -2524,30 +2528,23 @@ end
 
 function SCB_GetNewRefillBots(beforeNames)
     local result = {}
-    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local count, i, name, _, subgroup
-    if raidCount > 0 then
-        for i = 1, raidCount do
-            name = UnitName and UnitName("raid" .. i) or nil
-            _, _, subgroup = GetRaidRosterInfo(i)
-            if name and SCB_IsBotName(name) and not beforeNames[name] then
-                table.insert(result, { name = name, raidIndex = i, subgroup = subgroup })
-            end
-        end
-    else
-        count = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-        for i = 1, count do
-            name = UnitName and UnitName("party" .. i) or nil
-            if name and SCB_IsBotName(name) and not beforeNames[name] then
-                table.insert(result, { name = name, subgroup = 1 })
-            end
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local i, member
+    for i = 1, table.getn(roster and roster.members or {}) do
+        member = roster.members[i]
+        if member and member.isBot and member.name and not beforeNames[member.name] then
+            table.insert(result, {
+                name = member.name,
+                raidIndex = member.raidIndex,
+                subgroup = member.currentGroup or member.subgroup or 1,
+            })
         end
     end
     return result
 end
 
 function SCB_ReplaceDeadNamesGone(names)
-    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
     local name
     if not roster then return false end
     for name in pairs(names or {}) do if roster.byName[name] then return false end end
@@ -2771,7 +2768,7 @@ function SCB_RefillOnUpdate(elapsed)
         for i = table.getn(groupMissing), 1, -1 do
             assignment = groupMissing[i]
             SCB_SendSpawnCommand(assignment.command)
-            if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REQUESTED"), assignment.slotIndex, assignment.group)) end
+            if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REQUESTED"), assignment.slotIndex, assignment.group)) end
         end
         return
     end
@@ -2868,7 +2865,7 @@ function SCB_RefillOnUpdate(elapsed)
     if state.phase == "removeanchor" then
         if SCB_PresetGroupHasCombat() then return end
         if state.anchorName and SCB_GroupHasName(state.anchorName) and UninviteByName then
-            if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REMOVE_ANCHOR"), state.anchorName)) end
+            if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REMOVE_ANCHOR"), state.anchorName)) end
             UninviteByName(state.anchorName)
         end
         state.anchorProbeRemaining = 1.0
@@ -2900,7 +2897,7 @@ function SCB_RefillOnUpdate(elapsed)
         state.phase = "waitdelayed"
         state.fullSeenAt = nil
         SCB_SendSpawnCommand(state.delayedAssignment.command)
-        if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), SCB_L("DEBUG_REFILL_DELAYED_G1S5")) end
+        if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), SCB_L("DEBUG_REFILL_DELAYED_G1S5")) end
         return
     end
 
@@ -3073,7 +3070,7 @@ function SCB_PresetSpawnQueueOnUpdate()
             end
         elseif nextItem == SCB.PRESET_REMOVE_SURVIVOR then
             if SCB.presetSurvivorBotName and UninviteByName then
-                if SCB_DebugLog then
+                if SCB.developerDebugEnabled and SCB_DebugLog then
                     SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_KICK"), SCB.presetSurvivorBotName))
                 end
                 UninviteByName(SCB.presetSurvivorBotName)
@@ -3093,14 +3090,14 @@ function SCB_PresetSpawnQueueOnUpdate()
             end
 
             if SCB_ProbeSurvivorWorldPresence(SCB.presetSurvivorBotName) then
-                if SCB_DebugLog then
+                if SCB.developerDebugEnabled and SCB_DebugLog then
                     SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_PRESENT"), SCB.presetSurvivorBotName))
                 end
                 SCB.presetSurvivorProbeRemaining = 1.0
                 return
             end
 
-            if SCB_DebugLog then
+            if SCB.developerDebugEnabled and SCB_DebugLog then
                 SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_GONE"), SCB.presetSurvivorBotName or "?"))
             end
             SCB.presetSurvivorProbeRemaining = nil
@@ -4403,7 +4400,7 @@ function SCB_CreatePresetUI(frame)
     SCB_EnsurePresetDB()
     local group = SCB_CurrentPresetGroup()
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group and group.currentPreset or nil)
-    SCB_TryFinalizeRaidRoleTracking()
+    SCB_TryFinalizeRaidRoleTracking(SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     SCB_RefreshRefillButton()
 end
 
@@ -4490,17 +4487,23 @@ end
 -- It never manufactures expected bots: the Active Roster contains only bot
 -- occupants the player actually had. Dungeons and Blackrock Spire deliberately
 -- expose smaller challenge tiers; raid locations keep their normal raid cap.
+SCB.LOCATION_CAPACITY_TIERS_WORLD = SCB.LOCATION_CAPACITY_TIERS_WORLD or { 5 }
+SCB.LOCATION_CAPACITY_TIERS_10 = SCB.LOCATION_CAPACITY_TIERS_10 or { 5, 10 }
+SCB.LOCATION_CAPACITY_TIERS_15 = SCB.LOCATION_CAPACITY_TIERS_15 or { 5, 10, 15 }
+SCB.LOCATION_CAPACITY_TIERS_20 = SCB.LOCATION_CAPACITY_TIERS_20 or { 20 }
+SCB.LOCATION_CAPACITY_TIERS_40 = SCB.LOCATION_CAPACITY_TIERS_40 or { 40 }
+
 function SCB_GetLocationCapacityTiers(context)
     context = context or SCB_GetLocationContext()
-    if not context.inInstance then return { 5 } end
-    if context.groupID == "10man" then return { 5, 10 } end
-    if context.groupID == "ubrs" then return { 5, 10, 15 } end
-    if context.groupID == "zg" or context.groupID == "aq20" then return { 20 } end
+    if not context.inInstance then return SCB.LOCATION_CAPACITY_TIERS_WORLD end
+    if context.groupID == "10man" then return SCB.LOCATION_CAPACITY_TIERS_10 end
+    if context.groupID == "ubrs" then return SCB.LOCATION_CAPACITY_TIERS_15 end
+    if context.groupID == "zg" or context.groupID == "aq20" then return SCB.LOCATION_CAPACITY_TIERS_20 end
     if context.groupID == "mc" or context.groupID == "onyxia" or context.groupID == "bwl"
         or context.groupID == "aq40" or context.groupID == "naxx" then
-        return { 40 }
+        return SCB.LOCATION_CAPACITY_TIERS_40
     end
-    return { 5, 10 }
+    return SCB.LOCATION_CAPACITY_TIERS_10
 end
 
 function SCB_GetLocationMaxCapacity(context)

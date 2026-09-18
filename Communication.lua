@@ -1174,7 +1174,7 @@ function SCB_SurvivorSafetyRequired()
     -- Keep the debug laboratory explicit about why survivor safety was or was
     -- not applied. This is diagnostic only; the policy itself remains
     -- conservative inside instances for dungeons, unknown zones, and invalid ID reads.
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         if matched then
             SCB_DebugLog(SCB_L("DEBUG_KIND_RAID_ID"), string.format(SCB_L("DEBUG_RAID_ID_MATCH"), zoneText, tostring(savedID), tostring(reset)))
         elseif reason == "api" then
@@ -1644,7 +1644,7 @@ local function SCB_GetHiddenAuraKind()
     return nil, nil
 end
 
-local function SCB_HandleSpawnServerRejection(text)
+function SCB_HandleSpawnServerRejection(text)
     local hadOperation, hiddenKind, auraName, warning
     if text ~= "Cannot add bots right now." then return end
 
@@ -1668,15 +1668,10 @@ local function SCB_HandleSpawnServerRejection(text)
 
     if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(warning) end
 
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog("Spawn", "Server rejected bot summon; active operation aborted=" .. tostring(hadOperation)
             .. ", hidden=" .. tostring(hiddenKind) .. ", aura=" .. tostring(auraName))
     end
 end
 
-local spawnFailureFrame = CreateFrame("Frame", "SoloCraftBotsSpawnFailureFrame", UIParent)
-spawnFailureFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-spawnFailureFrame:SetScript("OnEvent", function()
-    if arg1 then SCB_HandleSpawnServerRejection(arg1) end
-end)
 end

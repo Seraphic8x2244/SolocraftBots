@@ -276,6 +276,7 @@ function SCB_SetDeveloperDebugEnabled(enabled)
     if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
     if SCB_UpdateLayoutDebugBorders then SCB_UpdateLayoutDebugBorders() end
     if SCB_UpdateDebugTimerState then SCB_UpdateDebugTimerState() end
+    if SCB_UpdateDebugEventRegistration then SCB_UpdateDebugEventRegistration(SCB.developerDebugEnabled) end
 
     if SCB.developerDebugEnabled then
         SCB_Print(SCB_L("DEBUG_MODE_ENABLED"))
@@ -1084,13 +1085,19 @@ function SCB_DebugOnUpdate()
     if not SCB.developerDebugEnabled then return end
     local elapsed = arg1 or 0
 
-    SCB.debug.combatElapsed = (SCB.debug.combatElapsed or 0) + elapsed
-    if SCB.debug.combatElapsed >= 0.25 then
+    if SCB.debugCombatCheck and SCB.debugCombatCheck:GetChecked() then
+        SCB.debug.combatElapsed = (SCB.debug.combatElapsed or 0) + elapsed
+        if SCB.debug.combatElapsed >= 0.25 then
+            SCB.debug.combatElapsed = 0
+            SCB_DebugPollCombat()
+        end
+    else
         SCB.debug.combatElapsed = 0
-        SCB_DebugPollCombat()
     end
 
-    SCB_DebugScanPetTraces()
+    if SCB.debug.petTraces and next(SCB.debug.petTraces) ~= nil then
+        SCB_DebugScanPetTraces()
+    end
 
     if not SCB.debug.batchRunning then return end
 

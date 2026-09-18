@@ -26,7 +26,7 @@ local function SCB_CopyBurstAssignment(entry)
 end
 
 local function SCB_BurstDebug(text)
-    if SCB_DebugLog then SCB_DebugLog("Burst", text) end
+    if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Burst", text) end
 end
 
 -- -------------------------------------------------------------------------
@@ -53,7 +53,7 @@ local function SCB_TryParkSurvivorInGroupEight(name)
     group, raidIndex = SCB_FindRaidMemberGroup(name)
     if not raidIndex then return false end
     if group == 8 then
-        SCB_BurstDebug("Safety " .. tostring(name) .. " parked in G8")
+        if SCB.developerDebugEnabled then SCB_BurstDebug("Safety " .. tostring(name) .. " parked in G8") end
         return true
     end
 
@@ -121,7 +121,7 @@ local function SCB_TryRemoveParkedSurvivor()
         safety.removalWaiting = nil
         safety.removalName = nil
         safety.removalGoneAt = nil
-        SCB_BurstDebug("Safety " .. tostring(name) .. " removed after real G1 join")
+        if SCB.developerDebugEnabled then SCB_BurstDebug("Safety " .. tostring(name) .. " removed after real G1 join") end
         return true
     end
 
@@ -151,7 +151,7 @@ SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT = 15.0
 SCB.MAINTENANCE_STALE_COMBAT_DELAY = 10.0
 
 local function SCB_0826MaintenanceDebug(text)
-    if SCB_DebugLog then SCB_DebugLog("Spawn", "Maintenance: " .. tostring(text)) end
+    if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Spawn", "Maintenance: " .. tostring(text)) end
 end
 
 local function SCB_0826CopyMaintenanceAssignment(entry)
@@ -678,7 +678,7 @@ local function SCB_IsValidatedSpawnCommand(command)
 end
 
 local function SCB_SpawnDebug(text)
-    if SCB_DebugLog then SCB_DebugLog("Spawn", text) end
+    if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Spawn", text) end
 end
 
 function SCB_SendSpawnCommand(command)
@@ -1064,7 +1064,8 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             if SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker then
                 SoloCraftBotsCharDB.raidRoleTracker.allowFinalize = true
             end
-            if SCB_TryFinalizeRaidRoleTracking and SCB_TryFinalizeRaidRoleTracking() then
+            if SCB_TryFinalizeRaidRoleTracking
+                and SCB_TryFinalizeRaidRoleTracking(SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil) then
                 SCB.presetCombatRetryFailures = 0
                 SCB.presetCombatRetryResetPending = nil
                 table.remove(queue, 1)
@@ -1472,7 +1473,7 @@ local function SCB_StartCoordinatorPresetRuntime(operation)
         if SCB_BeginActiveRosterPresetTransition then
             SCB_BeginActiveRosterPresetTransition(snapshot.size)
         end
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "Coordinator waiting for in-flight bot adds before preset replacement")
         end
         return true
@@ -1532,7 +1533,7 @@ function SCB_PresetRebuildOnUpdate()
     local intent = operation and operation.desiredIntent or nil
     local snapshot = intent and intent.snapshot or nil
     local now = SCB_OperationNow()
-    local anchorName, botCount, ready, raidCount, partyCount
+    local anchorName, botCount, ready, raidCount, partyCount, observed
     local ok, errorText
 
     if not operation or operation.kind ~= "preset" or not state or not snapshot then return end
@@ -1541,7 +1542,7 @@ function SCB_PresetRebuildOnUpdate()
         SCB.scbExplicitPresetOperation = true
         SCB_ClearOperationRebuild(operation)
         SCB_SetBotOperationPhase("summon")
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "Coordinator released replacement queue on next frame")
         end
         return
@@ -1552,10 +1553,11 @@ function SCB_PresetRebuildOnUpdate()
 
         state.waitForPendingAdds = nil
         state.readySeenAt = nil
-        botCount = SCB_CountGroupBots and SCB_CountGroupBots() or 0
+        observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+        botCount = SCB_CountGroupBots and SCB_CountGroupBots(observed) or 0
 
         if botCount > 0 then
-            if SCB_DebugLog then
+            if SCB.developerDebugEnabled and SCB_DebugLog then
                 SCB_DebugLog("Spawn", "In-flight bot adds resolved; coordinator tearing down " .. tostring(botCount) .. " arrived bot(s)")
             end
             if SCB_KickBots then SCB_KickBots(false) end
@@ -1563,13 +1565,14 @@ function SCB_PresetRebuildOnUpdate()
         end
 
         state.readySeenAt = now - (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0)
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "In-flight bot adds expired with no arrivals; coordinator continuing preset summon")
         end
     end
 
-    anchorName = SCB_GetKickAllAnchorForFreshBuild and SCB_GetKickAllAnchorForFreshBuild() or nil
-    botCount = SCB_CountGroupBots and SCB_CountGroupBots() or 0
+    observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    anchorName = SCB_GetKickAllAnchorForFreshBuild and SCB_GetKickAllAnchorForFreshBuild(observed) or nil
+    botCount = SCB_CountGroupBots and SCB_CountGroupBots(observed) or 0
 
     ready = botCount == 0 or (anchorName ~= nil and botCount == 1)
     if not ready then
@@ -1588,7 +1591,7 @@ function SCB_PresetRebuildOnUpdate()
                 if not state.scbConvertRequestedAt or (now - state.scbConvertRequestedAt) >= 1.0 then
                     ConvertToRaid()
                     state.scbConvertRequestedAt = now
-                    if SCB_DebugLog then
+                    if SCB.developerDebugEnabled and SCB_DebugLog then
                         SCB_DebugLog("Spawn", "Coordinator requested party-to-raid conversion with survivor " .. tostring(anchorName))
                     end
                 end
@@ -1611,7 +1614,7 @@ function SCB_PresetRebuildOnUpdate()
         state.handoffQueued = true
         SCB.scbExplicitPresetOperation = nil
         SCB_SetBotOperationPhase("handoff")
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "Coordinator prepared replacement queue; deferring scheduler release one frame")
         end
         return
@@ -1699,7 +1702,7 @@ function SCB_StartPresetSummonSnapshot(snapshot)
         safety.bootstrapName = anchorName
         safety.bootstrapTopology = size > 5 and "raid" or "party"
         safety.bootstrapOrigin = "retained"
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "Retained " .. tostring(anchorName)
                 .. " as " .. tostring(safety.bootstrapTopology)
                 .. " bootstrap for preset rebuild")
@@ -1720,18 +1723,16 @@ local function SCB_0823BootstrapSafety()
 end
 
 local function SCB_0823HasRealGroupOneBot(bootstrapName)
-    local i, name, _, subgroup, assumption
-    if not bootstrapName or not GetNumRaidMembers or not GetRaidRosterInfo then return false end
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local group = roster and roster.groups and roster.groups[1] or {}
+    local i, member, assumption
+    if not bootstrapName then return false end
 
-    for i = 1, GetNumRaidMembers() do
-        name = UnitName and UnitName("raid" .. i) or nil
-        _, _, subgroup = GetRaidRosterInfo(i)
-        if name and subgroup == 1 and name ~= bootstrapName
-            and SCB_IsBotName and SCB_IsBotName(name) then
-            assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
-            if not assumption or assumption.spawnKind ~= "bootstrap" then
-                return true
-            end
+    for i = 1, table.getn(group) do
+        member = group[i]
+        if member and member.isBot and member.name ~= bootstrapName then
+            assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[member.name] or nil
+            if not assumption or assumption.spawnKind ~= "bootstrap" then return true end
         end
     end
     return false
@@ -1747,7 +1748,7 @@ local function SCB_0823FinishBootstrapRemoval(safety, name)
     safety.removalWaiting = nil
     safety.removalName = nil
     safety.removalGoneAt = nil
-    if SCB_DebugLog then
+    if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog("Spawn", "Bootstrap " .. tostring(name) .. " removal settle completed in parallel with preset bursts")
     end
 end
@@ -1793,7 +1794,7 @@ local function SCB_0823PollBootstrapRemoval()
         safety.removalWaiting = true
         safety.removalName = name
         safety.removalGoneAt = nil
-        if SCB_DebugLog then
+        if SCB.developerDebugEnabled and SCB_DebugLog then
             SCB_DebugLog("Spawn", "Bootstrap " .. tostring(name) .. " removal requested; unrelated preset bursts may continue")
         end
     end
@@ -1836,6 +1837,8 @@ SCB.scb072TryRemoveParkedSurvivor = function()
 end
 
 function SCB_PresetSpawnQueueOnUpdate()
+    local elapsed = arg1 or 0
+    if SCB_PollOperationRosterFallback then SCB_PollOperationRosterFallback(elapsed, 0.25) end
     SCB_0823PollBootstrapRemoval()
     SCB_SyncPresetOperationPhase()
     local result = SCB_PresetSpawnQueueOnUpdateCore()

@@ -170,6 +170,9 @@ function SCB_SetArtButtonTexture(button, texturePath, highlightTexturePath)
     if not button or not button.icon then
         return
     end
+    if button.scbNormalTexture == texturePath and button.scbHighlightTexture == highlightTexturePath then
+        return
+    end
     button.scbNormalTexture = texturePath
     button.scbHighlightTexture = highlightTexturePath
     button.icon:SetTexture(texturePath)
@@ -189,6 +192,8 @@ function SCB_SetArtButtonAvailable(button, available)
     if not button or not button.icon then
         return
     end
+    available = available and true or false
+    if button.scbAvailable == available then return end
     button.scbAvailable = available
     if available then
         button.icon:SetVertexColor(1, 1, 1, 1)
@@ -867,6 +872,7 @@ end
 
 function SCB_MainFrameOnShow()
     SCB_SetEscapeProxyShown(true)
+    if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
 end
 
 function SCB_MainFrameOnHide()
@@ -1476,6 +1482,17 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
 end
 
 local eventFrame = CreateFrame("Frame", "SoloCraftBotsEventFrame", UIParent)
+SCB.eventFrame = eventFrame
+
+function SCB_UpdateDebugEventRegistration(enabled)
+    local debugEvents = { "UNIT_FLAGS", "UNIT_COMBAT", "CHAT_MSG_PARTY", "CHAT_MSG_RAID", "CHAT_MSG_SAY" }
+    local i
+    enabled = enabled == true
+    for i = 1, table.getn(debugEvents) do
+        if enabled then eventFrame:RegisterEvent(debugEvents[i]) else eventFrame:UnregisterEvent(debugEvents[i]) end
+    end
+end
+
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -1489,16 +1506,13 @@ eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
-eventFrame:RegisterEvent("UNIT_FLAGS")
-eventFrame:RegisterEvent("UNIT_COMBAT")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-eventFrame:RegisterEvent("CHAT_MSG_PARTY")
-eventFrame:RegisterEvent("CHAT_MSG_RAID")
-eventFrame:RegisterEvent("CHAT_MSG_SAY")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
     if event == "PLAYER_TARGET_CHANGED" then
-        if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
+            SCB_RefreshTargetCommandRow()
+        end
         return
     end
     if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
@@ -1571,13 +1585,15 @@ eventFrame:SetScript("OnEvent", function()
             and (not observed or not observed.delta or observed.delta.humanChanged) then
             SCB_RefreshPresetPlayers()
         end
-        SCB_TryFinalizeRaidRoleTracking()
+        SCB_TryFinalizeRaidRoleTracking(observed)
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
         SCB_DebugUnitFlags(arg1)
     elseif event == "UNIT_COMBAT" then
         SCB_DebugUnitCombat(arg1, arg2, arg3, arg4, arg5)
     elseif event == "CHAT_MSG_SYSTEM" then
+        if arg1 and SCB_HandleAssumedRoleSystemMessage then SCB_HandleAssumedRoleSystemMessage(arg1) end
+        if arg1 and SCB_HandleSpawnServerRejection then SCB_HandleSpawnServerRejection(arg1) end
         if arg1 == "Cannot add more bots. Instance is full."
             and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation()
             and SCB_AbortBotSpawnOperations then
