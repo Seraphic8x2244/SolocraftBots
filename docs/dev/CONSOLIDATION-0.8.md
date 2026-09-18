@@ -157,13 +157,14 @@ Owns developer diagnostics and debug UI.
 - [x] Unassigned present humans appear in Other Players pool.
 - [x] Saved present humans snap to exact logical slots on preset load.
 - [x] Saved absent humans do not suppress underlying bots.
-- [x] Arrange humans into intended Blizzard subgroup derived from logical slot, without expecting them to appear at the saved physical row.
+- [x] Historical implementation arranged humans toward a subgroup derived from logical slot, without expecting a saved physical row.
+- [ ] **Superseding design clarification (2026-09-18):** do not treat party/raid placement as an enforceable editor outcome. Logical slots/groups are composition intent only; Blizzard placement for players and bots is observational and may not match the logical layout.
 - [x] Preserve bot logical order resolution within subgroup while ignoring humans.
 - [x] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model as superseded.
 - [x] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners: three-human BWL test passed on 0.8.5-dev.
 - [ ] Improve raid-layout validation wording: replace the vague `Cannot resolve the current party layout` message with text that explains the actionable requirement — all present players must be assigned to explicit raid preset slots before SCB can resolve/summon the raid layout.
-- [ ] **Post-consolidation:** extend exact human logical-slot placement to 5-man presets. Dragging a player chooses which of the five underlying bot intents is suppressed; Blizzard party row/order remains observational only.
-- [ ] **Post-consolidation:** add bot-intent drag/drop so preset slots can be swapped/reorganised at all supported sizes. This edits logical preset composition only; for raid presets, destination slot determines intended subgroup.
+- [ ] **Post-consolidation:** use exact human logical-slot placement at every preset size. Dragging a player chooses which underlying bot intent is suppressed; party versus raid changes slot count only.
+- [ ] **Post-consolidation:** add bot-intent drag/drop so logical preset slots can be swapped/reorganised at all supported sizes. This edits composition intent only and must not imply control over Blizzard party order or raid subgroup placement.
 
 ### Phase G — Spawn consolidation
 

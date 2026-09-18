@@ -28,12 +28,14 @@ Saved present humans automatically snap to their saved logical slot when the pre
 
 **Reason:** real raids contain key slots and filler slots. Blizzard can place humans arbitrarily within a subgroup; allowing that physical row to choose the suppressed bot can consume a key role. The user must control exactly which logical bot slot each human replaces.
 
-## 2026-09-18 - 5-man presets use the same logical-slot editor model
-**Decision:** Extend exact logical-slot placement to 5-man presets after structural consolidation. A 5-man preset represents five underlying bot/composition intents. Dragging a player onto one of those slots selects exactly which bot intent that player suppresses; it does not claim to control the player's physical Blizzard party row.
+## 2026-09-18 - Party and raid presets share one logical-slot editor model
+**Decision:** After structural consolidation, use the same logical-slot editor at every supported preset size. A preset is N underlying bot/composition intents. Dragging a player onto a slot selects exactly which bot intent that player suppresses; dragging a bot intent swaps/reorganises logical composition.
 
-Bot intents should also be draggable between logical preset slots so the user can swap/reorganise the composition. The operation changes preset intent only. In raid-sized presets, crossing a five-slot group boundary therefore changes the bot's intended subgroup as a consequence of its destination slot, not by manipulating Blizzard's current row.
+Party versus raid changes the number of logical slots, not the meaning of those slots. Five-slot visual blocks in larger presets are organisational composition UI only. SCB must not claim that a logical slot determines a player's or bot's physical party position or raid subgroup placement; Vanilla 1.12.1 placement is not reliably controllable and live Blizzard ordering remains observational.
 
-**Reason:** This makes the party editor teach the same model used later in raids: the preset is a full logical composition and humans occupy/suppress chosen slots rather than being treated as an implicit extra entity beside four bots. It also gives users direct control over which role/spec disappears when a player joins a 5-man composition.
+**Supersedes:** the earlier same-day wording that moving a logical bot intent across a five-slot boundary should be treated as control of its intended subgroup. That overstated what SCB can reliably enforce.
+
+**Reason:** This makes 5-man the natural introduction to the same composition model used later: the preset is a full logical composition and humans occupy/suppress chosen intents. It also avoids teaching a false relationship between SCB's logical layout and Blizzard's actual group/raid placement.
 
 **Timing:** Implement after the current ownership/file consolidation and before the final 0.8 regression/main promotion, so the feature lands in final owners instead of adding more transitional wrappers.
 
