@@ -165,6 +165,7 @@ Owns developer diagnostics and debug UI.
 - [ ] Improve raid-layout validation wording: replace the vague `Cannot resolve the current party layout` message with text that explains the actionable requirement — all present players must be assigned to explicit raid preset slots before SCB can resolve/summon the raid layout.
 - [ ] **Post-consolidation:** use exact human logical-slot placement at every preset size. Dragging a player chooses which underlying bot intent is suppressed; party versus raid changes slot count only.
 - [ ] **Post-consolidation:** add bot-intent drag/drop so logical preset slots can be swapped/reorganised at all supported sizes. For bots this changes the controlled summon/order; for humans the slot still means only which bot intent they suppress, not a controllable Blizzard row.
+- [ ] **UI state cleanup:** moving a human between logical preset slots already changes composition intent and marks the preset dirty internally; ensure the Save/button colour/status immediately reflects that unsaved change.
 
 ### Phase G — Spawn consolidation
 
