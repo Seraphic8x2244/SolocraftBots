@@ -468,3 +468,18 @@ During a 40-man Kick All:
 - debug-only events do not fire in normal play;
 - no pfUI-wide refresh occurs;
 - Kick pacing becomes the only remaining artificial limiter, making the subsequent same-frame mass-kick test meaningful.
+
+## Non-negotiable SoloCraft combat-safety invariant
+
+SoloCraft cannot summon bots while any relevant party/raid member is in combat. Combat safety is therefore intentionally more aggressive than ordinary roster observation and must not be weakened by performance work.
+
+Rules:
+- combat state is independent of roster revision; a unit can enter or leave combat without any roster event;
+- before any bot-add burst, SCB must continue to verify that summoning is combat-safe;
+- while a spawn-sensitive phase is blocked by combat, SCB may poll combat state aggressively; this is deliberate safety work, not the redundant roster polling targeted by the performance audit;
+- local-player combat remains an absolute block where already defined by the maintenance coordinator;
+- existing stale-remote-combat handling remains unchanged unless separately redesigned and runtime-proven;
+- server-side summon rejection remains the final authority for races where combat changes between the client check and the command being processed;
+- optimisation may share/deduplicate identical combat scans within the same frame or bounded poll interval, but it must not make combat checks roster-event-driven or otherwise create a window where SCB knowingly attempts to summon while observed combat is active.
+
+The performance target is therefore: make membership/identity/subgroup observation revision-driven while keeping combat observation independently aggressive.

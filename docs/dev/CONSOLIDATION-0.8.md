@@ -256,3 +256,7 @@ Highest-risk scenarios:
 - [ ] **Auto-promote trigger scope:** `SCB_ApplyAutoPromotePlayers()` scans the raid on every roster event. Re-evaluate only when a human joins/rank state can have changed, not for every bot removal/subgroup mutation.
 - [ ] **Role-detection lifecycle invalidation:** when combat-role confirmation is enabled, every roster event rebuilds pending detection names from a freshly rebuilt Live Roster. Maintain/refresh that set only when tracked bot identity/confirmation state changes, or consume the already-built event snapshot.
 - [ ] **Roster hot-path target:** one roster observation/build per Blizzard roster revision, then pass/cache that snapshot for Active Roster sync, maintenance button state, identity cleanup, detection and live-layout consumers. UI work should be dirty/edge-triggered, not repeated for each unrelated member mutation.
+
+### Combat-safety invariant for performance/refactor work
+
+Bot summoning must remain blocked while relevant party/raid combat is active. Roster/membership tracking may be made event/revision-driven, but combat cannot be coupled to roster revisions because combat changes independently. Spawn-sensitive phases must retain aggressive combat checks and the server-rejection fallback. Performance work may deduplicate identical combat scans, but must not weaken this safety barrier.
