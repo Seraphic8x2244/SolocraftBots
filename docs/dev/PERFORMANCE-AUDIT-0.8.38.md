@@ -483,3 +483,42 @@ Rules:
 - optimisation may share/deduplicate identical combat scans within the same frame or bounded poll interval, but it must not make combat checks roster-event-driven or otherwise create a window where SCB knowingly attempts to summon while observed combat is active.
 
 The performance target is therefore: make membership/identity/subgroup observation revision-driven while keeping combat observation independently aggressive.
+
+## 0.8.39-dev implementation status
+
+Runtime commit: `457b593eaca94a40f311c57b18c9417512c328be`
+
+Implemented as one broad performance build:
+- ready trackers now return immediately once role identity is reconciled; unreconciled ready trackers retry only the identity reconciliation and rebuild Active Roster/layout only when reconciliation actually completes;
+- canonical roster events now carry an explicit event revision;
+- active physical operations consume event-driven Live Roster membership/subgroup state and use one bounded 0.25-second fallback refresh when no roster event arrives; combat polling is independent and unchanged;
+- group-presence/count/anchor helpers now consume one Live Roster observation instead of each constructing a full group snapshot;
+- Live Roster construction pre-indexes tracker bot/human associations and Active Roster name bindings rather than performing per-member linear scans;
+- raid collection captures raid index and group-row metadata in the canonical pass; live-layout observation consumes that metadata instead of performing another raid API scan;
+- finalization raid-bot grouping and bootstrap real-G1 detection consume the canonical roster instead of polling GetRaidRosterInfo every frame;
+- maintenance-state calculation builds replacement command records only for actually missing/dead slots;
+- delayed world reconciliation reuses its one fresh observation for Active Roster/session/button consumers;
+- normal mode no longer registers UNIT_COMBAT, UNIT_FLAGS, CHAT_MSG_PARTY, CHAT_MSG_RAID or CHAT_MSG_SAY solely for developer diagnostics; those events wake only when developer debug is enabled;
+- CHAT_MSG_SYSTEM is routed once through the main event frame to identity binding, spawn rejection and existing server-safety handling;
+- hidden target changes no longer repaint command controls; the target row refreshes when the SCB frame opens;
+- preset slot rendering no longer performs an unused human-roster scan;
+- role indicators build one logical-slot assignment index per visible refresh, avoid duplicate player-triggered sweeps, and skip geometry writes when role size is unchanged;
+- role evidence uses the cached Live Roster, queues UI painting, only rebuilds the role-detection lifecycle on a confirmation transition, and periodically prunes duplicate-observation keys;
+- unchanged art-button texture/availability writes are skipped;
+- location capacity tier tables are reused rather than allocated per query;
+- normal-play debug message strings are not constructed when developer debug is off.
+
+Explicitly unchanged safety/behaviour:
+- `SCB_PresetGroupHasCombat()` is byte-for-byte unchanged from 0.8.38;
+- maintenance combat-block logic is byte-for-byte unchanged from 0.8.38;
+- Kick All remains 5 uninvites per 0.10 seconds;
+- removal-capacity settle remains 3.0 seconds;
+- post-arrival stabilization remains 1.0 second;
+- survivor/bootstrap and logical-slot semantics are unchanged;
+- pfUI tank marking remains event-driven with no roster-wide `RefreshUnit` sweep.
+
+Still deferred after this gate:
+- same-frame 40-man Kick All A/B;
+- mixed-group up-to-five maintenance replacement bursts;
+- broader proven-dead implementation cleanup / remaining low-value wrapper cleanup;
+- FIFO head-index conversion and other lower-priority micro-optimisations.

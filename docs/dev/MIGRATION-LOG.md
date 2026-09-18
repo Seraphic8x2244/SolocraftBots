@@ -379,3 +379,18 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Flattened bot-operation presence/abort/reset handling and removed the historical Previous/Original closure chain from the active Spawn path.
 - Preserved maintenance abort semantics, survivor/bootstrap handling, removal settle timing and 0.8.37 idle-worker behaviour.
 - Mass Kick All pacing remains unchanged at 5 uninvites per 0.10s for this runtime gate.
+
+## 0.8.39-dev — broad runtime efficiency pass
+
+- Documented and preserved the SoloCraft combat-safety invariant: combat checks remain aggressive and independent of roster revisions.
+- Removed repeated ready-tracker re-finalization and Active Roster reconstruction while preserving late identity-reconciliation retries.
+- Added roster-event revision tracking plus a bounded 0.25s operation fallback observation for missed Vanilla roster events.
+- Converted hot membership/count/anchor, refill-arrival, bootstrap-G1 and finalization-group checks to consume canonical Live Roster state.
+- Pre-indexed tracker and Active Roster associations during Live Roster construction; removed per-member linear lookup amplification.
+- Captured raid index/group-row in the canonical roster pass and reused it for live-layout tracking.
+- Avoided healthy-slot replacement-record/spawn-command allocation during maintenance-state scans.
+- Reused the delayed world-reconcile roster snapshot instead of immediately rebuilding it for downstream consumers.
+- Developer-only combat/chat events are now registered only while developer debug is enabled.
+- Consolidated CHAT_MSG_SYSTEM handling to the main SCB event dispatcher.
+- Reduced hidden/duplicate preset UI work and role-detection allocations.
+- Kick All pacing, combat gates, 3s removal settle and 1s arrival stabilization are unchanged for this runtime gate.
