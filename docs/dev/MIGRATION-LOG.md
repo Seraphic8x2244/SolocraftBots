@@ -345,3 +345,11 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Preset replacement inherits this pacing because its destructive rebuild path calls the same `SCB_KickBots(false)` entry point and already waits for live roster teardown before the existing removal-settle gate.
 - `Kick Dead` / maintenance dead removal is intentionally unchanged in this A/B build so repeated disconnects during mass Kick All can be isolated.
 - Survivor selection and Kick All anchor behaviour are unchanged.
+
+## 0.8.36-dev — make pfUI tank marking event-driven
+
+- Removed the `SCB_ApplyLivePfUITankRoles()` live-roster reconciliation path and its full `pfUI.uf:RefreshUnit(frame, "all")` sweep.
+- SCB now sets a tank name once when an authoritative spawn intent is bound to that bot, including the roster-delta identity fallback.
+- `SCB_ApplyTrackedPfUITankRoles()` remains only as an idempotent compatibility/fallback path for authoritative tracker names (including human tank assignments); it only sets previously-unset tank names and does not clear/rebuild the table or refresh every raid frame.
+- Ordinary roster changes and combat-role evidence no longer cause pfUI tank-role reconciliation.
+- Static follow-up audit found additional roster-event amplification: repeated Live Roster rebuilds, 40-row role-indicator refreshes, full live-layout scans, auto-promote scans and optional role-detection rebuilds. These are recorded separately for post-0.8.36 cleanup rather than bundled into this runtime gate.
