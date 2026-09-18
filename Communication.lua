@@ -1210,14 +1210,96 @@ function SCB_ShowSafetyMessage()
     SCB.safetyMessageFrame:SetScript("OnUpdate", SCB_SafetyMessageOnUpdate)
 end
 
+local SCB_KICK_BATCH_SIZE = 5
+local SCB_KICK_BATCH_INTERVAL = 0.10
+local SCB_kickQueueFrame = CreateFrame("Frame", nil, UIParent)
+SCB_kickQueueFrame:Hide()
+
+local function SCB_FinishKickQueue()
+    local state = SCB.kickQueueState
+    SCB.kickQueueState = nil
+    SCB_kickQueueFrame:SetScript("OnUpdate", nil)
+    SCB_kickQueueFrame:Hide()
+
+    if state and not state.safetyApplied and (state.issued or 0) > 0 then
+        SCB_Print(string.format(SCB_L(state.issued == 1 and "KICKED_ONE" or "KICKED_MANY"), state.issued))
+    end
+end
+
+local function SCB_RunKickQueueBatch()
+    local state = SCB.kickQueueState
+    local sent, name = 0, nil
+    if not state or not state.active then
+        SCB_FinishKickQueue()
+        return
+    end
+
+    while state.index <= table.getn(state.names) and sent < SCB_KICK_BATCH_SIZE do
+        name = state.names[state.index]
+        state.index = state.index + 1
+        UninviteByName(name)
+        state.issued = (state.issued or 0) + 1
+        sent = sent + 1
+    end
+
+    if state.index > table.getn(state.names) then
+        state.active = false
+        SCB_FinishKickQueue()
+    end
+end
+
+local function SCB_KickQueueOnUpdate()
+    local state = SCB.kickQueueState
+    if not state or not state.active then
+        SCB_FinishKickQueue()
+        return
+    end
+
+    state.elapsed = (state.elapsed or 0) + (arg1 or 0)
+    if state.elapsed < SCB_KICK_BATCH_INTERVAL then return end
+
+    -- Deliberately discard excess elapsed time. A lag spike must never cause
+    -- several missed batches to be fired together on the next frame.
+    state.elapsed = 0
+    SCB_RunKickQueueBatch()
+end
+
+local function SCB_StartKickQueue(names, safetyApplied)
+    if table.getn(names or {}) == 0 then return false end
+
+    SCB.kickQueueState = {
+        active = true,
+        names = names,
+        index = 1,
+        issued = 0,
+        elapsed = 0,
+        safetyApplied = safetyApplied and true or false,
+    }
+
+    -- Keep the action feeling immediate, but cap the initial frame at five
+    -- UninviteByName calls just like every later batch.
+    SCB_RunKickQueueBatch()
+    if SCB.kickQueueState and SCB.kickQueueState.active then
+        SCB_kickQueueFrame:SetScript("OnUpdate", SCB_KickQueueOnUpdate)
+        SCB_kickQueueFrame:Show()
+    end
+    return true
+end
+
 function SCB_KickBots(deadOnly)
     local members = SCB_CollectGroupMembers()
-    local bots, candidates = {}, {}
+    local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
     local i, member, survivorName, removed, safetyApplied
 
     if not UninviteByName then
         SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
+        return
+    end
+
+    -- A non-dead Kick All may already be draining asynchronously. Do not layer
+    -- a second removal flood on top of the active queue.
+    if not deadOnly and SCB.kickQueueState and SCB.kickQueueState.active then
         return
     end
 
@@ -1258,9 +1340,13 @@ function SCB_KickBots(deadOnly)
     for i = 1, table.getn(candidates) do
         if survivorName and candidates[i].name == survivorName then
             safetyApplied = true
-        else
+        elseif deadOnly then
+            -- Keep the existing Kick Dead behaviour unchanged in this A/B
+            -- build. Only mass Kick All teardown is being paced.
             UninviteByName(candidates[i].name)
             removed = removed + 1
+        else
+            table.insert(kickNames, candidates[i].name)
         end
     end
 
@@ -1270,17 +1356,21 @@ function SCB_KickBots(deadOnly)
         else
             SCB_ClearKickAllAnchor()
         end
+
+        if safetyApplied then
+            SCB_Print(SCB_L("SURVIVOR_CHAT"))
+            SCB_ShowSafetyMessage()
+        end
+
+        SCB_StartKickQueue(kickNames, safetyApplied)
+        return
     end
 
     if safetyApplied then
         SCB_Print(SCB_L("SURVIVOR_CHAT"))
         SCB_ShowSafetyMessage()
     elseif removed > 0 then
-        if deadOnly then
-            SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_DEAD_ONE" or "KICKED_DEAD_MANY"), removed))
-        else
-            SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_ONE" or "KICKED_MANY"), removed))
-        end
+        SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_DEAD_ONE" or "KICKED_DEAD_MANY"), removed))
     end
 end
 
