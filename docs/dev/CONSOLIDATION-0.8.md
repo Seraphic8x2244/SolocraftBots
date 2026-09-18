@@ -166,6 +166,8 @@ Owns developer diagnostics and debug UI.
 - [ ] **Post-consolidation:** use exact human logical-slot placement at every preset size. Dragging a player chooses which underlying bot intent is suppressed; party versus raid changes slot count only.
 - [ ] **Post-consolidation:** add bot-intent drag/drop so logical preset slots can be swapped/reorganised at all supported sizes. For bots this changes the controlled summon/order; for humans the slot still means only which bot intent they suppress, not a controllable Blizzard row.
 - [ ] **UI state cleanup:** moving a human between logical preset slots already changes composition intent and marks the preset dirty internally; ensure the Save/button colour/status immediately reflects that unsaved change.
+- [ ] **Bootstrap invariant:** a Kick All/safety survivor is temporary continuity infrastructure only and must never satisfy a final preset bot assignment. In raid-sized builds, isolate/park the survivor before normal preset bursts, build deterministic bot order from the requested preset, then remove the survivor. Do not add survivor role/class recycling logic; retaining it as a final bot complicates identity and can change controlled bot order.
+- [ ] **Observed regression to investigate:** after Kick All in a 10-man Stockades test, a retained G1 rogue appeared to remain the same named/buffed bot in G1 after summoning an otherwise like-for-like preset. A second test with a no-rogue target correctly moved the rogue survivor to G8 and replaced it. Treat the first outcome as bootstrap-lifecycle/order drift, not intended reuse.
 
 ### Phase G — Spawn consolidation
 
