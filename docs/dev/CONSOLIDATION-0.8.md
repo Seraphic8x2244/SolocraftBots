@@ -162,6 +162,8 @@ Owns developer diagnostics and debug UI.
 - [x] Remove `RaidPresentation.lua` green-pulse/live-row-as-editor-location model as superseded.
 - [x] Runtime-test the exact-slot model with multiple humans before folding RaidPlayers/RaidLayout into final owners: three-human BWL test passed on 0.8.5-dev.
 - [ ] Improve raid-layout validation wording: replace the vague `Cannot resolve the current party layout` message with text that explains the actionable requirement — all present players must be assigned to explicit raid preset slots before SCB can resolve/summon the raid layout.
+- [ ] **Post-consolidation:** extend exact human logical-slot placement to 5-man presets. Dragging a player chooses which of the five underlying bot intents is suppressed; Blizzard party row/order remains observational only.
+- [ ] **Post-consolidation:** add bot-intent drag/drop so preset slots can be swapped/reorganised at all supported sizes. This edits logical preset composition only; for raid presets, destination slot determines intended subgroup.
 
 ### Phase G — Spawn consolidation
 

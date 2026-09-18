@@ -17,6 +17,8 @@ Saved humans who are present automatically snap back to their saved logical slot
 
 Implemented in 0.8.5-dev: raid human drag/drop targets exact logical rows; execution snapshots carry the exact human `slotIndex`; group is derived from that slot; group-only legacy assignments without an exact slot remain unassigned until the user chooses a specific slot.
 
+Post-consolidation extension approved 2026-09-18: expose the same exact logical-slot model in 5-man presets. A 5-man preset is five underlying bot/composition intents; dragging a player onto a slot chooses exactly which bot intent that player suppresses. This does **not** attempt to change Blizzard's physical party order. Bot intents should also be draggable between preset slots so the user can swap/reorganise the logical composition; in raid-sized presets, moving an intent across a five-slot group boundary changes its intended subgroup because the destination logical slot owns that group. Implement this only after structural consolidation is complete, then runtime-test it before the final 0.8 regression/main promotion.
+
 ### Logical slot is not Blizzard row
 Blizzard raid roster/order remains the source of truth for live names, classes, subgroup membership and displayed within-group order. SCB must never assume logical GxSy equals Blizzard displayed GxSy.
 
