@@ -485,3 +485,23 @@ Runtime status:
 
 Exact next test:
 - continue the 40-player raid using 0.8.44; paced Kick All and Replace Dead/Missing should now exercise the same removal queue, while mixed-group replacement remains the main outstanding runtime gate.
+
+
+## Current next step — role UI + command ownership audit
+
+User report:
+- combat-role confirmation is disabled in Options, but a role tick remains visible on Presets;
+- physical/server command families should have one authoritative owner with option/mode arguments rather than parallel implementations.
+
+Verified before runtime patch:
+- the combat-role option is functioning: disabling it unregisters combat-role events and stops confirmation scanning;
+- Presets UI is inconsistent: it always shows the green assumed-role tick and only hides the confirmation tick when combat-role confirmation is disabled;
+- `.partybot` transport still has multiple direct `SendChatMessage` paths (normal control, spawn, Debug, Clear Marks);
+- live single-bot survivor/bootstrap and refill-anchor removals still contain raw `UninviteByName` calls outside the shared removal owner;
+- older superseded Presets maintenance/scheduler definitions also contain direct removal calls and are candidates for the deferred proven-dead cleanup rather than new runtime ownership.
+
+Exact next step:
+1. make Presets role indicators obey the combat-role feature toggle as one unit;
+2. add one `SCB_SendPartyBotCommand(command, options)` transport owner and route normal, spawn, Clear Marks and Debug transport through it while preserving spawn validation;
+3. route live survivor/bootstrap/refill-anchor removals through `SCB_KickBots(...)` so the queue implementation remains the only live physical `UninviteByName` owner;
+4. leave native raid-layout APIs separate for now; audit them during the deferred layout/dead-code cleanup.
