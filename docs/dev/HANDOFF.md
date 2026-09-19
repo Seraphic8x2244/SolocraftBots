@@ -1,10 +1,31 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.46-dev`
-Current functional addon head: `83b1c22af87e3a228db6ef38d08c5996031e8dd5`
-Previous docs checkpoint: `034e9fc4ba4775c99126bbbc03a7d39e46f1d49d`
+Current addon line: `0.8.47-dev`
+Current functional addon head: `a305bcb9e27a3360e63415bb8436b49670dddce0`
+Previous docs checkpoint: `5b4320d69a13869e1ad3c4ade8a2680ceb218b93`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.47-dev — role-indicator gating correction
+
+Runtime commit: `a305bcb9e27a3360e63415bb8436b49670dddce0`
+
+Changes:
+- the assumed/summon role tick is no longer gated by the combat-role confirmation option;
+- the combat-confirmation tick remains hidden when combat-role confirmation is disabled;
+- no summon, teardown, removal, maintenance, pacing, or combat-safety logic changed.
+
+Runtime context from 0.8.46 smoke:
+- summon-over passed;
+- Replace Missing passed;
+- normal preset summon in combat correctly refused destructive teardown;
+- Replace Dead remains untested in this smoke sequence.
+
+Untested:
+- `0.8.47-dev` role-indicator behaviour in game.
+
+Exact next step:
+- verify in a 5-player group with combat-role confirmation disabled that summon/assumed ticks remain visible while combat-confirmation ticks stay hidden; if correct, resume the 16-family wrapper-flattening cleanup pass.
 
 ## 0.8.46 runtime smoke update — 2026-09-19
 
