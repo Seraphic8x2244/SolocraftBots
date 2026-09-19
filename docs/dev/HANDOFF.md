@@ -1,10 +1,35 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.45-dev`
-Current functional addon head: `379859be7196872328a106085cec37c161ef23eb`
-Previous docs checkpoint: `863a5fca4d97c82dd3ba0295f1136e57e6b5bdb3`
+Current addon line: `0.8.46-dev`
+Current functional addon head: `83b1c22af87e3a228db6ef38d08c5996031e8dd5`
+Previous docs checkpoint: `f26525b9a328d13954cfc864092d89981c834600`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.46-dev — proven-dead implementation deletion pass
+
+Runtime commit: `83b1c22af87e3a228db6ef38d08c5996031e8dd5`
+
+Completed:
+- removed 23 superseded global function definitions across 20 duplicate families;
+- deletions were limited to implementations overwritten later in TOC order and not captured by wrapper aliases;
+- removed 679 lines from `Presets.lua`, 85 from `Roster.lua`, 82 from `Spawn.lua`, and 19 from `SoloCraftBots.lua`;
+- no Lua lines were added or rewritten; the only non-deletion runtime diff is the TOC bump to `0.8.46-dev`;
+- current duplicate-global audit is down to 16 families, and every remaining family is an intentional base/wrapper capture chain reserved for the wrapper-flattening pass;
+- the single raw `.partybot` transport owner remains `SCB_SendPartyBotCommand`; the live paced removal owner remains unchanged.
+
+Untested:
+- `0.8.46-dev` runtime itself;
+- the explicit Presets role-indicator spot check with combat-role confirmation disabled remains outstanding.
+
+Deferred:
+- wrapper flattening for the 16 captured duplicate families;
+- FIFO head-index conversion and other queue/micro-optimisations;
+- optional lazy UI/startup and deeper debug-buffer work;
+- Group command scope and macro-safe Stay/Move feature work.
+
+Exact next step:
+- smoke `0.8.46-dev` in game: confirm clean addon load, one normal preset summon/rebuild, one Replace Dead/Missing cycle if available, paced Kick All, and the disabled combat-role indicator state; if clean, begin the wrapper-flattening cleanup from the 16 remaining captured families.
 
 ## 0.8.46 cleanup start checkpoint — 2026-09-19
 
