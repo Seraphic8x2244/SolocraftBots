@@ -2864,9 +2864,15 @@ function SCB_RefillOnUpdate(elapsed)
 
     if state.phase == "removeanchor" then
         if SCB_PresetGroupHasCombat() then return end
-        if state.anchorName and SCB_GroupHasName(state.anchorName) and UninviteByName then
+        if state.anchorName and SCB_GroupHasName(state.anchorName) then
+            if not SCB_KickBots or not SCB_KickBots("all", {
+                name = state.anchorName,
+                manageSafety = false,
+                silent = true,
+            }) then
+                return
+            end
             if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REMOVE_ANCHOR"), state.anchorName)) end
-            UninviteByName(state.anchorName)
         end
         state.anchorProbeRemaining = 1.0
         state.phase = "waitanchorgone"

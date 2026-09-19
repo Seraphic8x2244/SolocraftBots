@@ -1018,14 +1018,13 @@ function SCB_DebugParseBatch()
 end
 
 function SCB_DebugSendLine(line)
+    local channel
     if not line or line == "" then return end
 
     SCB_DebugLog(SCB_L("DEBUG_KIND_SEND"), ".partybot " .. line)
-
-    if string.sub(string.lower(line), 1, 4) == "add " then
-        SendChatMessage(".partybot " .. line, "SAY")
-    else
-        SendChatMessage(".partybot " .. line, "PARTY")
+    channel = string.sub(string.lower(line), 1, 4) == "add " and "SAY" or "PARTY"
+    if SCB_SendPartyBotCommand then
+        SCB_SendPartyBotCommand(line, { channel = channel })
     end
 end
 

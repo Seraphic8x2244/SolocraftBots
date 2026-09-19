@@ -1711,9 +1711,19 @@ local function SCB_GetIndicatorBotName(assignment)
     return nil
 end
 
+function SCB_IsRoleDetectionEnabled()
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
+        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
+    end
+    return SoloCraftBotsDB.options.confirmBotRolesFromCombat == true
+end
+
 function SCB_RefreshPresetRoleIndicators()
     local size = SCB_CurrentPresetSize and SCB_CurrentPresetSize() or 0
     local assignmentBySlot
+    local detectionEnabled = SCB_IsRoleDetectionEnabled()
     local i, row, assignment, name, stage, color
 
     if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
@@ -1731,7 +1741,7 @@ function SCB_RefreshPresetRoleIndicators()
             if row.scbAssumedTick then row.scbAssumedTick:Hide() end
             if row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
 
-            if i <= size and not row.scbPresentPlayerKey then
+            if detectionEnabled and i <= size and not row.scbPresentPlayerKey then
                 assignment = SCB_FindTrackerAssignmentForIndicator(i, assignmentBySlot)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
@@ -1752,13 +1762,6 @@ function SCB_RefreshPresetRoleIndicators()
             end
         end
     end
-    if SCB_EnsureRoleDetectionOption and not SCB_EnsureRoleDetectionOption() then
-        for i = 1, 40 do
-            row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
-            if row and row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
-        end
-    end
-
 end
 
 function SCB_QueuePresetRoleIndicatorsRefresh(delay)
@@ -1822,12 +1825,7 @@ local SCB_DETECTION_EVENTS = {
 }
 
 local function SCB_EnsureRoleDetectionOption()
-    SoloCraftBotsDB = SoloCraftBotsDB or {}
-    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
-    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
-        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
-    end
-    return SoloCraftBotsDB.options.confirmBotRolesFromCombat == true
+    return SCB_IsRoleDetectionEnabled()
 end
 
 local function SCB_LiveBotNeedsRoleConfirmation(member)

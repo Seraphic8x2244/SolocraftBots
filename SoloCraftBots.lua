@@ -54,13 +54,23 @@ function SCB_Print(text)
     end
 end
 
-function SCB_SendCommand(command)
-    if not command or command == "" then
-        return
+function SCB_SendPartyBotCommand(command, options)
+    local channel
+    if not command or command == "" or not SendChatMessage then return false end
+
+    options = options or {}
+    channel = options.channel or "PARTY"
+    if options.registerSpawnIntent and SCB_RegisterSpawnIntent then
+        SCB_RegisterSpawnIntent()
     end
+
+    SendChatMessage(".partybot " .. command, channel)
+    return true
+end
+
+function SCB_SendCommand(command)
     -- Control commands use party chat so they can still be issued while dead.
-    -- Bot spawning is intentionally handled separately and always uses SAY.
-    SendChatMessage(".partybot " .. command, "PARTY")
+    return SCB_SendPartyBotCommand(command, { channel = "PARTY" })
 end
 
 function SCB_QueueDelayedCommand(command, delay)
@@ -733,11 +743,11 @@ function SCB_IsValidSpawnAssignment(classKey, role, extra)
 end
 
 function SCB_SendSpawnCommand(command)
-    if not command or command == "" then
-        return
-    end
-    SCB_RegisterSpawnIntent()
-    SendChatMessage(".partybot " .. command, "SAY")
+    if not command or command == "" then return false end
+    return SCB_SendPartyBotCommand(command, {
+        channel = "SAY",
+        registerSpawnIntent = true,
+    })
 end
 
 function SCB_RefreshMainPaladinBlessingButton()
@@ -1278,7 +1288,7 @@ function SCB_CreateRaidmarkUI(frame)
     local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
-    clearMarks:SetScript("OnClick", function() SendChatMessage(".partybot clearmarks", "PARTY") end)
+    clearMarks:SetScript("OnClick", function() SCB_SendCommand("clearmarks") end)
     clearMarks:SetScript("OnEnter", SCB_TooltipOnEnter)
     clearMarks:SetScript("OnLeave", SCB_TooltipOnLeave)
 

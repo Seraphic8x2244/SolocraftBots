@@ -127,12 +127,14 @@ local function SCB_TryRemoveParkedSurvivor()
 
     if not SCB_HasRealGroupOneBot(name) then return false end
     if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
-    if UninviteByName then
-        UninviteByName(name)
+    if SCB_KickBots and SCB_KickBots("all", {
+        name = name,
+        manageSafety = false,
+        silent = true,
+    }) then
         safety.removalWaiting = true
         safety.removalName = name
         safety.removalGoneAt = nil
-        return false
     end
     return false
 end
@@ -786,9 +788,10 @@ function SCB_SendSpawnCommand(command)
         SCB_SpawnDebug("Blocked invalid spawn payload: " .. tostring(command))
         return false
     end
-    if SCB_RegisterSpawnIntent then SCB_RegisterSpawnIntent() end
-    SendChatMessage(".partybot " .. command, "SAY")
-    return true
+    return SCB_SendPartyBotCommand and SCB_SendPartyBotCommand(command, {
+        channel = "SAY",
+        registerSpawnIntent = true,
+    }) or false
 end
 
 local function SCB_GetSpawnLabels(classKey, role, extra)
@@ -1274,8 +1277,14 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 SCB_AbortInvalidSchedulerItem("missing preset safety state")
                 return
             end
-            if safety.survivorName and UninviteByName then
-                UninviteByName(safety.survivorName)
+            if safety.survivorName then
+                if not SCB_KickBots or not SCB_KickBots("all", {
+                    name = safety.survivorName,
+                    manageSafety = false,
+                    silent = true,
+                }) then
+                    return
+                end
             end
             safety.partySurvivorGoneAt = nil
             table.remove(queue, 1)
@@ -1901,8 +1910,11 @@ local function SCB_0823PollBootstrapRemoval()
     if not SCB_0823HasRealGroupOneBot(name) then return false end
     if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
 
-    if UninviteByName then
-        UninviteByName(name)
+    if SCB_KickBots and SCB_KickBots("all", {
+        name = name,
+        manageSafety = false,
+        silent = true,
+    }) then
         safety.removalWaiting = true
         safety.removalName = name
         safety.removalGoneAt = nil

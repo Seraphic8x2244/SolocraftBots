@@ -1328,6 +1328,10 @@ function SCB_KickBots(mode, options)
     local otherHumans = 0
     local i, member, survivorName, safetyApplied
     local names = options and options.names or nil
+    if options and options.name then
+        names = names or {}
+        names[options.name] = true
+    end
     local manageSafety = not options or options.manageSafety ~= false
     local preserveName = options and options.preserveName or nil
     local silent = options and options.silent or false
