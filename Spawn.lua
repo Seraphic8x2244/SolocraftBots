@@ -149,6 +149,7 @@ SCB.MAINTENANCE_REMOVAL_TIMEOUT = 15.0
 SCB.MAINTENANCE_BURST_TIMEOUT = 12.0
 SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT = 15.0
 SCB.MAINTENANCE_STALE_COMBAT_DELAY = 10.0
+SCB.MAINTENANCE_BURST_SIZE = 5
 
 local function SCB_0826MaintenanceDebug(text)
     if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Spawn", "Maintenance: " .. tostring(text)) end
@@ -257,21 +258,95 @@ local function SCB_0826CollectCurrentBotNames()
     return result
 end
 
+local function SCB_0826ResolveMaintenanceBurstBots(state, newBots)
+    local byName, used, resolved = {}, {}, {}
+    local i, bot, assignment, name, intent, matched
+
+    for i = 1, table.getn(newBots or {}) do
+        bot = newBots[i]
+        if bot and bot.name then byName[bot.name] = bot end
+    end
+
+    for i = 1, table.getn(state.currentAssignments or {}) do
+        assignment = state.currentAssignments[i]
+        matched = nil
+        for name, intent in pairs(SCB.assumedRolesByName or {}) do
+            if not used[name] and byName[name] and intent
+                and intent.burstID == state.burstID
+                and intent.slotIndex == assignment.slotIndex
+                and (intent.group or 1) == (assignment.group or 1) then
+                matched = byName[name]
+                used[name] = true
+                break
+            end
+        end
+        if not matched then return nil end
+        resolved[i] = matched
+    end
+
+    return resolved
+end
+
+local function SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots)
+    local i, assignment, bot
+    for i = 1, table.getn(state.currentAssignments or {}) do
+        assignment = state.currentAssignments[i]
+        bot = resolvedBots and resolvedBots[i] or nil
+        if not bot or bot.subgroup ~= (assignment.group or 1) then return false end
+    end
+    return true
+end
+
+local function SCB_0826MoveOneMaintenanceBot(state, resolvedBots)
+    local i, j, assignment, bot, wantedGroup, otherAssignment, otherBot
+
+    for i = 1, table.getn(state.currentAssignments or {}) do
+        assignment = state.currentAssignments[i]
+        bot = resolvedBots and resolvedBots[i] or nil
+        wantedGroup = assignment and (assignment.group or 1) or 1
+
+        if bot and bot.subgroup ~= wantedGroup then
+            -- A full destination can contain another bot from this same mixed
+            -- burst. Swap with a misplaced burst bot first so full raids can
+            -- converge without needing a temporary empty subgroup slot.
+            if SwapRaidSubgroup and bot.raidIndex then
+                for j = 1, table.getn(state.currentAssignments or {}) do
+                    if j ~= i then
+                        otherAssignment = state.currentAssignments[j]
+                        otherBot = resolvedBots[j]
+                        if otherBot and otherBot.raidIndex
+                            and otherBot.subgroup == wantedGroup
+                            and (otherAssignment.group or 1) ~= wantedGroup then
+                            SwapRaidSubgroup(bot.raidIndex, otherBot.raidIndex)
+                            return true
+                        end
+                    end
+                end
+            end
+
+            if SetRaidSubgroup and bot.raidIndex then
+                SetRaidSubgroup(bot.raidIndex, wantedGroup)
+                return true
+            end
+            return false
+        end
+    end
+
+    return false
+end
+
 local function SCB_0826BeginMaintenanceBurst(operation, state, now)
-    local group = state.remaining[1] and (state.remaining[1].group or 1) or nil
     local assignments, plan = {}, nil
     local i, assignment
+    local limit = math.min(SCB.MAINTENANCE_BURST_SIZE or 5, table.getn(state.remaining or {}))
 
-    if not group then return false end
-    for i = 1, table.getn(state.remaining) do
+    for i = 1, limit do
         assignment = state.remaining[i]
-        if (assignment.group or 1) == group then
-            table.insert(assignments, assignment)
-        end
+        if assignment then table.insert(assignments, assignment) end
     end
     if table.getn(assignments) == 0 then return false end
 
-    plan = { kind = "maintenance", group = group, assignments = {} }
+    plan = { kind = "maintenance", assignments = {} }
     for i = 1, table.getn(assignments) do
         table.insert(plan.assignments, SCB_CopyBurstAssignment(assignments[i]))
     end
@@ -281,7 +356,7 @@ local function SCB_0826BeginMaintenanceBurst(operation, state, now)
         return false
     end
 
-    state.group = group
+    state.burstID = plan.burstID
     state.currentAssignments = assignments
     state.beforeNames = SCB_0826CollectCurrentBotNames()
     state.fullSeenAt = nil
@@ -292,6 +367,9 @@ local function SCB_0826BeginMaintenanceBurst(operation, state, now)
     state.combatOverrideLogged = nil
     if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
 
+    -- Preserve the established burst ordering used by preset summons and the
+    -- SoloCraft join-message identity queue. The only change is that one burst
+    -- may now contain destinations from several raid groups.
     for i = table.getn(assignments), 1, -1 do
         assignment = assignments[i]
         if not SCB_SendSpawnCommand or not SCB_SendSpawnCommand(assignment.command) then
@@ -300,7 +378,7 @@ local function SCB_0826BeginMaintenanceBurst(operation, state, now)
             return false
         end
         SCB_0826MaintenanceDebug(
-            "requested G" .. tostring(group)
+            "requested G" .. tostring(assignment.group or 1)
             .. " slot " .. tostring(assignment.slotIndex or "?")
             .. " " .. tostring(assignment.class or "?")
             .. " " .. tostring(assignment.role or "?")
@@ -309,14 +387,14 @@ local function SCB_0826BeginMaintenanceBurst(operation, state, now)
     return true
 end
 
-local function SCB_0826CompleteMaintenanceBurst(state, newBots)
+local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     local i
     for i = 1, table.getn(state.currentAssignments or {}) do
         local assignment = state.currentAssignments[i]
-        local bot = newBots[i]
+        local bot = resolvedBots[i]
         assignment.botName = bot and bot.name or nil
         if assignment.activeSlotID and bot and SCB_BindReplacementToActiveSlot then
-            SCB_BindReplacementToActiveSlot(assignment.activeSlotID, bot.name, state.group)
+            SCB_BindReplacementToActiveSlot(assignment.activeSlotID, bot.name, assignment.group or 1)
         end
     end
 
@@ -328,7 +406,7 @@ local function SCB_0826CompleteMaintenanceBurst(state, newBots)
         SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
     end
 
-    state.group = nil
+    state.burstID = nil
     state.currentAssignments = nil
     state.beforeNames = nil
     state.fullSeenAt = nil
@@ -480,7 +558,7 @@ function SCB_MaintenanceReplaceOnUpdate()
     local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
     local state = operation and operation.kind == "maintenance" and operation.maintenance or nil
     local now = GetTime and GetTime() or 0
-    local newBots, expected, raidCount, i, allMoved
+    local newBots, expected, raidCount, i
 
     if not operation or operation.kind ~= "maintenance" then return end
     if not state then
@@ -557,6 +635,7 @@ function SCB_MaintenanceReplaceOnUpdate()
     end
 
     if state.phase == "waitgroup" then
+        local resolvedBots
         newBots = SCB_GetNewRefillBots and SCB_GetNewRefillBots(state.beforeNames or {}) or {}
         expected = table.getn(state.currentAssignments or {})
 
@@ -573,33 +652,36 @@ function SCB_MaintenanceReplaceOnUpdate()
             return
         end
 
-        raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-        if raidCount > 0 then
-            allMoved = true
-            for i = 1, table.getn(newBots) do
-                if newBots[i].subgroup ~= state.group then allMoved = false break end
+        -- Do not infer mixed-group identity from physical roster order. The
+        -- authoritative join-message intents carry this burst ID plus the exact
+        -- logical slot/group for each newly joined bot.
+        resolvedBots = SCB_0826ResolveMaintenanceBurstBots(state, newBots)
+        if not resolvedBots then
+            if state.burstStartedAt and (now - state.burstStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "replacement identity timed out",
+                    "Bot maintenance stopped because replacement identity could not be confirmed. Replace Missing can be retried.")
             end
-
-            if not allMoved then
-                if SCB_0826MaintenanceCombatBlocked(state, now) then return end
-                if not state.groupMoveStartedAt then state.groupMoveStartedAt = now end
-                if (now - state.groupMoveStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
-                    SCB_0826FinishMaintenance("failed", "replacement subgroup move timed out",
-                        "Bot maintenance stopped because a replacement could not be moved to its raid group.")
-                    return
-                end
-                if SetRaidSubgroup then
-                    for i = 1, table.getn(newBots) do
-                        if newBots[i].subgroup ~= state.group and newBots[i].raidIndex then
-                            SetRaidSubgroup(newBots[i].raidIndex, state.group)
-                        end
-                    end
-                end
-                state.fullSeenAt = nil
-                return
-            end
+            return
         end
 
+        raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+        if raidCount > 0 and not SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots) then
+            if SCB_0826MaintenanceCombatBlocked(state, now) then return end
+            if not state.groupMoveStartedAt then state.groupMoveStartedAt = now end
+            if (now - state.groupMoveStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "replacement subgroup move timed out",
+                    "Bot maintenance stopped because a replacement could not be moved to its raid group.")
+                return
+            end
+
+            -- One move/swap per observation. Raid indices can change after a
+            -- subgroup mutation, so never reuse the remaining cached indices.
+            SCB_0826MoveOneMaintenanceBot(state, resolvedBots)
+            state.fullSeenAt = nil
+            return
+        end
+
+        state.groupMoveStartedAt = nil
         state.combatSeenAt = nil
         state.combatOverrideLogged = nil
         if not state.fullSeenAt then
@@ -613,16 +695,19 @@ function SCB_MaintenanceReplaceOnUpdate()
             state.fullSeenAt = nil
             return
         end
-        if raidCount > 0 then
-            for i = 1, table.getn(newBots) do
-                if newBots[i].subgroup ~= state.group then
-                    state.fullSeenAt = nil
-                    return
-                end
-            end
+        raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+
+        resolvedBots = SCB_0826ResolveMaintenanceBurstBots(state, newBots)
+        if not resolvedBots then
+            state.fullSeenAt = nil
+            return
+        end
+        if raidCount > 0 and not SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots) then
+            state.fullSeenAt = nil
+            return
         end
 
-        SCB_0826CompleteMaintenanceBurst(state, newBots)
+        SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
         return
     end
 
