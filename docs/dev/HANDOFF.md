@@ -3,8 +3,24 @@
 Current branch: `dev`
 Current addon line: `0.8.46-dev`
 Current functional addon head: `83b1c22af87e3a228db6ef38d08c5996031e8dd5`
-Previous docs checkpoint: `f26525b9a328d13954cfc864092d89981c834600`
+Previous docs checkpoint: `034e9fc4ba4775c99126bbbc03a7d39e46f1d49d`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.46 runtime smoke update — 2026-09-19
+
+User-confirmed on `0.8.46-dev`:
+- summon-over / preset replacement works;
+- Replace Missing works;
+- starting a normal preset summon in combat refuses destructive teardown as intended;
+- Replace Dead has not yet been exercised in this smoke pass.
+
+UI finding:
+- with combat-role confirmation disabled, both preset role indicators disappear in a 5-player group;
+- expected behaviour is to keep the summon/assumed-role tick visible and hide only the combat-confirmation tick;
+- root cause is in `SCB_RefreshPresetRoleIndicators()`: the `detectionEnabled` condition currently gates the whole indicator branch, including `scbAssumedTick:Show()`.
+
+Exact next step:
+- make a narrow `0.8.47-dev` UI correction so the assumed/summon tick is independent of combat-role detection while the confirmation tick remains feature-gated; do not mix wrapper cleanup into this fix. After runtime confirmation, resume the 16-family wrapper-flattening pass.
 
 ## 0.8.46-dev — proven-dead implementation deletion pass
 
