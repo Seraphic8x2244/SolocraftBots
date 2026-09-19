@@ -539,3 +539,8 @@ Still deferred after 0.8.42:
 - optional startup/lazy-UI and deeper debug-buffer work.
 
 Runtime status: 0.8.39 passed the practical 10-man gate; 0.8.40-0.8.42 are statically reviewed and intentionally stacked for natural-play testing rather than separate deep gates.
+
+
+### Runtime result: same-frame Kick All rejected
+
+The 0.8.41 A/B was tested in a 40-player raid and caused a disconnect. This optimization is rejected for the current Vanilla/SoloCraft client-server environment. The safe baseline remains paced Kick All at 5 `UninviteByName` calls per 0.10 seconds. Future removal optimization should not retry same-frame 40-player mass uninvite without a materially different mechanism.

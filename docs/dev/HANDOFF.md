@@ -90,7 +90,7 @@ Changes:
 Current runtime-test status:
 - `0.8.39-dev`: practical 10-man Stockades gate passed;
 - `0.8.40-dev`: combat-safe preset teardown entry runtime-tested successfully in normal play;
-- `0.8.41-dev`: same-frame Kick All is statically reviewed but not runtime-tested;
+- `0.8.41-dev`: FAILED runtime test in a 40-player raid — same-frame Kick All disconnected the player/client;
 - `0.8.42-dev`: mixed-group maintenance burst is statically reviewed but not runtime-tested.
 
 Natural-play ZF test target (no dedicated test matrix required):
@@ -433,3 +433,12 @@ Do not move `main` merely because the file consolidation is complete. Stable pro
 - Normal preset summon while the group is already in combat correctly blocks before destructive teardown.
 - The 0.8.40 combat-entry change is therefore runtime-passed.
 - Remaining runtime gate for the stacked 0.8.41-0.8.42 work: 40-player raid test of same-frame Kick All and mixed-group maintenance replacement.
+
+
+## 40-player Kick All A/B result — FAILED
+
+- 0.8.41 same-frame Kick All caused a disconnect during the 40-player raid test.
+- Treat same-frame mass `UninviteByName` as rejected for this client/server environment.
+- Do not continue testing the same-frame variant.
+- Mixed-group maintenance in 0.8.42 has not yet been invalidated by this result and remains pending runtime coverage.
+- Exact next step: restore the previously proven 5 removals per 0.10 seconds Kick All pacing as an isolated runtime change, retain the 0.8.42 maintenance burst implementation, then continue the raid using that build.

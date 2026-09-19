@@ -429,3 +429,10 @@ Do not rewrite historical entries above to make this final target appear preorda
 
 - The 0.8.40 root combat preflight passed runtime testing: a normal preset summon while already in combat blocks before any destructive bot teardown.
 - Same-frame Kick All and mixed-group maintenance remain pending 40-player runtime coverage.
+
+
+## 40-player Kick All A/B result — FAILED
+
+- The 0.8.41 same-frame Kick All A/B disconnected the player/client during a 40-player raid test.
+- Same-frame mass uninvite is rejected; restore the prior 5-per-0.10s removal pacing.
+- Keep the 0.8.42 mixed-group maintenance implementation for separate runtime testing.
