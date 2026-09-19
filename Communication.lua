@@ -1230,27 +1230,80 @@ function SCB_ShowSafetyMessage()
     SCB.safetyMessageFrame:SetScript("OnUpdate", SCB_SafetyMessageOnUpdate)
 end
 
-local function SCB_KickAllSameFrame(names, safetyApplied)
-    local issued = 0
-    local i, name
+local SCB_KICK_BATCH_SIZE = 5
+local SCB_KICK_BATCH_INTERVAL = 0.10
+local SCB_kickQueueFrame = CreateFrame("Frame", nil, UIParent)
+SCB_kickQueueFrame:Hide()
+
+local function SCB_FinishKickQueue()
+    local state = SCB.kickQueueState
+    SCB.kickQueueState = nil
+    SCB_kickQueueFrame:SetScript("OnUpdate", nil)
+    SCB_kickQueueFrame:Hide()
+
+    if state and not state.safetyApplied and (state.issued or 0) > 0 then
+        SCB_Print(string.format(SCB_L(state.issued == 1 and "KICKED_ONE" or "KICKED_MANY"), state.issued))
+    end
+end
+
+local function SCB_RunKickQueueBatch()
+    local state = SCB.kickQueueState
+    local sent, name = 0, nil
+    if not state or not state.active then
+        SCB_FinishKickQueue()
+        return
+    end
+
+    while state.index <= table.getn(state.names) and sent < SCB_KICK_BATCH_SIZE do
+        name = state.names[state.index]
+        state.index = state.index + 1
+        UninviteByName(name)
+        state.issued = (state.issued or 0) + 1
+        sent = sent + 1
+    end
+
+    if state.index > table.getn(state.names) then
+        state.active = false
+        SCB_FinishKickQueue()
+    end
+end
+
+local function SCB_KickQueueOnUpdate()
+    local state = SCB.kickQueueState
+    if not state or not state.active then
+        SCB_FinishKickQueue()
+        return
+    end
+
+    state.elapsed = (state.elapsed or 0) + (arg1 or 0)
+    if state.elapsed < SCB_KICK_BATCH_INTERVAL then return end
+
+    -- Deliberately discard excess elapsed time. A lag spike must never cause
+    -- several missed batches to be fired together on the next frame.
+    state.elapsed = 0
+    SCB_RunKickQueueBatch()
+end
+
+local function SCB_StartKickQueue(names, safetyApplied)
     if table.getn(names or {}) == 0 then return false end
 
-    -- 0.8.41 A/B: roster observation is now event/revision driven, so there is
-    -- no benefit in stretching a precomputed Kick All snapshot across 0.10s
-    -- batches. Issue every removal request from this stable snapshot in the
-    -- initiating frame; subsequent roster events own observation/settling.
-    for i = 1, table.getn(names) do
-        name = names[i]
-        if name then
-            UninviteByName(name)
-            issued = issued + 1
-        end
-    end
+    SCB.kickQueueState = {
+        active = true,
+        names = names,
+        index = 1,
+        issued = 0,
+        elapsed = 0,
+        safetyApplied = safetyApplied and true or false,
+    }
 
-    if not safetyApplied and issued > 0 then
-        SCB_Print(string.format(SCB_L(issued == 1 and "KICKED_ONE" or "KICKED_MANY"), issued))
+    -- Keep the action feeling immediate, but cap the initial frame at five
+    -- UninviteByName calls just like every later batch.
+    SCB_RunKickQueueBatch()
+    if SCB.kickQueueState and SCB.kickQueueState.active then
+        SCB_kickQueueFrame:SetScript("OnUpdate", SCB_KickQueueOnUpdate)
+        SCB_kickQueueFrame:Show()
     end
-    return issued > 0
+    return true
 end
 
 function SCB_KickBots(deadOnly)
@@ -1261,6 +1314,12 @@ function SCB_KickBots(deadOnly)
 
     if not UninviteByName then
         SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
+        return
+    end
+
+    -- A non-dead Kick All may already be draining asynchronously. Do not layer
+    -- a second removal flood on top of the active queue.
+    if not deadOnly and SCB.kickQueueState and SCB.kickQueueState.active then
         return
     end
 
@@ -1302,8 +1361,8 @@ function SCB_KickBots(deadOnly)
         if survivorName and candidates[i].name == survivorName then
             safetyApplied = true
         elseif deadOnly then
-            -- Keep Kick Dead behaviour unchanged; the 0.8.41 A/B only changes
-            -- non-dead mass Kick All teardown to same-frame removal requests.
+            -- Keep the existing Kick Dead behaviour unchanged in this A/B
+            -- build. Only mass Kick All teardown is being paced.
             UninviteByName(candidates[i].name)
             removed = removed + 1
         else
@@ -1323,7 +1382,7 @@ function SCB_KickBots(deadOnly)
             SCB_ShowSafetyMessage()
         end
 
-        SCB_KickAllSameFrame(kickNames, safetyApplied)
+        SCB_StartKickQueue(kickNames, safetyApplied)
         return
     end
 
