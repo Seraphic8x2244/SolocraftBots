@@ -465,4 +465,5 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Repeated preset summons and summon-over rebuilds worked.
 - Dead and missing partial maintenance refills worked, including removal/maintenance activity while the player was dead.
 - This provides meaningful 40-player runtime coverage for the unified paced removal owner and mixed-group maintenance work.
+- Repeated manual Kick All actions also passed during the same 40-player BWL session.
 - Presets role-indicator visibility with combat-role confirmation disabled was not explicitly confirmed in this report.

@@ -550,8 +550,7 @@ Interpretation:
 - preset teardown / rebuild changes continue to behave correctly under repeated use.
 
 Still not explicitly confirmed from this report:
-- Presets role-indicator visibility with combat-role confirmation disabled;
-- a dedicated manual Kick All action was not separately reported in this BWL result, so do not claim a dedicated Kick All button test from this session alone.
+- Presets role-indicator visibility with combat-role confirmation disabled.
 
 Next development step:
 - move into proven-dead historical implementation / low-value wrapper cleanup, then lower-priority queue and micro-optimisation work, while keeping the current runtime behaviour as the reference.
