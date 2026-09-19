@@ -3,8 +3,42 @@
 Current branch: `dev`
 Current addon line: `0.8.45-dev`
 Current functional addon head: `379859be7196872328a106085cec37c161ef23eb`
-Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
+Previous docs checkpoint: `fe30a12e3d07a9f06cb67953f26daa858650a26c`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## Refactor polish checkpoint — 2026-09-19
+
+Current runtime state:
+- branch: `dev`;
+- addon: `0.8.45-dev`;
+- functional runtime head: `379859be7196872328a106085cec37c161ef23eb`;
+- latest docs head before this checkpoint: `fe30a12e3d07a9f06cb67953f26daa858650a26c`;
+- 0.8.45 completed a successful 40-player Blackwing Lair natural-play gate with repeated preset summons/rebuilds, dead/missing maintenance, removals while the player was dead, and repeated paced Kick All;
+- only explicit UI spot check still unreported: role ticks hidden when combat-role confirmation is disabled.
+
+Duplicate-global audit:
+- 36 `SCB_*` globals currently have multiple definitions across the six-owner files;
+- about 20 are superseded implementations where a later owner replaces the earlier implementation without preserving it;
+- about 16 are deliberate base/wrapper chains where the later definition captures the earlier function and therefore must be flattened before the base can be deleted.
+
+First safe cleanup batch (no intended behaviour change):
+- remove superseded preset/runtime implementations now owned later in TOC order, including old maintenance, old preset rebuild/scheduler/click paths, old spawn sender/click paths, and duplicated roster helpers that are replaced outright;
+- retain all functions that are captured by a `local ... = SCB_Foo` wrapper alias until that wrapper is flattened;
+- preserve current owner boundaries: Roster = observation/identity, Spawn = physical lifecycle/add timing, Communication = final click/comms/removal UI owner, Options = option/UI owner;
+- do not touch combat predicates, 5-per-0.10s removal pacing, 3-second removal settle, 1-second maintenance stabilization, survivor/bootstrap semantics, or mixed-group burst identity.
+
+Wrapper-flattening batch after safe deletions:
+- fold each intentional wrapper/base pair into one authoritative implementation in its final owner;
+- priority families include preset logical-slot UI/save/load wrappers, snapshot validation/build wrappers, combat-role lifecycle wrappers, Options UI/check wrappers, and safety-message presentation wrapper;
+- re-run duplicate-global audit after each batch until every remaining duplicate is intentional and justified, then remove the remaining wrapper aliases.
+
+Deferred after structural cleanup:
+- FIFO head-index conversion / lower-value queue micro-optimisations;
+- optional lazy UI/startup and deeper debug-buffer optimisation;
+- Group command scope and macro-safe Stay/Move remain feature work after refactor completion.
+
+Exact next step:
+- create `0.8.46-dev` as a behaviour-preserving proven-dead implementation deletion pass, beginning with the superseded definitions that are not captured by wrapper aliases; statically compare the candidate against 0.8.45 and keep the BWL-proven runtime behaviour as the reference.
 
 ## Current status override — 2026-09-19
 
