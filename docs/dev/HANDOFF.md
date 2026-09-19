@@ -444,6 +444,16 @@ Do not move `main` merely because the file consolidation is complete. Stable pro
 - Exact next step: restore the previously proven 5 removals per 0.10 seconds Kick All pacing as an isolated runtime change, retain the 0.8.42 maintenance burst implementation, then continue the raid using that build.
 
 
+## Shared bot-removal mechanic rule — 2026-09-19
+
+Replace Dead/Missing must not use a separate immediate-uninvite path from Kick All. All multi-bot physical removals should feed one shared paced removal mechanism so the proven 5-removals-per-0.10-second server/client safety limit is applied consistently.
+
+Immediate next step:
+- expose the existing paced Kick All queue as a shared bot-removal API;
+- route maintenance dead-bot removals through that same queue;
+- keep maintenance's existing "wait until every requested name is absent -> 3.0-second capacity settle -> spawn" state machine unchanged;
+- do not alter survivor removal semantics or add-time combat safety in this change.
+
 ## 0.8.43-dev — paced Kick All restored
 
 Runtime commit: `3751b829dec1b80e29aa6daa11c7e4048354405a`
