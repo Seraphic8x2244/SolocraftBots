@@ -3,8 +3,22 @@
 Current branch: `dev`
 Current addon line: `0.8.45-dev`
 Current functional addon head: `379859be7196872328a106085cec37c161ef23eb`
-Previous docs checkpoint: `fe30a12e3d07a9f06cb67953f26daa858650a26c`
+Previous docs checkpoint: `863a5fca4d97c82dd3ba0295f1136e57e6b5bdb3`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.46 cleanup start checkpoint — 2026-09-19
+
+Current state before runtime edits:
+- branch: `dev`;
+- addon: `0.8.45-dev`;
+- dev head / latest docs commit: `863a5fca4d97c82dd3ba0295f1136e57e6b5bdb3`;
+- latest functional runtime commit: `379859be7196872328a106085cec37c161ef23eb`;
+- completed: 0.8.45 passed the 40-player BWL natural-play gate, including repeated preset rebuilds, dead/missing maintenance, removals while dead, and paced Kick All;
+- untested: the explicit Presets role-indicator spot check with combat-role confirmation disabled;
+- deferred: wrapper flattening, FIFO head-index conversion, other micro-optimisations, lazy UI/startup work, and later command-scope features.
+
+Exact next step:
+- build `0.8.46-dev` as the first proven-dead implementation deletion pass only: remove superseded global definitions that are overwritten later in TOC order and are not captured by wrapper aliases; preserve the 0.8.45 BWL-proven runtime semantics and do not alter pacing, settle timing, combat gates, survivor/bootstrap rules, or mixed-group identity behaviour.
 
 ## Refactor polish checkpoint — 2026-09-19
 
