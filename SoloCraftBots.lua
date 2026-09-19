@@ -742,13 +742,6 @@ function SCB_IsValidSpawnAssignment(classKey, role, extra)
     return false
 end
 
-function SCB_SendSpawnCommand(command)
-    if not command or command == "" then return false end
-    return SCB_SendPartyBotCommand(command, {
-        channel = "SAY",
-        registerSpawnIntent = true,
-    })
-end
 
 function SCB_RefreshMainPaladinBlessingButton()
     local button = SCB.mainPaladinBlessingButton
@@ -788,18 +781,6 @@ function SCB_MainPaladinBlessingOnClick()
     SCB_RefreshMainPaladinBlessingButton()
 end
 
-function SCB_SpawnOnClick()
-    local extra
-    if not this.scbClass or not this.scbRole then
-        return
-    end
-    extra = this.scbExtra
-    if this.scbClass == "paladin" then
-        extra = SCB.mainPaladinBlessing or "BoK"
-    end
-    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    SCB_SendSpawnCommand(SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra))
-end
 
 function SCB_DistanceOnClick()
     SCB_EnsureSessionDB()

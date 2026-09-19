@@ -802,27 +802,6 @@ local function SCB_GetSpawnLabels(classKey, role, extra)
     return classLabel, roleLabel
 end
 
-function SCB_SpawnOnClick()
-    local extra, command, classLabel, roleLabel
-    if not this.scbClass or not this.scbRole then return end
-
-    extra = this.scbExtra
-    if this.scbClass == "paladin" then
-        extra = SCB.mainPaladinBlessing or "BoK"
-    end
-
-    command = SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra)
-    if not SCB_IsValidatedSpawnCommand(command) then
-        SCB_SpawnDebug("Manual summon rejected before send: " .. tostring(command))
-        return
-    end
-
-    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    if SCB_SendSpawnCommand(command) then
-        classLabel, roleLabel = SCB_GetSpawnLabels(this.scbClass, this.scbRole, extra)
-        SCB_Print("Summoning a " .. classLabel .. " " .. roleLabel .. ".")
-    end
-end
 
 local function SCB_CopyBurstAssignment(entry)
     if not entry then return nil end
@@ -1053,33 +1032,6 @@ local function SCB_PresetBotCount(snapshot)
     return count
 end
 
-function SCB_PresetSummonOnClick()
-    local snapshot, errorText, ok, botCount, suffix
-
-    if IsControlKeyDown and IsControlKeyDown() and SCB_HasBotSpawnOperation() then
-        SCB_AbortBotSpawnOperations()
-    end
-
-    snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
-    if not snapshot then
-        SCB_Print(errorText)
-        return
-    end
-
-    SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
-    SCB_RefreshPresetPlayers()
-
-    ok, errorText = SCB_StartPresetRebuild(snapshot)
-    if not ok then
-        if errorText then SCB_Print(errorText) end
-        return
-    end
-
-    botCount = SCB_PresetBotCount(snapshot)
-    suffix = botCount == 1 and " bot" or " bots"
-    SCB_Print("Summoning Preset " .. tostring(snapshot.presetName or "Preset")
-        .. " with " .. tostring(botCount) .. suffix .. ".")
-end
 
 local function SCB_ShouldRemoveParkedSurvivor(head)
     local safety = SCB_GetPresetSafety(false)
@@ -1746,40 +1698,6 @@ function SCB_PresetRebuildOnUpdate()
     SCB_EndBotOperation("failed", errorText)
 end
 
-function SCB_PresetSummonOnClick()
-    local snapshot, errorText, ok, botCount, suffix
-    local ctrl = IsControlKeyDown and IsControlKeyDown()
-    local operation = SCB_GetActiveBotOperation()
-    local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
-    local forced = ctrl and true or false
-
-    if forced and (legacyActive or operation ~= nil) then
-        if operation then SCB_SetBotOperationPhase("replacing") end
-        if SCB_AbortBotSpawnOperations then SCB_AbortBotSpawnOperations(true) end
-    end
-
-    snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
-    if not snapshot then
-        if forced and operation then SCB_AbortBotOperation("replacement snapshot invalid") end
-        SCB_Print(errorText)
-        return
-    end
-
-    SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
-    SCB_RefreshPresetPlayers()
-
-    ok, errorText = SCB_RequestPresetOperation(snapshot, forced)
-    if not ok then
-        if errorText then SCB_Print(errorText) end
-        return
-    end
-
-    botCount = (snapshot.size or 0) - table.getn(snapshot.players or {})
-    if botCount < 0 then botCount = 0 end
-    suffix = botCount == 1 and " bot" or " bots"
-    SCB_Print("Summoning Preset " .. tostring(snapshot.presetName or "Preset")
-        .. " with " .. tostring(botCount) .. suffix .. ".")
-end
 
 local function SCB_SyncPresetOperationPhase()
     local operation = SCB_GetActiveBotOperation()

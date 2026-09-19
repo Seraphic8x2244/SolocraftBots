@@ -564,16 +564,6 @@ function SCB_SyncActiveRosterFromObserved(observed)
     roster.updatedAt = now
 end
 
-function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
-    local slot = SCB_GetActiveSlotByName(name)
-    if not slot then return false end
-    if role then slot.role = role end
-    if extraKnown then slot.extra = extra end
-    slot.detected = true
-    slot.updatedAt = GetTime and GetTime() or 0
-    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
-    return true
-end
 
 function SCB_BuildActiveReplacementRecord(slot)
     if not slot or not slot.expected then return nil end
@@ -789,11 +779,6 @@ function SCB_GetKickAllAnchorForFreshBuild(observed)
     return nil
 end
 
-function SCB_ResetSessionState()
-    SCB_EnsureSessionDB()
-    SoloCraftBotsDB.session.knownBots = {}
-    SoloCraftBotsDB.session.state = { distance = "near" }
-end
 
 function SCB_RefreshDistanceButtons()
     if not SCB.distanceButton then return end
@@ -1058,15 +1043,6 @@ function SCB_PruneAssumedRolesToCurrentRoster(observed)
     end
     for name in pairs(SCB.assumedRolesByName or {}) do if not current[name] then SCB.assumedRolesByName[name] = nil end end
 end
-function SCB_HandleAssumedRoleSystemMessage(text)
-    local _, _, name
-    if not text or text == "" then return false end
-    _, _, name = string.find(text, "^([^%s]+%*) joins the party%.$")
-    if not name then _, _, name = string.find(text, "^([^%s]+%*) has joined the raid group%.?$") end
-    if not name then return false end
-    if SCB.assumedRolesByName[name] then return false end
-    return SCB_BindNextAssumedSpawnName(name)
-end
 function SCB_BindAssumptionsFromRosterDelta(previousNames, members)
     local newMembers, used, consumed = {}, {}, {}
     members = members or (SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {})
@@ -1135,29 +1111,6 @@ function SCB_ApplyTrackedPfUITankRoles(tracker)
     return true
 end
 
-function SCB_ReconcileTrackerFromAssumedRoles(tracker)
-    local roster, used, replacements = nil, {}, {}
-    local i, j, assignment, member, assumption, wantedGroup, matchedName
-    if not tracker or not tracker.ready or tracker.scbRoleIdentityReconciled then return tracker and tracker.scbRoleIdentityReconciled or false end
-    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
-    if not roster then return false end
-    for i = 1, table.getn(tracker.assignments or {}) do
-        assignment = tracker.assignments[i]
-        if assignment and assignment.initialActive then
-            wantedGroup = assignment.group or 1; matchedName = nil
-            for j = 1, table.getn(roster.members or {}) do
-                member = roster.members[j]; assumption = member and SCB.assumedRolesByName[member.name] or nil
-                if member and member.isBot and member.name and not used[member.name] and (member.currentGroup or 1) == wantedGroup
-                    and assumption and assumption.spawnKind ~= "bootstrap" and assumption.command == assignment.command then matchedName = member.name; break end
-            end
-            if not matchedName then return false end
-            replacements[i] = matchedName; used[matchedName] = true
-        end
-    end
-    for i = 1, table.getn(tracker.assignments or {}) do if replacements[i] then tracker.assignments[i].botName = replacements[i] end end
-    tracker.scbRoleIdentityReconciled = true
-    return true
-end
 
 SCB.REPLACE_REMOVAL_SETTLE_DELAY = 3.0
 local SCB_OriginalMaintenanceReplaceOnUpdate = SCB_MaintenanceReplaceOnUpdate
@@ -1582,44 +1535,6 @@ local function SCB_CurrentSlotMatchesTrackerAssignment(slotIndex, assignment)
     return aExtra == sExtra
 end
 
-function SCB_LinkAssumptionsToTrackerSlots()
-    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-    local used, i, assignment, name, intent, chosenName, chosenAt
-    if not tracker or not tracker.assignments then return end
-    used = {}
-
-    for i = 1, table.getn(tracker.assignments) do
-        assignment = tracker.assignments[i]
-        name = assignment and assignment.scbAssumedName or nil
-        intent = name and SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
-        if assignment and assignment.initialActive and intent
-            and intent.spawnKind ~= "bootstrap" and intent.command == assignment.command then
-            used[name] = true
-        elseif assignment then
-            assignment.scbAssumedName = nil
-        end
-    end
-
-    for i = 1, table.getn(tracker.assignments) do
-        assignment = tracker.assignments[i]
-        if assignment and assignment.initialActive and not assignment.scbAssumedName then
-            chosenName, chosenAt = nil, nil
-            for name, intent in pairs(SCB.assumedRolesByName or {}) do
-                if not used[name] and intent and intent.spawnKind ~= "bootstrap"
-                    and intent.command == assignment.command then
-                    if not chosenAt or (intent.boundAt or 0) < chosenAt then
-                        chosenName = name
-                        chosenAt = intent.boundAt or 0
-                    end
-                end
-            end
-            if chosenName then
-                assignment.scbAssumedName = chosenName
-                used[chosenName] = true
-            end
-        end
-    end
-end
 
 -- -------------------------------------------------------------------------
 -- Preset role-icon overlays
