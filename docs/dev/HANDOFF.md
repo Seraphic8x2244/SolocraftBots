@@ -89,7 +89,7 @@ Changes:
 
 Current runtime-test status:
 - `0.8.39-dev`: practical 10-man Stockades gate passed;
-- `0.8.40-dev`: combat-safe preset teardown entry is statically reviewed but not runtime-tested;
+- `0.8.40-dev`: combat-safe preset teardown entry runtime-tested successfully in normal play;
 - `0.8.41-dev`: same-frame Kick All is statically reviewed but not runtime-tested;
 - `0.8.42-dev`: mixed-group maintenance burst is statically reviewed but not runtime-tested.
 
@@ -426,3 +426,10 @@ The exact version numbers for each step are not precommitted. Use the next `0.8.
 ## Promotion rule
 
 Do not move `main` merely because the file consolidation is complete. Stable promotion should contain the exact runtime-tested consolidated code, with dev-only title/version adjusted appropriately and no unrelated cleanup mixed into the promotion commit.
+
+
+## Combat-safe preset teardown runtime result — 2026-09-19
+
+- Normal preset summon while the group is already in combat correctly blocks before destructive teardown.
+- The 0.8.40 combat-entry change is therefore runtime-passed.
+- Remaining runtime gate for the stacked 0.8.41-0.8.42 work: 40-player raid test of same-frame Kick All and mixed-group maintenance replacement.

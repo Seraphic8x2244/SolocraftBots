@@ -423,3 +423,9 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Combat safety, 3-second removal-capacity settle, survivor handling and server-authoritative rejection behaviour are unchanged.
 - Runtime commit: `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`.
 - Runtime test pending.
+
+
+## Combat-safe preset teardown runtime result — 2026-09-19
+
+- The 0.8.40 root combat preflight passed runtime testing: a normal preset summon while already in combat blocks before any destructive bot teardown.
+- Same-frame Kick All and mixed-group maintenance remain pending 40-player runtime coverage.
