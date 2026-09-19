@@ -436,3 +436,14 @@ Do not rewrite historical entries above to make this final target appear preorda
 - The 0.8.41 same-frame Kick All A/B disconnected the player/client during a 40-player raid test.
 - Same-frame mass uninvite is rejected; restore the prior 5-per-0.10s removal pacing.
 - Keep the 0.8.42 mixed-group maintenance implementation for separate runtime testing.
+
+
+## 0.8.44-dev — unified bot removal
+
+- Replaced the old boolean KickBots contract with explicit `"all"` / `"dead"` modes.
+- Kick All, Kick Dead, preset teardown and maintenance now use the same paced physical removal path (5 per 0.10s).
+- Maintenance filters dead removal to its exact tracked names; Replace Missing enters the same function as a filtered no-op when there is nothing live to remove.
+- Retained maintenance survivor removal also uses the shared queue.
+- 3-second removal settle, survivor lifecycle, mixed-group maintenance bursts and add-time combat safety are unchanged.
+- Runtime commit: `8b26872df77c09e0a6e8b28b7211e46994ab70ab`.
+- Runtime test pending.

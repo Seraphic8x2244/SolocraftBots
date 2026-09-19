@@ -544,3 +544,8 @@ Runtime status: 0.8.39 passed the practical 10-man gate; 0.8.40-0.8.42 are stati
 ### Runtime result: same-frame Kick All rejected
 
 The 0.8.41 A/B was tested in a 40-player raid and caused a disconnect. This optimization is rejected for the current Vanilla/SoloCraft client-server environment. The safe baseline remains paced Kick All at 5 `UninviteByName` calls per 0.10 seconds. Future removal optimization should not retry same-frame 40-player mass uninvite without a materially different mechanism.
+
+
+### Shared removal follow-up — 0.8.44-dev
+
+After the same-frame Kick All disconnect, removal pacing is now centralized rather than being a Kick All-only special case. `SCB_KickBots("all"|"dead", options)` owns the 5-per-0.10s queue, and both maintenance dead removal and user-facing Kick All/Kick Dead enter through it. This keeps the tested client/server safety limit consistent across multi-bot removal workflows while preserving the existing maintenance settle and combat rules.

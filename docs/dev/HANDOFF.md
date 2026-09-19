@@ -1,8 +1,8 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.43-dev`
-Current functional addon head: `3751b829dec1b80e29aa6daa11c7e4048354405a`
+Current addon line: `0.8.44-dev`
+Current functional addon head: `8b26872df77c09e0a6e8b28b7211e46994ab70ab`
 Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
@@ -462,3 +462,26 @@ Runtime commit: `3751b829dec1b80e29aa6daa11c7e4048354405a`
 - Survivor selection/anchor behaviour is unchanged.
 - 0.8.42 mixed-group maintenance remains present and pending runtime test.
 - Exact next step: continue the 40-player raid on 0.8.43; verify paced Kick All no longer disconnects, then exercise mixed-group Replace Missing/Dead if practical.
+
+
+## 0.8.44-dev — unified bot removal
+
+Runtime commit: `8b26872df77c09e0a6e8b28b7211e46994ab70ab`
+
+Authoritative removal contract:
+- `SCB_KickBots("all", options)` and `SCB_KickBots("dead", options)` are the single public physical bot-removal entry point;
+- every queued removal uses the proven 5-removals-per-0.10-second pacing;
+- Kick All calls `"all"`;
+- Kick Dead calls `"dead"`;
+- preset teardown callers now use explicit `"all"` rather than the old boolean contract;
+- Replace Dead/Missing always enters through `"dead"` with an exact tracked-name filter; a missing-only operation therefore performs a successful no-op removal phase before its existing settle/spawn flow;
+- the retained maintenance safety survivor is removed through the same queue with a one-name `"all"` filter when it is finally safe to replace;
+- maintenance still waits until all requested names are absent, then applies the existing 3.0-second capacity settle before adding replacements;
+- mixed-group maintenance bursts from 0.8.42 remain unchanged after the removal phase.
+
+Runtime status:
+- untested as 0.8.44;
+- 40-player same-frame Kick All remains permanently rejected from the 0.8.41 disconnect result.
+
+Exact next test:
+- continue the 40-player raid using 0.8.44; paced Kick All and Replace Dead/Missing should now exercise the same removal queue, while mixed-group replacement remains the main outstanding runtime gate.
