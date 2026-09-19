@@ -457,3 +457,12 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Routed live survivor/bootstrap/refill-anchor removals through the shared `SCB_KickBots` owner.
 - Runtime commit: `379859be7196872328a106085cec37c161ef23eb`.
 - Runtime test pending.
+
+
+## 0.8.45 runtime result — 40-player BWL pass
+
+- Completed a full 40-player Blackwing Lair natural-play session on `0.8.45-dev` without observed addon failures.
+- Repeated preset summons and summon-over rebuilds worked.
+- Dead and missing partial maintenance refills worked, including removal/maintenance activity while the player was dead.
+- This provides meaningful 40-player runtime coverage for the unified paced removal owner and mixed-group maintenance work.
+- Presets role-indicator visibility with combat-role confirmation disabled was not explicitly confirmed in this report.

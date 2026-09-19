@@ -531,3 +531,27 @@ Audit result:
 - native raid-layout operations (`SetRaidSubgroup`, `SwapRaidSubgroup`, promotion) remain separate and should be assessed as a layout-owner cleanup rather than folded into a generic PartyBot dispatcher.
 
 Runtime status: untested as 0.8.45.
+
+
+## 0.8.45 runtime result — 40-player BWL pass
+
+Natural-play 40-player Blackwing Lair session completed successfully on `0.8.45-dev`.
+
+Observed working during the run:
+- repeated Summon Preset operations;
+- summon-over / preset replacement operations;
+- partial maintenance refills for both dead and missing bots;
+- maintenance removals while the player was dead;
+- no hangs, disconnects, wrong obvious replacement flow, or other observed failures during the session.
+
+Interpretation:
+- the unified `SCB_KickBots("all"|"dead", options)` removal owner and paced queue behaved correctly through real raid maintenance churn;
+- the mixed-group maintenance burst work has now received meaningful 40-player natural-play coverage;
+- preset teardown / rebuild changes continue to behave correctly under repeated use.
+
+Still not explicitly confirmed from this report:
+- Presets role-indicator visibility with combat-role confirmation disabled;
+- a dedicated manual Kick All action was not separately reported in this BWL result, so do not claim a dedicated Kick All button test from this session alone.
+
+Next development step:
+- move into proven-dead historical implementation / low-value wrapper cleanup, then lower-priority queue and micro-optimisation work, while keeping the current runtime behaviour as the reference.

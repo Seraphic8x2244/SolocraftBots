@@ -549,3 +549,8 @@ The 0.8.41 A/B was tested in a 40-player raid and caused a disconnect. This opti
 ### Shared removal follow-up — 0.8.44-dev
 
 After the same-frame Kick All disconnect, removal pacing is now centralized rather than being a Kick All-only special case. `SCB_KickBots("all"|"dead", options)` owns the 5-per-0.10s queue, and both maintenance dead removal and user-facing Kick All/Kick Dead enter through it. This keeps the tested client/server safety limit consistent across multi-bot removal workflows while preserving the existing maintenance settle and combat rules.
+
+
+### 0.8.45 40-player natural-play validation
+
+A full Blackwing Lair 40-player session completed successfully with repeated preset summons/rebuilds and partial dead/missing maintenance refills, including removals while the player was dead. No hangs, disconnects, or obvious maintenance/preset failures were observed. This is the first broad 40-player natural-play validation of the unified paced removal owner together with the mixed-group maintenance implementation. A dedicated Kick All button action and the role-indicator-off visual state were not explicitly reported in this session and should not be inferred from it.
