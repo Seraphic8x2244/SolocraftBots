@@ -1,9 +1,9 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.39-dev`
-Current functional addon head: `457b593eaca94a40f311c57b18c9417512c328be`
-Latest docs head: `0ade4746dbe2875016294cd81263c71bf632e130`
+Current addon line: `0.8.40-dev`
+Current functional addon head: `eb76b9e232d94169dd2c2403300bf83bc9b09d51`
+Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
 ## Current status override — 2026-09-19
@@ -13,8 +13,9 @@ The sections below preserve the earlier 0.8.28 consolidation handoff for histori
 - six-owner consolidation is complete: `SoloCraftBots.lua`, `Presets.lua`, `Roster.lua`, `Spawn.lua`, `Communication.lua`, `Options.lua`;
 - current runtime is `0.8.39-dev` at `457b593eaca94a40f311c57b18c9417512c328be`;
 - `0ade4746dbe2875016294cd81263c71bf632e130` documents the broad post-audit performance pass;
-- 0.8.39 is built/promoted to `dev` but still awaiting the user's runtime approval;
-- after that gate, deferred performance work includes same-frame 40-man Kick All A/B, mixed-group up-to-five maintenance bursts, proven-dead/low-value wrapper cleanup, and FIFO/micro-optimisation work.
+- 0.8.39 passed the practical 10-man Stockades runtime gate; the combat teardown edge case found during that gate is addressed in 0.8.40-dev;
+- 0.8.40-dev is the current untested runtime;
+- after the narrow 0.8.40 retest, deferred performance work includes same-frame 40-man Kick All A/B, mixed-group up-to-five maintenance bursts, proven-dead/low-value wrapper cleanup, and FIFO/micro-optimisation work.
 
 ## Runtime test update — 2026-09-19
 
@@ -31,6 +32,29 @@ Immediate next changes:
 1. change the unresolved-player warning copy to: `Please place all human players in group slots to summon <PresetName> preset.`;
 2. add a root preset-summon combat preflight before any destructive teardown on a normal click;
 3. preserve Ctrl-click as the explicit force/destructive override, while keeping the existing add-time combat safety invariant unchanged.
+
+## 0.8.40-dev — combat-safe preset rebuild entry
+
+Runtime commit: `eb76b9e232d94169dd2c2403300bf83bc9b09d51`
+
+Built after the 0.8.39 Stockades gate exposed destructive teardown beginning while the group was already in combat.
+
+Changes:
+- normal preset replacement now checks the existing aggressive group/pet combat predicate before any destructive teardown;
+- if existing/pending bots mean teardown may be required and combat is detected, the operation is rejected before `SCB_KickBots(false)`;
+- Ctrl-click is the explicit destructive override and may start teardown in combat, but the existing burst-level combat gate still prevents bot adds until combat is clear;
+- if combat begins while a normal operation is waiting for an in-flight add to resolve, teardown waits rather than kicking during combat;
+- unresolved-human wording now reads: `Please place all human players in group slots to summon <PresetName> preset.`;
+- summon tooltip text documents the Ctrl teardown override.
+
+Untested:
+- 0.8.40 runtime behaviour itself.
+
+Exact next test:
+1. with existing preset bots and any relevant member in combat, normal Summon Preset must print the combat-teardown block and kick nobody;
+2. Ctrl-click in the same condition may tear down, but no replacement bot may be added until combat clears;
+3. trigger the unassigned-human case once and confirm the new preset-specific wording;
+4. if these pass, resume deferred post-audit performance work (same-frame Kick All A/B first, then mixed-group maintenance bursts).
 
 ## Deferred command/control ideas — later
 

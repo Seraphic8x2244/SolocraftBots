@@ -394,3 +394,13 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Consolidated CHAT_MSG_SYSTEM handling to the main SCB event dispatcher.
 - Reduced hidden/duplicate preset UI work and role-detection allocations.
 - Kick All pacing, combat gates, 3s removal settle and 1s arrival stabilization are unchanged for this runtime gate.
+
+
+## 0.8.40-dev — combat-safe preset rebuild entry
+
+- Added a root combat preflight before destructive preset teardown for normal clicks.
+- Ctrl-click is now carried explicitly through the preset operation intent as the teardown override; add-time combat safety remains unchanged.
+- Normal operations that enter combat while waiting for in-flight adds no longer kick until combat clears.
+- Updated unresolved-human summon wording to identify the selected preset rather than one player.
+- Runtime commit: `eb76b9e232d94169dd2c2403300bf83bc9b09d51`.
+- Runtime test pending.
