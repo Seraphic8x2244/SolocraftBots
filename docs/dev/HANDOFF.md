@@ -1,8 +1,8 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.42-dev`
-Current functional addon head: `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`
+Current addon line: `0.8.43-dev`
+Current functional addon head: `3751b829dec1b80e29aa6daa11c7e4048354405a`
 Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
@@ -442,3 +442,13 @@ Do not move `main` merely because the file consolidation is complete. Stable pro
 - Do not continue testing the same-frame variant.
 - Mixed-group maintenance in 0.8.42 has not yet been invalidated by this result and remains pending runtime coverage.
 - Exact next step: restore the previously proven 5 removals per 0.10 seconds Kick All pacing as an isolated runtime change, retain the 0.8.42 maintenance burst implementation, then continue the raid using that build.
+
+
+## 0.8.43-dev — paced Kick All restored
+
+Runtime commit: `3751b829dec1b80e29aa6daa11c7e4048354405a`
+
+- Restored the proven Kick All queue at 5 removals per 0.10 seconds after the 40-player same-frame A/B caused a disconnect.
+- Survivor selection/anchor behaviour is unchanged.
+- 0.8.42 mixed-group maintenance remains present and pending runtime test.
+- Exact next step: continue the 40-player raid on 0.8.43; verify paced Kick All no longer disconnects, then exercise mixed-group Replace Missing/Dead if practical.
