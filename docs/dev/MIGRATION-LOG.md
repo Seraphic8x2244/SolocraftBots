@@ -447,3 +447,13 @@ Do not rewrite historical entries above to make this final target appear preorda
 - 3-second removal settle, survivor lifecycle, mixed-group maintenance bursts and add-time combat safety are unchanged.
 - Runtime commit: `8b26872df77c09e0a6e8b28b7211e46994ab70ab`.
 - Runtime test pending.
+
+
+## 0.8.45-dev — role-toggle fix + command transport ownership
+
+- Fixed Presets combat-role indicator gating; the option itself was correct, but the old indicator refresh referenced a later local helper outside lexical scope.
+- Disabled combat-role confirmation now hides the entire Presets role-check indicator pair.
+- Added one raw `.partybot` transport owner, `SCB_SendPartyBotCommand(command, options)`; control, spawn, Clear Marks and Debug paths delegate to it.
+- Routed live survivor/bootstrap/refill-anchor removals through the shared `SCB_KickBots` owner.
+- Runtime commit: `379859be7196872328a106085cec37c161ef23eb`.
+- Runtime test pending.

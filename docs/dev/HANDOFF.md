@@ -1,8 +1,8 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.44-dev`
-Current functional addon head: `8b26872df77c09e0a6e8b28b7211e46994ab70ab`
+Current addon line: `0.8.45-dev`
+Current functional addon head: `379859be7196872328a106085cec37c161ef23eb`
 Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
@@ -505,3 +505,29 @@ Exact next step:
 2. add one `SCB_SendPartyBotCommand(command, options)` transport owner and route normal, spawn, Clear Marks and Debug transport through it while preserving spawn validation;
 3. route live survivor/bootstrap/refill-anchor removals through `SCB_KickBots(...)` so the queue implementation remains the only live physical `UninviteByName` owner;
 4. leave native raid-layout APIs separate for now; audit them during the deferred layout/dead-code cleanup.
+
+
+## 0.8.45-dev — role-toggle fix + command transport ownership
+
+Runtime commit: `379859be7196872328a106085cec37c161ef23eb`
+
+Role UI finding/fix:
+- the Options checkbox was functioning and correctly disabled combat-role event scanning;
+- the Presets tick gate was broken because `SCB_RefreshPresetRoleIndicators` referenced a later local helper outside its lexical scope, so the intended disabled-option hide path never executed;
+- a public `SCB_IsRoleDetectionEnabled()` now owns the setting read;
+- when combat-role confirmation is disabled, both assumed/confirmation role ticks are hidden on Presets.
+
+Command ownership changes:
+- added `SCB_SendPartyBotCommand(command, options)` as the single raw `.partybot` chat transport;
+- normal controls use PARTY through `SCB_SendCommand`;
+- validated spawn commands use SAY through `SCB_SendSpawnCommand` with spawn-intent registration;
+- Clear Marks and Debug now route through the same transport owner;
+- live preset survivor, bootstrap survivor and refill-anchor removals now route through `SCB_KickBots` rather than raw `UninviteByName`.
+
+Audit result:
+- only one live raw `SendChatMessage(".partybot ...")` remains: inside `SCB_SendPartyBotCommand`;
+- only one live raw `UninviteByName` remains: inside the paced kick queue implementation;
+- three raw `UninviteByName` calls remain in superseded Presets maintenance/scheduler definitions and should be deleted with the deferred proven-dead-code cleanup, not maintained as alternate runtime paths;
+- native raid-layout operations (`SetRaidSubgroup`, `SwapRaidSubgroup`, promotion) remain separate and should be assessed as a layout-owner cleanup rather than folded into a generic PartyBot dispatcher.
+
+Runtime status: untested as 0.8.45.
