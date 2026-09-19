@@ -1,8 +1,8 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.41-dev`
-Current functional addon head: `204b0b305168bc421f05bdd8bfc63c219f0a4b59`
+Current addon line: `0.8.42-dev`
+Current functional addon head: `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`
 Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
@@ -72,6 +72,37 @@ Untested:
 
 Exact next step:
 - build mixed-group maintenance bursts of up to five assignments across groups, with exact identity binding, per-bot subgroup placement, one shared 1.0-second stabilization, and unchanged combat/removal safety.
+
+## 0.8.42-dev — mixed-group maintenance bursts
+
+Runtime commit: `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`
+
+Changes:
+- maintenance now takes the next up to five sorted replacement intents across raid groups instead of completing one destination group at a time;
+- one mixed burst retains the established reverse command-send / SoloCraft join-message identity ordering;
+- each joined bot is resolved through its burst ID + logical slot/group assumption rather than inferred from physical roster order;
+- each replacement is verified against its own intended subgroup;
+- subgroup correction performs one move or swap per fresh roster observation so raid indices are never reused after a mutation;
+- `SwapRaidSubgroup` is used when two misplaced burst bots occupy one another's needed full groups; ordinary `SetRaidSubgroup` remains the fallback;
+- all bots in the burst share one 1.0-second post-arrival stabilization, then the next up-to-five begins;
+- 3.0-second removal/capacity settle, maintenance combat rules, survivor handling, spawn identity rules and server authority are unchanged.
+
+Current runtime-test status:
+- `0.8.39-dev`: practical 10-man Stockades gate passed;
+- `0.8.40-dev`: combat-safe preset teardown entry is statically reviewed but not runtime-tested;
+- `0.8.41-dev`: same-frame Kick All is statically reviewed but not runtime-tested;
+- `0.8.42-dev`: mixed-group maintenance burst is statically reviewed but not runtime-tested.
+
+Natural-play ZF test target (no dedicated test matrix required):
+- normal preset replacement while already in combat must not kick the group;
+- Kick All should still retain the required survivor and settle normally;
+- if two or more bots become missing/dead across different groups, one Replace action should restore up to five together to their exact roles/groups;
+- ordinary summon/rebuild and pfUI tank marking should remain healthy.
+
+Remaining deferred performance/cleanup work:
+- broader proven-dead implementation and remaining low-value wrapper cleanup;
+- FIFO head-index conversion and other low-priority micro-optimisations;
+- startup/lazy-UI and deeper debug-buffer optimisations remain optional later work.
 
 ## Deferred command/control ideas — later
 

@@ -412,3 +412,14 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Survivor selection/anchor semantics and Kick Dead remain unchanged.
 - Runtime commit: `204b0b305168bc421f05bdd8bfc63c219f0a4b59`.
 - Runtime test pending; next build is mixed-group maintenance bursts.
+
+
+## 0.8.42-dev — mixed-group maintenance bursts
+
+- Maintenance replacement now batches the next up to five sorted missing/dead intents across destination groups.
+- Replacement identity is resolved through the existing burst-ID/logical-slot assumption map instead of physical roster ordering.
+- Each bot is moved/verified against its own intended subgroup; one subgroup mutation is issued per fresh observation, with `SwapRaidSubgroup` used for full-group exchanges when available.
+- One common 1.0-second stabilization covers the whole mixed burst before the next batch.
+- Combat safety, 3-second removal-capacity settle, survivor handling and server-authoritative rejection behaviour are unchanged.
+- Runtime commit: `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`.
+- Runtime test pending.

@@ -522,3 +522,20 @@ Still deferred after this gate:
 - mixed-group up-to-five maintenance replacement bursts;
 - broader proven-dead implementation cleanup / remaining low-value wrapper cleanup;
 - FIFO head-index conversion and other lower-priority micro-optimisations.
+
+
+## Post-gate implementation status — 0.8.42-dev
+
+The two high-value items intentionally deferred after the 0.8.39 gate have now been built as isolated rollback points:
+
+- `0.8.41-dev` runtime `204b0b305168bc421f05bdd8bfc63c219f0a4b59`: removed the 5 / 0.10s Kick All pacing and restored same-frame mass removal requests from one stable candidate snapshot.
+- `0.8.42-dev` runtime `856a38c16e59a99d35462bd61a3f8e201f7fbcbf`: maintenance now sends mixed-group bursts of up to five, binds each joined bot through explicit burst/slot identity, places each bot into its own intended subgroup, and shares one 1.0-second stabilization across the burst.
+
+Combat-safety policy remains unchanged: combat observation stays independent/aggressive and neither build weakens add-time combat checks. 0.8.40 additionally prevents a normal preset rebuild from beginning destructive teardown when combat is already observed; Ctrl-click is the explicit teardown override while bot additions remain combat-gated.
+
+Still deferred after 0.8.42:
+- broader proven-dead implementation / remaining low-value wrapper cleanup;
+- FIFO head-index conversion and other lower-priority micro-optimisations;
+- optional startup/lazy-UI and deeper debug-buffer work.
+
+Runtime status: 0.8.39 passed the practical 10-man gate; 0.8.40-0.8.42 are statically reviewed and intentionally stacked for natural-play testing rather than separate deep gates.
