@@ -1,9 +1,51 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.28-dev`
-Current functional addon head: `d5934b484cff5f74c49ae57fd829d56a33af3eb4`
+Current addon line: `0.8.39-dev`
+Current functional addon head: `457b593eaca94a40f311c57b18c9417512c328be`
+Latest docs head: `0ade4746dbe2875016294cd81263c71bf632e130`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## Current status override — 2026-09-19
+
+The sections below preserve the earlier 0.8.28 consolidation handoff for historical context. Current development has moved on substantially:
+
+- six-owner consolidation is complete: `SoloCraftBots.lua`, `Presets.lua`, `Roster.lua`, `Spawn.lua`, `Communication.lua`, `Options.lua`;
+- current runtime is `0.8.39-dev` at `457b593eaca94a40f311c57b18c9417512c328be`;
+- `0ade4746dbe2875016294cd81263c71bf632e130` documents the broad post-audit performance pass;
+- 0.8.39 is built/promoted to `dev` but still awaiting the user's runtime approval;
+- after that gate, deferred performance work includes same-frame 40-man Kick All A/B, mixed-group up-to-five maintenance bursts, proven-dead/low-value wrapper cleanup, and FIFO/micro-optimisation work.
+
+## Deferred command/control ideas — later
+
+These are intentionally deferred and must not be mixed into the current 0.8.39 performance test gate.
+
+### Macro-safe single-target Stay / Move commands
+
+Add slash-command entry points for the existing single-target Stay and Move behaviours so they can be used from player macros.
+
+Requirements:
+- operate on the current valid target only, matching the existing UI's One-target semantics;
+- if there is no valid target, do nothing rather than falling through to an all/group command or emitting a malformed PartyBot command;
+- preserve the existing UI safety rules and feedback where practical;
+- exact slash-command names/syntax can be chosen when implemented.
+
+### New Group command scope between All and One
+
+Add a third command scope between `All` and `One`: `Group`.
+
+Desired semantics:
+- determine the current Blizzard party/raid subgroup of the player's target;
+- resolve the bots currently in that same group from SCB's live roster;
+- send the selected bot command to those bots only, not the whole raid;
+- expose the scope in the command UI between All and One.
+
+Implementation details to investigate:
+- some PartyBot commands may require issuing commands to individual bot targets, which may mean temporarily taking over/changing the player's target;
+- if target manipulation is required, preserve and restore the player's original target safely;
+- command fan-out must be throttled/queued enough to avoid chat/server spam or mute protection;
+- use current live subgroup membership rather than logical preset slot/group when deciding who receives a Group command;
+- do not begin this feature until the current performance/refactor work is finished and runtime-approved.
 
 ## Status at handoff
 
