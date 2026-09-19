@@ -404,3 +404,11 @@ Do not rewrite historical entries above to make this final target appear preorda
 - Updated unresolved-human summon wording to identify the selected preset rather than one player.
 - Runtime commit: `eb76b9e232d94169dd2c2403300bf83bc9b09d51`.
 - Runtime test pending.
+
+
+## 0.8.41-dev — same-frame Kick All A/B
+
+- Replaced paced Kick All (5 uninvites per 0.10s) with same-frame removal requests from one stable roster snapshot.
+- Survivor selection/anchor semantics and Kick Dead remain unchanged.
+- Runtime commit: `204b0b305168bc421f05bdd8bfc63c219f0a4b59`.
+- Runtime test pending; next build is mixed-group maintenance bursts.

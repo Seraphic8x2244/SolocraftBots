@@ -1,8 +1,8 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.40-dev`
-Current functional addon head: `eb76b9e232d94169dd2c2403300bf83bc9b09d51`
+Current addon line: `0.8.41-dev`
+Current functional addon head: `204b0b305168bc421f05bdd8bfc63c219f0a4b59`
 Previous docs checkpoint: `54bc656272ca8220cd5e500f9fee164953eefbb8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
@@ -55,6 +55,23 @@ Exact next test:
 2. Ctrl-click in the same condition may tear down, but no replacement bot may be added until combat clears;
 3. trigger the unassigned-human case once and confirm the new preset-specific wording;
 4. if these pass, resume deferred post-audit performance work (same-frame Kick All A/B first, then mixed-group maintenance bursts).
+
+## 0.8.41-dev — same-frame Kick All A/B
+
+Runtime commit: `204b0b305168bc421f05bdd8bfc63c219f0a4b59`
+
+Changes:
+- removed the 5-uninvite / 0.10-second Kick All queue and its idle frame;
+- Kick All now computes the survivor/candidate snapshot once and issues every non-survivor `UninviteByName` request in that initiating frame;
+- Kick Dead is unchanged;
+- survivor selection/anchor handling is unchanged;
+- Active Roster/tracker state remains intact and roster events still own observed departure/settling.
+
+Untested:
+- runtime/server behaviour of same-frame large Kick All, especially 20/40-player raids.
+
+Exact next step:
+- build mixed-group maintenance bursts of up to five assignments across groups, with exact identity binding, per-bot subgroup placement, one shared 1.0-second stabilization, and unchanged combat/removal safety.
 
 ## Deferred command/control ideas — later
 
