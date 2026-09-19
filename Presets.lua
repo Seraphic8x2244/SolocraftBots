@@ -3313,7 +3313,7 @@ function SCB_BuildPresetExecutionSnapshot()
         if size > 5 then
             assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
             if not assignedGroup then
-                return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), info.name)
+                return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), preset.name or SCB_L("PRESET_PLACEHOLDER"))
             end
             if assignedGroup < 1 or assignedGroup > math.ceil(size / 5) then
                 return nil, SCB_L("ERR_PRESET_PLAYER_GROUP")

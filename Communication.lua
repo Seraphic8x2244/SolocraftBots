@@ -1559,13 +1559,20 @@ end
 -- one-line request summary. Individual preset bot requests stay silent.
 function SCB_PresetSummonOnClick()
     local snapshot, errorText, ok, botCount, botWord
+    local forced = IsControlKeyDown and IsControlKeyDown() and true or false
+    local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
+    local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
 
-    if IsControlKeyDown and IsControlKeyDown() and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
-        SCB_AbortBotSpawnOperations()
+    if forced and (legacyActive or operation ~= nil) then
+        if operation and SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("replacing") end
+        if SCB_AbortBotSpawnOperations then SCB_AbortBotSpawnOperations(true) end
     end
 
     snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
     if not snapshot then
+        if forced and operation and SCB_AbortBotOperation then
+            SCB_AbortBotOperation("replacement snapshot invalid")
+        end
         SCB_Print(errorText)
         return
     end
@@ -1573,7 +1580,7 @@ function SCB_PresetSummonOnClick()
     SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
     SCB_RefreshPresetPlayers()
 
-    ok, errorText = SCB_StartPresetRebuild(snapshot)
+    ok, errorText = SCB_StartPresetRebuild(snapshot, forced)
     if not ok then
         if errorText then SCB_Print(errorText) end
         return

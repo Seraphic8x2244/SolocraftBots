@@ -1433,11 +1433,12 @@ function SCB_ResetSessionState()
     SoloCraftBotsDB.session.state = { distance = "near" }
 end
 
-local function SCB_PresetOperationIntent(snapshot)
+local function SCB_PresetOperationIntent(snapshot, forced)
     return {
         kind = "preset",
         snapshot = snapshot,
         presetName = snapshot and snapshot.presetName or nil,
+        forceCombatTeardown = forced and true or nil,
     }
 end
 
@@ -1455,7 +1456,7 @@ end
 local function SCB_StartCoordinatorPresetRuntime(operation)
     local intent = operation and operation.desiredIntent or nil
     local snapshot = intent and intent.snapshot or nil
-    local botCount, ok, errorText
+    local botCount, pendingAdds, ok, errorText
 
     if not snapshot then return false, SCB_L("ERR_SELECT_PRESET") end
 
@@ -1468,7 +1469,15 @@ local function SCB_StartCoordinatorPresetRuntime(operation)
         return false, SCB_L("ERR_SUMMON_BUSY")
     end
 
-    if SCB_PendingBotAddsStillActive() then
+    botCount = SCB_CountGroupBots and SCB_CountGroupBots() or 0
+    pendingAdds = SCB_PendingBotAddsStillActive()
+    if not intent.forceCombatTeardown
+        and (botCount > 0 or pendingAdds)
+        and SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then
+        return false, SCB_L("ERR_SUMMON_COMBAT_TEARDOWN")
+    end
+
+    if pendingAdds then
         SCB_BeginCoordinatorRebuild(operation, true)
         if SCB_BeginActiveRosterPresetTransition then
             SCB_BeginActiveRosterPresetTransition(snapshot.size)
@@ -1479,7 +1488,6 @@ local function SCB_StartCoordinatorPresetRuntime(operation)
         return true
     end
 
-    botCount = SCB_CountGroupBots and SCB_CountGroupBots() or 0
     if botCount == 0 then
         if SCB_BeginActiveRosterPresetTransition then
             SCB_BeginActiveRosterPresetTransition(snapshot.size)
@@ -1502,7 +1510,7 @@ end
 
 function SCB_RequestPresetOperation(snapshot, forced)
     local operation, ok, errorText
-    local intent = SCB_PresetOperationIntent(snapshot)
+    local intent = SCB_PresetOperationIntent(snapshot, forced)
 
     if forced then
         operation = SCB_ReplaceBotOperationIntent("preset", intent)
@@ -1523,8 +1531,8 @@ function SCB_RequestPresetOperation(snapshot, forced)
     return true
 end
 
-function SCB_StartPresetRebuild(snapshot)
-    return SCB_RequestPresetOperation(snapshot, false)
+function SCB_StartPresetRebuild(snapshot, forced)
+    return SCB_RequestPresetOperation(snapshot, forced == true)
 end
 
 function SCB_PresetRebuildOnUpdate()
@@ -1557,6 +1565,10 @@ function SCB_PresetRebuildOnUpdate()
         botCount = SCB_CountGroupBots and SCB_CountGroupBots(observed) or 0
 
         if botCount > 0 then
+            if not intent.forceCombatTeardown
+                and SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then
+                return
+            end
             if SCB.developerDebugEnabled and SCB_DebugLog then
                 SCB_DebugLog("Spawn", "In-flight bot adds resolved; coordinator tearing down " .. tostring(botCount) .. " arrived bot(s)")
             end
@@ -1630,9 +1642,9 @@ function SCB_PresetSummonOnClick()
     local ctrl = IsControlKeyDown and IsControlKeyDown()
     local operation = SCB_GetActiveBotOperation()
     local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
-    local forced = ctrl and (legacyActive or operation ~= nil)
+    local forced = ctrl and true or false
 
-    if forced then
+    if forced and (legacyActive or operation ~= nil) then
         if operation then SCB_SetBotOperationPhase("replacing") end
         if SCB_AbortBotSpawnOperations then SCB_AbortBotSpawnOperations(true) end
     end
