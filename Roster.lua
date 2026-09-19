@@ -1656,23 +1656,25 @@ function SCB_RefreshPresetRoleIndicators()
             if row.scbAssumedTick then row.scbAssumedTick:Hide() end
             if row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
 
-            if detectionEnabled and i <= size and not row.scbPresentPlayerKey then
+            if i <= size and not row.scbPresentPlayerKey then
                 assignment = SCB_FindTrackerAssignmentForIndicator(i, assignmentBySlot)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
                     row.scbAssumedTick:Show()
-                    stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
-                    if stage <= 0 then
-                        local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
-                        local scores = slot and slot.roleEvidence or nil
-                        stage = scores and scores[assignment.role] or 0
-                        if slot and slot.confirmedRole == assignment.role then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                    if detectionEnabled then
+                        stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
+                        if stage <= 0 then
+                            local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
+                            local scores = slot and slot.roleEvidence or nil
+                            stage = scores and scores[assignment.role] or 0
+                            if slot and slot.confirmedRole == assignment.role then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                        end
+                        if stage < 0 then stage = 0 end
+                        if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                        color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
+                        row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
+                        row.scbConfirmedTick:Show()
                     end
-                    if stage < 0 then stage = 0 end
-                    if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
-                    color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
-                    row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
-                    row.scbConfirmedTick:Show()
                 end
             end
         end
