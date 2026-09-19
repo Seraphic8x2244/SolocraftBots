@@ -16,6 +16,22 @@ The sections below preserve the earlier 0.8.28 consolidation handoff for histori
 - 0.8.39 is built/promoted to `dev` but still awaiting the user's runtime approval;
 - after that gate, deferred performance work includes same-frame 40-man Kick All A/B, mixed-group up-to-five maintenance bursts, proven-dead/low-value wrapper cleanup, and FIFO/micro-optimisation work.
 
+## Runtime test update — 2026-09-19
+
+0.8.39-dev practical 10-man Stockades gate passed:
+- initial preset summon: pass;
+- preset -> different preset rebuild: pass after resolving human logical-slot layout;
+- paced Kick All: pass, survivor retained as designed;
+- summon after Kick All: pass, survivor handled correctly;
+- one dead replacement: pass with correct role;
+- pfUI tank marking: pass;
+- combat case exposed one behavioural issue: starting a normal preset summon while the group is in combat can destructively kick bots down to the survivor before the add phase blocks on combat.
+
+Immediate next changes:
+1. change the unresolved-player warning copy to: `Please place all human players in group slots to summon <PresetName> preset.`;
+2. add a root preset-summon combat preflight before any destructive teardown on a normal click;
+3. preserve Ctrl-click as the explicit force/destructive override, while keeping the existing add-time combat safety invariant unchanged.
+
 ## Deferred command/control ideas — later
 
 These are intentionally deferred and must not be mixed into the current 0.8.39 performance test gate.
