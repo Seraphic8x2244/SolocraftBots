@@ -3544,7 +3544,7 @@ function SCB_StartPresetRebuild(snapshot)
     end
 
     SCB.presetRebuildState = { active = true, snapshot = snapshot, readySeenAt = nil }
-    SCB_KickBots(false)
+    SCB_KickBots("all")
     if SCB_BeginActiveRosterPresetTransition then SCB_BeginActiveRosterPresetTransition(snapshot.size) end
     return true
 end

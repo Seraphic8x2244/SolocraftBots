@@ -429,6 +429,7 @@ function SCB_MaintenanceReplaceOnClick()
     local operation, state, unavailableCount
 
     if (SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation())
+        or (SCB_IsKickQueueActive and SCB_IsKickQueueActive())
         or SCB_0826PendingBotAddsStillActive() then
         SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
         return
@@ -533,16 +534,21 @@ function SCB_MaintenanceReplaceOnClick()
         .. " survivor=" .. tostring(survivorName or "none")
     )
 
+    if not SCB_KickBots or not SCB_KickBots("dead", {
+        names = removedNames,
+        manageSafety = false,
+        preserveName = survivorName,
+        silent = true,
+    }) then
+        SCB_0826FinishMaintenance("failed", "shared removal queue unavailable",
+            SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
     if next(removedNames) ~= nil then
         state.phase = "waitremoved"
         state.removalStartedAt = now
         if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-remove") end
-        for i = 1, table.getn(dead) do
-            slot = dead[i]
-            if slot.currentName and removedNames[slot.currentName] then
-                UninviteByName(slot.currentName)
-            end
-        end
     elseif readyAt > now then
         state.phase = "settle"
         state.settleUntil = readyAt
@@ -612,10 +618,19 @@ function SCB_MaintenanceReplaceOnUpdate()
                 state.removalStartedAt = now
                 state.phase = "waitsurvivorremoved"
                 if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-remove-survivor") end
-                if SCB_GroupHasName and SCB_GroupHasName(state.survivorName) and UninviteByName then
-                    UninviteByName(state.survivorName)
+                if SCB_GroupHasName and SCB_GroupHasName(state.survivorName) then
+                    local survivorOnly = { [state.survivorName] = true }
+                    if not SCB_KickBots or not SCB_KickBots("all", {
+                        names = survivorOnly,
+                        manageSafety = false,
+                        silent = true,
+                    }) then
+                        SCB_0826FinishMaintenance("failed", "shared survivor removal queue unavailable",
+                            SCB_L("REPLACE_DEAD_BUSY"))
+                        return
+                    end
                 end
-                SCB_0826MaintenanceDebug("removed retained safety bot " .. tostring(state.survivorName))
+                SCB_0826MaintenanceDebug("queued retained safety bot removal " .. tostring(state.survivorName))
                 return
             end
 
@@ -1586,7 +1601,7 @@ local function SCB_StartCoordinatorPresetRuntime(operation)
     end
 
     SCB_BeginCoordinatorRebuild(operation, false)
-    if SCB_KickBots then SCB_KickBots(false) end
+    if SCB_KickBots then SCB_KickBots("all") end
     if SCB_BeginActiveRosterPresetTransition then
         SCB_BeginActiveRosterPresetTransition(snapshot.size)
     end
@@ -1657,7 +1672,7 @@ function SCB_PresetRebuildOnUpdate()
             if SCB.developerDebugEnabled and SCB_DebugLog then
                 SCB_DebugLog("Spawn", "In-flight bot adds resolved; coordinator tearing down " .. tostring(botCount) .. " arrived bot(s)")
             end
-            if SCB_KickBots then SCB_KickBots(false) end
+            if SCB_KickBots then SCB_KickBots("all") end
             return
         end
 

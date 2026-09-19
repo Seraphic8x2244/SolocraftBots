@@ -1235,14 +1235,22 @@ local SCB_KICK_BATCH_INTERVAL = 0.10
 local SCB_kickQueueFrame = CreateFrame("Frame", nil, UIParent)
 SCB_kickQueueFrame:Hide()
 
+function SCB_IsKickQueueActive()
+    return SCB.kickQueueState and SCB.kickQueueState.active and true or false
+end
+
 local function SCB_FinishKickQueue()
     local state = SCB.kickQueueState
     SCB.kickQueueState = nil
     SCB_kickQueueFrame:SetScript("OnUpdate", nil)
     SCB_kickQueueFrame:Hide()
 
-    if state and not state.safetyApplied and (state.issued or 0) > 0 then
-        SCB_Print(string.format(SCB_L(state.issued == 1 and "KICKED_ONE" or "KICKED_MANY"), state.issued))
+    if state and not state.silent and not state.safetyApplied and (state.issued or 0) > 0 then
+        if state.mode == "dead" then
+            SCB_Print(string.format(SCB_L(state.issued == 1 and "KICKED_DEAD_ONE" or "KICKED_DEAD_MANY"), state.issued))
+        else
+            SCB_Print(string.format(SCB_L(state.issued == 1 and "KICKED_ONE" or "KICKED_MANY"), state.issued))
+        end
     end
 end
 
@@ -1284,8 +1292,9 @@ local function SCB_KickQueueOnUpdate()
     SCB_RunKickQueueBatch()
 end
 
-local function SCB_StartKickQueue(names, safetyApplied)
-    if table.getn(names or {}) == 0 then return false end
+local function SCB_StartKickQueue(names, mode, safetyApplied, silent)
+    if table.getn(names or {}) == 0 then return true end
+    if SCB_IsKickQueueActive() then return false end
 
     SCB.kickQueueState = {
         active = true,
@@ -1293,45 +1302,49 @@ local function SCB_StartKickQueue(names, safetyApplied)
         index = 1,
         issued = 0,
         elapsed = 0,
+        mode = mode,
         safetyApplied = safetyApplied and true or false,
+        silent = silent and true or false,
     }
 
-    -- Keep the action feeling immediate, but cap the initial frame at five
-    -- UninviteByName calls just like every later batch.
+    -- Every multi-bot removal uses the same proven client/server-safe pacing.
     SCB_RunKickQueueBatch()
-    if SCB.kickQueueState and SCB.kickQueueState.active then
+    if SCB_IsKickQueueActive() then
         SCB_kickQueueFrame:SetScript("OnUpdate", SCB_KickQueueOnUpdate)
         SCB_kickQueueFrame:Show()
     end
     return true
 end
 
-function SCB_KickBots(deadOnly)
+-- One authoritative physical bot-removal entry point.
+-- mode: "all" or "dead"
+-- options.names: optional set of exact bot names allowed to be removed
+-- options.manageSafety: false when a higher-level coordinator already owns the survivor
+-- options.preserveName: explicit name to preserve
+-- options.silent: suppress normal kick-count chat (used by maintenance)
+function SCB_KickBots(mode, options)
     local members = SCB_CollectGroupMembers()
     local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
-    local i, member, survivorName, removed, safetyApplied
+    local i, member, survivorName, safetyApplied
+    local names = options and options.names or nil
+    local manageSafety = not options or options.manageSafety ~= false
+    local preserveName = options and options.preserveName or nil
+    local silent = options and options.silent or false
 
+    if mode ~= "all" and mode ~= "dead" then return false end
     if not UninviteByName then
-        SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
-        return
+        if not silent then SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE")) end
+        return false
     end
-
-    -- A non-dead Kick All may already be draining asynchronously. Do not layer
-    -- a second removal flood on top of the active queue.
-    if not deadOnly and SCB.kickQueueState and SCB.kickQueueState.active then
-        return
-    end
-
-    -- Kick All changes the live group only. Keep the Active Roster and preset
-    -- tracker intact so normal roster events mark removed bots as missing and
-    -- Replace Missing can restore the same maintained composition.
+    if SCB_IsKickQueueActive() then return false end
 
     for i = 1, table.getn(members) do
         member = members[i]
         if member.isBot then
             table.insert(bots, member)
-            if not deadOnly or member.dead then
+            if (mode == "all" or member.dead)
+                and (not names or names[member.name]) then
                 table.insert(candidates, member)
             end
         elseif not member.isSelf then
@@ -1339,67 +1352,56 @@ function SCB_KickBots(deadOnly)
         end
     end
 
+    -- A filtered maintenance call with no live candidate is still a successful
+    -- no-op: Replace Missing deliberately enters through this same function.
+    if table.getn(candidates) == 0 and names then return true end
+
     if table.getn(bots) == 0 then
-        SCB_Print(SCB_L("KICK_NONE"))
-        return
+        if not silent then SCB_Print(SCB_L("KICK_NONE")) end
+        return false
     end
-    if deadOnly and table.getn(candidates) == 0 then
-        SCB_Print(SCB_L("KICK_NONE_DEAD"))
-        return
+    if mode == "dead" and table.getn(candidates) == 0 then
+        if not silent then SCB_Print(SCB_L("KICK_NONE_DEAD")) end
+        return false
     end
 
-    -- When survivor safety is required, deliberately preserve a Group 1 bot.
-    -- In a party every bot is Group 1; in a raid this prevents a random bot in
-    -- a later subgroup from becoming the survivor.
-    if otherHumans == 0 and SCB_SurvivorSafetyRequired() then
+    if manageSafety and otherHumans == 0 and SCB_SurvivorSafetyRequired() then
         survivorName = SCB_FindGroupOneSurvivor(members)
+    else
+        survivorName = preserveName
     end
 
-    removed = 0
     safetyApplied = false
     for i = 1, table.getn(candidates) do
         if survivorName and candidates[i].name == survivorName then
             safetyApplied = true
-        elseif deadOnly then
-            -- Keep the existing Kick Dead behaviour unchanged in this A/B
-            -- build. Only mass Kick All teardown is being paced.
-            UninviteByName(candidates[i].name)
-            removed = removed + 1
         else
             table.insert(kickNames, candidates[i].name)
         end
     end
 
-    if not deadOnly then
+    if mode == "all" and manageSafety then
         if safetyApplied and survivorName then
             SCB_SetKickAllAnchor(survivorName)
         else
             SCB_ClearKickAllAnchor()
         end
-
-        if safetyApplied then
-            SCB_Print(SCB_L("SURVIVOR_CHAT"))
-            SCB_ShowSafetyMessage()
-        end
-
-        SCB_StartKickQueue(kickNames, safetyApplied)
-        return
     end
 
-    if safetyApplied then
+    if safetyApplied and not silent then
         SCB_Print(SCB_L("SURVIVOR_CHAT"))
         SCB_ShowSafetyMessage()
-    elseif removed > 0 then
-        SCB_Print(string.format(SCB_L(removed == 1 and "KICKED_DEAD_ONE" or "KICKED_DEAD_MANY"), removed))
     end
+
+    return SCB_StartKickQueue(kickNames, mode, safetyApplied, silent)
 end
 
 function SCB_KickDeadOnClick()
-    SCB_KickBots(true)
+    SCB_KickBots("dead")
 end
 
 function SCB_KickAllOnClick()
-    SCB_KickBots(false)
+    SCB_KickBots("all")
 end
 end
 
