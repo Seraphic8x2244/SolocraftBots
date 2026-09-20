@@ -1509,6 +1509,13 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     if command == "attackstart" then
         SCB_QueueDelayedCommand("attackstart", 0.25)
         return
+    elseif command == "stay" or command == "move" then
+        -- SoloCraft's target-only commands fall back dangerously when there is
+        -- no valid bot target. Match the UI's One-row safety exactly for macros.
+        if SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget() then
+            SCB_SendCommand(command)
+        end
+        return
     elseif command == "location" then
         SCB_PrintLocationProbe()
         return
