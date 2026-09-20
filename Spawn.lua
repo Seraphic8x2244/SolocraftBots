@@ -381,13 +381,22 @@ local function SCB_0826MoveOneMaintenanceBot(state, resolvedBots)
     return false
 end
 
+local function SCB_0826MaintenanceRemainingCount(state)
+    local remaining = state and state.remaining or {}
+    local head = state and state.remainingHead or 1
+    local count = table.getn(remaining) - head + 1
+    if count < 0 then return 0 end
+    return count
+end
+
 local function SCB_0826BeginMaintenanceBurst(operation, state, now)
     local assignments, plan = {}, nil
     local i, assignment
-    local limit = math.min(SCB.MAINTENANCE_BURST_SIZE or 5, table.getn(state.remaining or {}))
+    local head = state.remainingHead or 1
+    local limit = math.min(SCB.MAINTENANCE_BURST_SIZE or 5, SCB_0826MaintenanceRemainingCount(state))
 
-    for i = 1, limit do
-        assignment = state.remaining[i]
+    for i = 0, limit - 1 do
+        assignment = state.remaining[head + i]
         if assignment then table.insert(assignments, assignment) end
     end
     if table.getn(assignments) == 0 then return false end
@@ -444,9 +453,7 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
         end
     end
 
-    for i = 1, table.getn(state.currentAssignments or {}) do
-        table.remove(state.remaining, 1)
-    end
+    state.remainingHead = (state.remainingHead or 1) + table.getn(state.currentAssignments or {})
 
     if SCB_ApplyTrackedPfUITankRoles then
         SCB_ApplyTrackedPfUITankRoles(SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker)
@@ -563,6 +570,7 @@ function SCB_MaintenanceReplaceOnClick()
     state = {
         phase = "nextgroup",
         remaining = assignments,
+        remainingHead = 1,
         removedNames = removedNames,
         survivorAssignment = survivorRecord,
         survivorName = survivorName,
@@ -632,6 +640,7 @@ function SCB_MaintenanceReplaceOnUpdate()
         state.settleUntil = now + (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0)
         if state.phase == "waitsurvivorremoved" and state.survivorAssignment then
             state.remaining = { state.survivorAssignment }
+            state.remainingHead = 1
             state.survivorAssignment = nil
             state.survivorName = nil
         end
@@ -652,7 +661,7 @@ function SCB_MaintenanceReplaceOnUpdate()
     end
 
     if state.phase == "nextgroup" or state.phase == "combat" then
-        if table.getn(state.remaining or {}) == 0 then
+        if SCB_0826MaintenanceRemainingCount(state) == 0 then
             if state.survivorAssignment and state.survivorName then
                 if SCB_CountGroupBots and SCB_CountGroupBots() <= 1 then
                     SCB_0826FinishMaintenance("failed", "last safety bot could not be replaced safely",
