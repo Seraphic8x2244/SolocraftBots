@@ -1,10 +1,41 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.52-dev`
-Current functional addon head: `98caa2711b98d7035ce57e9d5906205ced71ae30`
-Previous docs checkpoint: `9e3e5934ee93441da3930ac759f031d07ce89e36`
+Current addon line: `0.8.53-dev`
+Current functional addon head: `499ec3f038f860d26156e3afc3644fd9ae859e3f`
+Previous docs checkpoint: `575ac115f815098cf5f9d62fd43f492dca9a9342`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.53-dev — live subgroup command scope
+
+Runtime commit: `499ec3f038f860d26156e3afc3644fd9ae859e3f`
+
+Completed:
+- added a **Group** command row between All and One with Come, Unpause, Move, Stay and Pause;
+- Group scope is resolved from the current target's observed Blizzard party/raid subgroup in Live Roster, never from logical preset placement;
+- a friendly human, bot or the player can act as the subgroup selector as long as the target exists in Live Roster;
+- the selected command fans out through the existing target-only PartyBot commands, so no unverified native subgroup command syntax was introduced;
+- bot recipients are snapshotted by name from the selected live subgroup, then re-resolved immediately before each action; bots that vanished or moved subgroup are skipped;
+- fan-out is serialized at one target command per 0.15 seconds, with the first action immediate, to avoid burst chat/server spam;
+- SCB temporarily targets each recipient bot only when necessary, verifies the retarget succeeded, sends the command, and restores/clears the user's prior target only when SCB actually changed it;
+- Ctrl-click Group Come preserves the existing Move-then-Come semantics per bot;
+- the Group row availability updates from target changes and visible roster changes;
+- Group currently reuses the existing All recipient artwork because no dedicated Group icon exists; tooltips explicitly state that Group means the current target's live party/raid group;
+- the first staged candidate was rejected before promotion after review found a target-restoration edge case; the promoted candidate includes the verified-retarget guard.
+
+Runtime status:
+- untested as `0.8.53-dev`;
+- `0.8.52-dev` macro-safe `/scb stay` and `/scb move` are also awaiting the same short command smoke;
+- `0.8.50-dev` first-summon subgroup mismatch remains monitor-in-normal-play rather than runtime-passed;
+- Replace Dead remains separately untested from the recent smoke sequence.
+
+Deferred:
+- optional startup/lazy-UI and deeper developer-debug-buffer optimisation remain low-value/medium-risk and are not being mixed into the command feature gate;
+- a dedicated Group recipient icon is cosmetic follow-up only if desired;
+- the established preset spawn/inter-group timing remains unchanged.
+
+Exact next step:
+- smoke the command features in a party/raid: verify `/scb stay` and `/scb move` affect only one valid targeted bot and are silent with no/non-bot target; then target a member of a subgroup containing multiple bots and verify Group Come/Move/Stay/Pause/Unpause affect only bots physically in that subgroup, other subgroups remain unchanged, and the original target is restored after the paced fan-out. Also test Ctrl-click Group Come once. If clean, treat the command-scope work as runtime-cleared and decide whether 0.8 is ready for a broader regression/main-promotion review.
 
 ## 0.8.52-dev — macro-safe single-target Stay / Move
 
