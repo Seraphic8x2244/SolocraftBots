@@ -1,10 +1,27 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.51-dev`
-Current functional addon head: `29003117948aacfcca4b0618d459a85e412b38a5`
-Previous docs checkpoint: `15df1f008f113470eea9afcd333a0db107679204`
+Current addon line: `0.8.52-dev`
+Current functional addon head: `98caa2711b98d7035ce57e9d5906205ced71ae30`
+Previous docs checkpoint: `9e3e5934ee93441da3930ac759f031d07ce89e36`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.52-dev — macro-safe single-target Stay / Move
+
+Runtime commit: `98caa2711b98d7035ce57e9d5906205ced71ae30`
+
+Completed:
+- added `/scb stay` and `/scb move` as macro-friendly entry points for the existing One/target command semantics;
+- both commands require the current target to pass the same friendly PartyBot validation used by the One UI row;
+- with no valid bot target they return silently, preventing SoloCraft's target command fallback from affecting the whole bot group;
+- no command matrix/UI, spawn, roster, maintenance, or pacing behavior changed.
+
+Runtime status:
+- untested as `0.8.52-dev`;
+- expected smoke is simple: target one friendly bot and confirm each slash command affects only it; then repeat with no target / a non-bot target and confirm nothing is sent.
+
+Exact next step:
+- implement the separately-scoped Group command row between All and One. Resolve the target's current Blizzard subgroup from Live Roster, fan the selected target-only command out to bots physically in that same subgroup, throttle the fan-out, and restore the user's original target after each temporary bot target. Do not use logical preset group membership for this feature.
 
 ## 0.8.51-dev — maintenance queue head-index pass
 
