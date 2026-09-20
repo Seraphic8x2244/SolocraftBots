@@ -1008,7 +1008,7 @@ function SCB_RefreshGroupCommandRow()
     end
 end
 
-local SCB_GROUP_TARGET_SETTLE = 0.20
+local SCB_GROUP_TARGET_SETTLE = 0.02
 
 local function SCB_RestoreGroupCommandOriginalTarget(state)
     local originalName, currentName, member
@@ -1070,17 +1070,7 @@ local function SCB_ProcessNextGroupCommandAction()
         end
 
         state.currentName = name
-        state.phase = "send"
-        return
-    end
-
-    if state.phase == "send" then
-        name = state.currentName
-        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
-        if member and member.isBot and member.unit
-            and (member.currentGroup or member.subgroup or 1) == state.group
-            and UnitName and UnitName("target") == name
-            and SCB_IsFriendlyBotTarget() then
+        if UnitName and UnitName("target") == name and SCB_IsFriendlyBotTarget() then
             for i = 1, table.getn(state.commands or {}) do
                 SCB_SendCommand(state.commands[i])
             end
@@ -1097,8 +1087,8 @@ local function SCB_ProcessNextGroupCommandAction()
     end
 
     state.phase = "target"
-    -- The preceding update interval is the post-command settle. Select the next
-    -- bot now, then let the next interval become its pre-command target settle.
+    -- The preceding update interval is the post-command target hold. Select and
+    -- command the next bot now, then hold that target before advancing again.
     SCB_ProcessNextGroupCommandAction()
 end
 
@@ -1148,8 +1138,8 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     frame = SCB_EnsureGroupCommandFrame()
     frame.scbElapsed = 0
 
-    -- Select the first recipient immediately, then deliberately hold that target
-    -- before sending. Each send is followed by the same settle before advancing.
+    -- Select and command the first recipient immediately, then hold that target
+    -- briefly before advancing. Five recipients therefore cycle in about 0.10s.
     SCB_ProcessNextGroupCommandAction()
     if SCB.groupCommandState then frame:Show() end
     return true
