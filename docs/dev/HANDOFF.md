@@ -1,10 +1,28 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.59-dev`
-Current functional addon head: `943ae4407b8afaa6ee39f21f4ca002fdcaab8f2b`
-Previous docs checkpoint: `121bd00315e6b7483f426ec3cf289ee9b1e53dd0`
+Current addon line: `0.8.60-dev`
+Current functional addon head: `483699234761f0e84871c4129b22523269ae8e38`
+Previous docs checkpoint: `4cbe968f95cb22a98f5fb8f85dcfbbbf1b99736e`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.60-dev — longer final target hold
+
+Runtime commit: `483699234761f0e84871c4129b22523269ae8e38`
+
+Completed:
+- preserved the 0.10s pre-send settle and 0.10s normal post-send hold for every Group recipient;
+- only the final recipient now receives a 0.15s post-send hold before SCB restores the user's original target;
+- this specifically targets the 0.8.59 symptom where misses were concentrated on the last bot;
+- Group-only 24 commands/second accounting, Group critical section, subgroup selection, target restoration, GUILD transport and Ctrl-click Group Come are unchanged.
+
+Runtime status:
+- untested as `0.8.60-dev`.
+
+Exact next step:
+- repeatedly test Group Come in a 5-player party and watch whether the final bot now responds consistently;
+- if the final bot still misses while earlier bots remain reliable, increase only the final hold again rather than slowing the entire cycle.
 
 
 ## 0.8.59 runtime result — final recipient still occasionally misses
