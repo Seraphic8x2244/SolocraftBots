@@ -1008,7 +1008,7 @@ function SCB_RefreshGroupCommandRow()
     end
 end
 
-local SCB_GROUP_TARGET_SETTLE = 0.02
+local SCB_GROUP_TARGET_SETTLE = 0.10
 local SCB_GROUP_COMMAND_LIMIT = 24
 local SCB_GROUP_COMMAND_WINDOW = 1.0
 
@@ -1098,7 +1098,17 @@ local function SCB_ProcessNextGroupCommandAction()
         end
 
         state.currentName = name
-        if UnitName and UnitName("target") == name and SCB_IsFriendlyBotTarget() then
+        state.phase = "send"
+        return
+    end
+
+    if state.phase == "send" then
+        name = state.currentName
+        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+        if member and member.isBot and member.unit
+            and (member.currentGroup or member.subgroup or 1) == state.group
+            and UnitName and UnitName("target") == name
+            and SCB_IsFriendlyBotTarget() then
             for i = 1, table.getn(state.commands or {}) do
                 if SCB_SendCommand(state.commands[i], { groupFanout = true }) then
                     SCB_RecordGroupCommandSend()
@@ -1117,8 +1127,8 @@ local function SCB_ProcessNextGroupCommandAction()
     end
 
     state.phase = "target"
-    -- The preceding update interval is the post-command target hold. Select and
-    -- command the next bot now, then hold that target before advancing again.
+    -- The preceding interval held the commanded target server-side. Select the
+    -- next bot now; the following interval becomes its pre-command settle.
     SCB_ProcessNextGroupCommandAction()
 end
 
@@ -1172,8 +1182,9 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     frame = SCB_EnsureGroupCommandFrame()
     frame.scbElapsed = 0
 
-    -- Select and command the first recipient immediately, then hold that target
-    -- briefly before advancing. Five recipients therefore cycle in about 0.10s.
+    -- Select the first recipient immediately. The first 0.10-second interval is
+    -- a pre-command settle; after sending, another 0.10-second interval holds
+    -- that target before the next recipient is selected.
     SCB_ProcessNextGroupCommandAction()
     if SCB.groupCommandState then frame:Show() end
     return true
