@@ -3,8 +3,33 @@
 Current branch: `dev`
 Current addon line: `0.8.58-dev`
 Current functional addon head: `5137eb4fab347535709135831b390be65a5ab36d`
-Previous docs checkpoint: `ec3e3d2ecd8b6652fcb59aed892368529a7884e0`
+Previous docs checkpoint: `3651aeb6acca9709b5088ae16f53a6c2d571f92c`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.58 Group runtime result — target propagation still races
+
+Observed:
+- Group now visibly cycles targets and always works on the bot that was selected when the command started;
+- remaining subgroup bots respond only about 20-50% of the time;
+- therefore subgroup selection and client-side retargeting are functioning, but the target-dependent PartyBot command is often reaching the server before the new target has propagated server-side.
+
+Relevant prior evidence:
+- the existing delayed attack macro was added for the same class of issue: SCR/M target-next resolves more slowly than SCB can immediately issue the following attack command.
+
+Decision:
+- replace 0.8.58's immediate send + 0.02-second post-send hold with a symmetric target settle:
+  target bot -> wait 0.10s -> send command(s) -> wait 0.10s -> next bot;
+- preserve the Group-only 24 commands/second rolling budget and control-command critical section unchanged;
+- do not alter subgroup membership logic, target restoration, GUILD transport, or command syntax.
+
+Expected pacing:
+- four bots in a normal 5-player party take about 0.8 seconds for one Group command;
+- five recipients take about 1.0 second;
+- this is slower than the preferred 0.1-second whole-group cycle, but runtime evidence now shows the faster timing is unreliable.
+
+Exact next step:
+- implement the two-phase 0.10s pre-send / 0.10s post-send Group state machine as the next dev build, then retest Group Come in 5-player and 10-player groups.
 
 
 ## 0.8.58-dev — Group critical section + Group-only 24/s budget
