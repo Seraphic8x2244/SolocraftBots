@@ -42,7 +42,7 @@ Exact next step:
 Current decision:
 - preserve the fast 0.02-second per-recipient Group target hold from 0.8.57;
 - while a Group fan-out is active, normal user control commands must not interleave with it;
-- Group command starts must respect a rolling budget of 24 target-control commands per 1.0 second;
+- Group command starts must respect a rolling budget of 24 Group fan-out commands per 1.0 second;
 - for a normal 5-player party with four bots and one command per bot, that permits at most six complete Group presses inside any rolling second;
 - Ctrl-click Group Come consumes two commands per recipient and therefore must consume twice the budget;
 - do not apply a lossy transport-level drop to preset/spawn scheduling, because silently dropping a background add/removal command would corrupt those workflows.
@@ -61,7 +61,7 @@ Deferred:
 
 Exact next step:
 - add a control-command gate so ordinary SCB control sends are rejected while `SCB.groupCommandState` is active unless they are the Group fan-out's own sends;
-- add a rolling one-second history for normal target-control sends and make Group reserve/check enough remaining budget for its complete fan-out before starting;
+- add a rolling one-second history for Group fan-out sends and make Group reserve/check enough remaining budget for its complete fan-out before starting;
 - keep background Spawn/Preset transport out of this gate;
 - bump the addon line for the runtime change, statically inspect the candidate, then promote non-force to `dev`.
 
