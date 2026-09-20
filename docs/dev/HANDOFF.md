@@ -3,8 +3,37 @@
 Current branch: `dev`
 Current addon line: `0.8.57-dev`
 Current functional addon head: `c2c71ba70997e89a8c0f3953ccf76188add03dc4`
-Previous docs checkpoint: `42f00d84d63b1f671ef58ac137cc7f9a72ec3ea8`
+Previous docs checkpoint: `9aafc2fa8448ba87f33708896ba9a864e0ee23bd`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## Group command exclusivity + spam-budget decision — 2026-09-20
+
+Current decision:
+- preserve the fast 0.02-second per-recipient Group target hold from 0.8.57;
+- while a Group fan-out is active, normal user control commands must not interleave with it;
+- Group command starts must respect a rolling budget of 24 target-control commands per 1.0 second;
+- for a normal 5-player party with four bots and one command per bot, that permits at most six complete Group presses inside any rolling second;
+- Ctrl-click Group Come consumes two commands per recipient and therefore must consume twice the budget;
+- do not apply a lossy transport-level drop to preset/spawn scheduling, because silently dropping a background add/removal command would corrupt those workflows.
+
+Completed:
+- 0.8.57 fast Group cycle is on dev at `c2c71ba70997e89a8c0f3953ccf76188add03dc4`;
+- current docs head before this decision is `9aafc2fa8448ba87f33708896ba9a864e0ee23bd`.
+
+Untested:
+- 0.8.57 fast Group cycle itself still needs the 5-player and 10-player runtime smoke;
+- the new exclusivity/rate-budget change described here is not implemented yet.
+
+Deferred:
+- do not globally rate-limit or drop Spawn/Preset `.partybot add` traffic in this change;
+- do not change the 0.02-second target dwell unless the runtime test shows a target-evaluation race.
+
+Exact next step:
+- add a control-command gate so ordinary SCB control sends are rejected while `SCB.groupCommandState` is active unless they are the Group fan-out's own sends;
+- add a rolling one-second history for normal target-control sends and make Group reserve/check enough remaining budget for its complete fan-out before starting;
+- keep background Spawn/Preset transport out of this gate;
+- bump the addon line for the runtime change, statically inspect the candidate, then promote non-force to `dev`.
 
 
 ## 0.8.57-dev — fast Group target cycle
