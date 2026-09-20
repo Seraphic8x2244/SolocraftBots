@@ -549,7 +549,20 @@ function SCB_SyncActiveRosterFromObserved(observed)
     SCB_UpdateActiveRosterLocation(roster, nil, observed and observed.count or 0)
     bound = {}
     for id, slot in pairs(roster.slots or {}) do
-        if slot and slot.expected then
+        if slot and slot.coveredBy and not slot.currentName then
+            member = observed and observed.byName and observed.byName[slot.coveredBy] or nil
+            if member and not member.isBot then
+                slot.expected = false
+                slot.currentGroup = member.currentGroup or slot.currentGroup or slot.intendedGroup or 1
+                slot.state = "covered"
+                slot.missingSince = nil
+                slot.lastSeenAt = now
+            else
+                if not slot.expected or slot.state ~= "missing" then slot.missingSince = now end
+                slot.expected = true
+                slot.state = "missing"
+            end
+        elseif slot and slot.expected then
             member = nil
             if slot.state ~= "missing" and slot.currentName and observed and observed.byName then member = observed.byName[slot.currentName] end
             if member and member.isBot then
@@ -593,9 +606,11 @@ function SCB_BindReplacementToActiveSlot(slotID, newName, group)
     local slot = roster.slots and roster.slots[slotID]
     local tracker, i, assignment, assumption
     if not slot or not newName then return false end
+    slot.expected = true
     slot.currentName = newName
     slot.currentGroup = group or slot.currentGroup or 1
     slot.state = "alive"
+    slot.coveredBy = nil
     slot.missingSince = nil
     slot.lastSeenAt = GetTime and GetTime() or 0
     roster.active = true
