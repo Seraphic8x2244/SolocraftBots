@@ -1,10 +1,35 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.53-dev`
-Current functional addon head: `499ec3f038f860d26156e3afc3644fd9ae859e3f`
-Previous docs checkpoint: `575ac115f815098cf5f9d62fd43f492dca9a9342`
+Current addon line: `0.8.54-dev`
+Current functional addon head: `0a2688b5567c6a35365d3d2d2a534e02facfb762`
+Previous docs checkpoint: `8d5f732a7d8bd3d1d1c02b51962909f66e1a1a0f`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.54-dev — guild-chat control command transport
+
+Runtime commit: `0a2688b5567c6a35365d3d2d2a534e02facfb762`
+
+Completed:
+- changed the shared PartyBot sender's default channel from PARTY to GUILD;
+- changed `SCB_SendCommand` so normal control commands explicitly use GUILD;
+- changed the developer batch sender so non-`add` commands use GUILD as well;
+- spawn/add traffic remains explicitly routed through SAY by `SCB_SendSpawnCommand`, including manual summons, presets, and maintenance replacements;
+- no spawn dead-state guard, command pacing, Group fan-out timing, target restoration, roster logic, or preset timing changed.
+
+Runtime status:
+- untested as `0.8.54-dev`;
+- `0.8.52-dev` macro-safe Stay/Move and `0.8.53-dev` Group scope still need their command smoke, now through the GUILD transport;
+- `0.8.50-dev` first-summon subgroup mismatch remains monitor-in-normal-play rather than runtime-passed;
+- Replace Dead remains separately untested.
+
+Deferred:
+- do not move spawn/add traffic to GUILD in this build; SAY remains the intentional spawn transport and naturally prevents dead players from issuing SAY;
+- no central rate throttle or explicit dead-state spawn throttle was added.
+
+Exact next step:
+- in-game, verify ordinary control commands are accepted when sent through GUILD, including one direct Come/Move/Stay/Pause command, `/scb stay` and `/scb move`, and one Group-scope command. Confirm spawning still uses SAY and behaves unchanged. If clean, continue the existing 0.8.52/0.8.53 command-scope smoke and record the result.
 
 ## 0.8.53-dev — live subgroup command scope
 
