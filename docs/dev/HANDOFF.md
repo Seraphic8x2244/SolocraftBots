@@ -3,8 +3,37 @@
 Current branch: `dev`
 Current addon line: `0.8.55-dev`
 Current functional addon head: `66ba0d1ca4e810a1cfdcfda6f84bd2a55ff27ddf`
-Previous docs checkpoint: `0f81fceb9c0a1504f72deab217e7bd77fc395e49`
+Previous docs checkpoint: `a4efeb93f25765daf35c85b5fe9cee7ea46b4166`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## Group scope confirmed broken — 2026-09-20
+
+Runtime result on `0.8.55-dev`:
+- Group commands fail in both a 5-player party and a 10-player raid;
+- only the bot that was already targeted when the Group command was clicked responds;
+- the visible target does not appear to cycle through subgroup bots.
+
+Interpretation:
+- this confirms the 0.8.53 Group implementation is defective rather than a 5-player-only ambiguity;
+- current code retargets a recipient, sends the target-dependent command, and restores the original target inside the same update step;
+- that same-frame retarget/send/restore is now the leading cause: the server can evaluate the PartyBot target command after the original target has already been restored.
+
+Completed / still valid:
+- 0.8.54 GUILD command transport remains runtime-passed;
+- 0.8.52 macro-safe `/scb stay` and `/scb move`, including no-target safety, remain runtime-passed;
+- no further Group-scope code has been changed yet.
+
+Untested / unresolved:
+- 0.8.55 dungeon -> 10-player preset retest remains pending;
+- 0.8.50 first-summon subgroup mismatch remains monitor-in-normal-play;
+- Replace Dead remains separately untested.
+
+Deferred:
+- do not change subgroup selection semantics, command routes, GUILD transport, roster ownership, or preset timing as part of this fix.
+
+Exact next step:
+- replace Group's same-frame per-action retarget/send/restore with a paced per-bot target cycle: capture the user's original target once, select each subgroup bot, hold that target briefly before sending its command(s), advance to the next bot after a deliberate dwell, and restore the original target only after the full subgroup fan-out completes. Preserve validation and skip bots that vanish or change subgroup during the cycle.
 
 
 
