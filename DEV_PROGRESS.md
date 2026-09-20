@@ -33,6 +33,13 @@
   - once a replacement bot is bound, `coveredBy` is cleared and the slot becomes a normal expected bot slot.
 - Replace Missing therefore reuses the existing Active Roster replacement record and spawn path; no separate party refill mechanism or spawn scheduler was added.
 - Ctrl-click Group Come still sends Move + Come back-to-back in the same recipient send phase.
+- Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
+  - Come: `Name* is coming to your position.`
+  - Move: `Name* is now moving.` / `Name* is moving.`
+  - Stay: `Name* is now staying.` / `Name* is staying.`
+  - Pause: `Name* ... paused for 30 seconds.`
+  - Play/unpause: `Name* ... unpaused.`
+  Actor-specific movement failures also identify the selected name. These messages are filtered only at ChatFrame display, so they can be consumed internally as acknowledgements while remaining hidden.
 - 0.8.61-0.8.65 changes remain implemented but not yet user-verified.
 
 ## Current Issues
@@ -80,4 +87,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Treat the Group issue as a confirmed stale-server-target race: the fourth command can be processed while the server still reports bot 3 as the player's target, causing bot 3 to receive the command twice. Next isolate why the fourth CMSG_SET_SELECTION-equivalent update is late or suppressed: first test whether the failure follows ordinal recipient #4 or the final recipient with a 5-bot subgroup, then test a deliberate reset/pause before selecting recipient #4 rather than merely increasing post-selection delay. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
+Prototype acknowledgement-driven Group fan-out using the existing actor-identifying bot response lines instead of further fixed-delay tuning. For each recipient, send the target command, wait for the matching server response, advance only when the acknowledged bot name equals the intended recipient, and retarget/retry on a stale-name acknowledgement with a bounded retry/timeout. First verify which CHAT_MSG_* event carries the already-filtered response lines so the queue can consume them before display suppression. Ctrl-Come must verify both Move and Come acknowledgements for the same intended bot. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
