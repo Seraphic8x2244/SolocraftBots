@@ -3,8 +3,24 @@
 Current branch: `dev`
 Current addon line: `0.8.47-dev`
 Current functional addon head: `a305bcb9e27a3360e63415bb8436b49670dddce0`
-Previous docs checkpoint: `5b4320d69a13869e1ad3c4ade8a2680ceb218b93`
+Previous docs checkpoint: `bb10abd71e34a694f33be99031c19c15e2acfb1c`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.47 runtime result — 2026-09-20
+
+User-confirmed:
+- with combat-role confirmation disabled, the summon/assumed role ticks remain visible;
+- the combat-confirmation ticks stay hidden as intended.
+
+Interpretation:
+- the 0.8.47 role-indicator gating correction is runtime-passed;
+- the 0.8.46 proven-dead deletion pass remains healthy under the smoke coverage already recorded.
+
+Still untested from this short smoke sequence:
+- Replace Dead specifically; Replace Missing already passed.
+
+Exact next step:
+- begin the captured-wrapper flattening pass as `0.8.48-dev`; preserve current behaviour, flatten one authoritative implementation per remaining duplicate family, re-run the duplicate-global audit, and keep queue/timing/combat/survivor semantics untouched.
 
 ## 0.8.47-dev — role-indicator gating correction
 
