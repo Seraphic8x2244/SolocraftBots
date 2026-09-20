@@ -13,13 +13,22 @@ Observed:
 - a second summon immediately afterward produced the expected result;
 - user notes an older implementation intentionally spawned Group 1 one bot short while a survivor occupied capacity; current design instead parks the survivor in Group 8 before arrangement.
 
+Audit result:
+- the raid survivor/bootstrap construction, Group-8 parking helper, assumed-role binding, roster-delta binding, burst-intent construction, and system-message identity binding are byte-for-byte unchanged between 0.8.47 and 0.8.48; wrapper flattening did not resurrect the old raid Group-1-minus-one behaviour;
+- the remaining `heldAssignment` Group-1-minus-one path is confined to size <= 5, where Group 8 does not exist;
+- raid-size survivor handling keeps the full Group 1 assignment set, parks the survivor in Group 8, then removes it after a real Group 1 bot is observed;
+- the separate raid-from-empty `firstAssignment` path intentionally sends one real Group 1 assignment before conversion and removes that already-sent assignment from the later Group 1 burst; it is not survivor capacity subtraction;
+- the screenshot shows Groups 1 and 2 containing the correct combined class pool but with members crossing the subgroup boundary, while a second summon corrected it. This points to first-summon subgroup/capacity stabilization timing rather than composition generation or wrapper flattening;
+- `SCB_ArrangePresetPlayers` does verify target human subgroups after issuing `SetRaidSubgroup`, but it can proceed as soon as `GetRaidRosterInfo` reflects the move; there is no explicit server-roster-event stabilization barrier before the first bot burst;
+- inter-group progression also uses a fixed 1.0-second wait rather than a roster-confirmed burst-completion barrier.
+
 Status:
-- intermittent symptom only; not yet attributed to the 0.8.49 FIFO change, the 0.8.48 wrapper flattening, or role-binding observation timing;
-- do not mark 0.8.49 runtime-passed until this is understood;
+- 0.8.49 remains not runtime-passed;
+- no runtime code changed during this investigation;
 - Replace Dead remains separately untested.
 
 Exact next step:
-- audit current survivor/bootstrap queue construction and assumed-role binding against the pre-flatten 0.8.47 implementation, specifically for any retained Group-1-minus-one/held-assignment path that should have become obsolete after Group-8 survivor parking; then distinguish spawn composition/order bugs from role-name binding timing bugs before changing runtime code.
+- harden the initial raid subgroup handoff first: require subgroup moves (including survivor parking and human arrangement) to be confirmed by a subsequent roster revision before releasing the first preset bot burst, rather than relying only on immediate `GetRaidRosterInfo` reflection. Then smoke the same first-summon scenario before considering any change to the established 1.0-second inter-group wait.
 
 ## 0.8.49-dev — preset spawn FIFO head-index pass
 
