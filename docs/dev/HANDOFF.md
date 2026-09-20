@@ -6,6 +6,22 @@ Current functional addon head: `c7b55b13aa2d0819b45686c7b62d26dac2509070`
 Previous docs checkpoint: `f9d821109756bcd64ba258ce21a6f3cf1032a471`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
+## 0.8.50 runtime disposition — monitor in normal play
+
+User decision:
+- the original first-summon Group 1/2 crossing is too intermittent to reproduce efficiently on demand;
+- do not block development on a forced reproduction attempt;
+- keep the 0.8.50 subgroup-revision barrier in place and watch for recurrence during normal raid play;
+- this is not a runtime-pass claim for the original symptom.
+
+Development consequence:
+- proceed to the deferred queue/micro-optimisation work;
+- preserve the current 1.0-second inter-group wait unless future evidence points specifically at inter-group stabilization;
+- if the first-summon mismatch recurs, capture the exact starting topology/survivor state and revisit the barrier with that evidence.
+
+Exact next step:
+- audit the remaining small front-removal FIFOs left after 0.8.49 and convert only queues where repeated index-1 removal is meaningful enough to justify another behavior-preserving change. Leave bounded/one-shot arrays alone.
+
 ## 0.8.50-dev — initial raid subgroup revision barrier
 
 Runtime commit: `c7b55b13aa2d0819b45686c7b62d26dac2509070`
