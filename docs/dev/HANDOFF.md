@@ -3,8 +3,29 @@
 Current branch: `dev`
 Current addon line: `0.8.48-dev`
 Current functional addon head: `490b93c7574e3f6518732c6fd84b95b3ff372be6`
-Previous docs checkpoint: `629c56105f5c866c050ae923cfe363a7a331688b`
+Previous docs checkpoint: `4a0c62c27bc2b61169e29911e607e77c40b3621b`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.48 runtime result — 2026-09-20
+
+User-confirmed on `0.8.48-dev`:
+- clean load passed;
+- Options/combat-role confirmation toggle and role-indicator behaviour passed;
+- preset save/load with placed-human behaviour passed;
+- summon/summon-over passed;
+- Replace Missing passed;
+- paced Kick All passed;
+- summon in combat continued to refuse destructive teardown as intended.
+
+Still untested:
+- Replace Dead specifically; no bot was killed during this smoke pass.
+
+Interpretation:
+- the proven-dead deletion plus captured-wrapper flattening cleanup is runtime-cleared for the exercised paths;
+- structural duplicate/wrapper cleanup is complete.
+
+Exact next step:
+- begin the FIFO/head-index queue micro-optimisation pass as the next dev version, preserving command order, batch sizes, pacing intervals, combat gates, and survivor/bootstrap semantics exactly.
 
 ## 0.8.48-dev — captured-wrapper flattening pass
 
