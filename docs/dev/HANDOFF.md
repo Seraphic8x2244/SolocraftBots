@@ -1,10 +1,32 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.56-dev`
-Current functional addon head: `3d3f6c40011542c66a48917854669ddf1eab8be0`
-Previous docs checkpoint: `fa915e5779bcd2f70a7d726e6116059d791210c7`
+Current addon line: `0.8.57-dev`
+Current functional addon head: `c2c71ba70997e89a8c0f3953ccf76188add03dc4`
+Previous docs checkpoint: `42f00d84d63b1f671ef58ac137cc7f9a72ec3ea8`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.57-dev — fast Group target cycle
+
+Runtime commit: `c2c71ba70997e89a8c0f3953ccf76188add03dc4`
+
+Completed:
+- changed Group pacing from 0.20-second pre-send + 0.20-second post-send dwell to a single 0.02-second post-command target hold per bot;
+- each recipient is now targeted and commanded immediately in the same step, then that target is held for 0.02 seconds before advancing;
+- five recipients should therefore cycle in roughly 0.10 seconds total;
+- the user's original target is still restored only after the entire subgroup fan-out completes;
+- recipient validation, subgroup selection, command routes, GUILD transport, and Ctrl-click Group Come semantics are unchanged.
+
+Reason:
+- 0.8.56's 0.20/0.20 pacing was intentionally conservative but too slow for normal use;
+- the actual requirement is to avoid restoring the original target in the same frame as the target-dependent command, not to add a large visible dwell before every send.
+
+Runtime status:
+- untested as `0.8.57-dev`.
+
+Exact next step:
+- test Group Come in a 5-player party and then a 10-player raid. Confirm all bots in the selected live subgroup respond, other subgroups do not, and the original target returns after the very fast cycle. If target evaluation still races at 0.02 seconds, increase only the post-command hold rather than reintroducing a pre-send delay.
 
 
 ## 0.8.56-dev — paced Group target cycle
