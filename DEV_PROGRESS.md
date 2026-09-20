@@ -49,7 +49,7 @@
 - 0.10s before + 0.10s after each recipient: roughly 99% overall, except bot 4 remained unreliable.
 - 0.10s before + 0.10s after, with bot 4 using 0.15s before + 0.15s after: roughly 99% for bots 1-3 and roughly 90% for bot 4.
 - Uniform 0.15s before + 0.15s after every recipient: regressed to approximately the same behaviour as uniform 0.10s before + 0.10s after rather than improving monotonically.
-- Current 0.8.65-dev feedback: the fourth member again feels less responsive.
+- Current 0.8.65-dev feedback: when the fourth bot appears to miss a Group movement command, unfiltered bot movement output shows the third bot receives that movement command a second time. The chat/control command is therefore reaching the server, but server-side target state is still bot 3 when the fourth recipient's command is processed.
 
 ### Last Test
 - Version/commit: `0.8.60-dev` / `483699234761f0e84871c4129b22523269ae8e38`
@@ -80,4 +80,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Investigate Group timing as an ordering/propagation problem rather than assuming larger fixed delays are better. The observed curve is non-monotonic and bot 4 is the distinctive failure point. Compare client target-selection propagation and chat-command processing, then choose the smallest timing experiment that can distinguish queue-position effects from a target-state race. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
+Treat the Group issue as a confirmed stale-server-target race: the fourth command can be processed while the server still reports bot 3 as the player's target, causing bot 3 to receive the command twice. Next isolate why the fourth CMSG_SET_SELECTION-equivalent update is late or suppressed: first test whether the failure follows ordinal recipient #4 or the final recipient with a 5-bot subgroup, then test a deliberate reset/pause before selecting recipient #4 rather than merely increasing post-selection delay. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
