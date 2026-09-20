@@ -1006,7 +1006,7 @@ function SCB_DebugSendLine(line)
     if not line or line == "" then return end
 
     SCB_DebugLog(SCB_L("DEBUG_KIND_SEND"), ".partybot " .. line)
-    channel = string.sub(string.lower(line), 1, 4) == "add " and "SAY" or "PARTY"
+    channel = string.sub(string.lower(line), 1, 4) == "add " and "SAY" or "GUILD"
     if SCB_SendPartyBotCommand then
         SCB_SendPartyBotCommand(line, { channel = channel })
     end

@@ -119,7 +119,7 @@ function SCB_SendPartyBotCommand(command, options)
     if not command or command == "" or not SendChatMessage then return false end
 
     options = options or {}
-    channel = options.channel or "PARTY"
+    channel = options.channel or "GUILD"
     if options.registerSpawnIntent and SCB_RegisterSpawnIntent then
         SCB_RegisterSpawnIntent()
     end
@@ -129,8 +129,9 @@ function SCB_SendPartyBotCommand(command, options)
 end
 
 function SCB_SendCommand(command)
-    -- Control commands use party chat so they can still be issued while dead.
-    return SCB_SendPartyBotCommand(command, { channel = "PARTY" })
+    -- Control commands use guild chat. Spawn/add traffic deliberately overrides
+    -- the shared sender to SAY in SCB_SendSpawnCommand.
+    return SCB_SendPartyBotCommand(command, { channel = "GUILD" })
 end
 
 function SCB_QueueDelayedCommand(command, delay)
