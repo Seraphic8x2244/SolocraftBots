@@ -969,7 +969,7 @@ function SCB_IsFriendlyBotTarget()
     return true
 end
 
-function SCB_GetTargetLiveGroup()
+function SCB_GetTargetLiveGroup(refresh)
     local name, roster, member
     if not UnitExists or not UnitExists("target") then return nil, nil end
     if UnitIsFriend and UnitIsFriend("player", "target") ~= 1 then return nil, nil end
@@ -977,7 +977,7 @@ function SCB_GetTargetLiveGroup()
     name = UnitName and UnitName("target") or nil
     if not name then return nil, nil end
 
-    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(refresh and true or false) or nil
     member = roster and roster.byName and roster.byName[name] or nil
     if not member then return nil, roster end
     return member.currentGroup or member.subgroup or 1, roster
@@ -1152,7 +1152,7 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
     local route = commandInfo and commandInfo.routes and commandInfo.routes.target or nil
     local moveRoute = SCB.commands and SCB.commands.move and SCB.commands.move.routes.target or nil
-    local group, roster = SCB_GetTargetLiveGroup()
+    local group, roster = SCB_GetTargetLiveGroup(true)
     local bots, commands = {}, {}
     local originalTargetName = UnitName and UnitName("target") or nil
     local requiredCommands
@@ -1182,8 +1182,8 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     frame = SCB_EnsureGroupCommandFrame()
     frame.scbElapsed = 0
 
-    -- Select the first recipient immediately. The first 0.10-second interval is
-    -- a pre-command settle; after sending, another 0.10-second interval holds
+    -- Select the first recipient immediately. The first 0.15-second interval is
+    -- a pre-command settle; after sending, another 0.15-second interval holds
     -- that target before the next recipient is selected.
     SCB_ProcessNextGroupCommandAction()
     if SCB.groupCommandState then frame:Show() end
