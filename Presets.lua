@@ -2039,6 +2039,9 @@ function SCB_ArrangePresetPlayers()
                 name, _, currentGroup = GetRaidRosterInfo(i)
                 if name == wantedName then
                     if currentGroup ~= wantedGroup then
+                        if SCB_RecordPresetSubgroupMoveBarrier then
+                            SCB_RecordPresetSubgroupMoveBarrier()
+                        end
                         SetRaidSubgroup(i, wantedGroup)
                     end
                     break

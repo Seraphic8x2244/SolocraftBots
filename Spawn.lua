@@ -31,6 +31,45 @@ local function SCB_BurstDebug(text)
     if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog("Burst", text) end
 end
 
+-- Initial raid subgroup changes must settle through a later roster event before
+-- the first real preset burst is released. Immediate GetRaidRosterInfo()
+-- reflection alone is not a sufficient server-stability signal.
+local function SCB_CurrentPresetOperation()
+    if SCB_GetActiveBotOperation then return SCB_GetActiveBotOperation() end
+    return SCB.botOperation
+end
+
+function SCB_RecordPresetSubgroupMoveBarrier()
+    local revision = SCB.rosterEventRevision or 0
+    local operation = SCB_CurrentPresetOperation()
+    if operation and operation.kind == "preset" then
+        operation.subgroupMoveBarrierRevision = revision
+    else
+        SCB.presetSubgroupMoveBarrierRevision = revision
+    end
+end
+
+local function SCB_PresetSubgroupMoveBarrierPassed()
+    local operation = SCB_CurrentPresetOperation()
+    local baseline, operationOwned
+    if operation and operation.kind == "preset" then
+        baseline = operation.subgroupMoveBarrierRevision
+        operationOwned = true
+    else
+        baseline = SCB.presetSubgroupMoveBarrierRevision
+    end
+
+    if baseline == nil then return true end
+    if (SCB.rosterEventRevision or 0) <= baseline then return false end
+
+    if operationOwned then
+        operation.subgroupMoveBarrierRevision = nil
+    else
+        SCB.presetSubgroupMoveBarrierRevision = nil
+    end
+    return true
+end
+
 -- -------------------------------------------------------------------------
 -- Group-8 survivor/bootstrap helpers still consumed by Spawn.lua.
 -- -------------------------------------------------------------------------
@@ -60,7 +99,10 @@ local function SCB_TryParkSurvivorInGroupEight(name)
     end
 
     if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
-    if SetRaidSubgroup then SetRaidSubgroup(raidIndex, 8) end
+    if SetRaidSubgroup then
+        SCB_RecordPresetSubgroupMoveBarrier()
+        SetRaidSubgroup(raidIndex, 8)
+    end
     return false
 end
 
@@ -896,6 +938,7 @@ end
 local function SCB_ResetSpawnRuntimeState()
     local operation = SCB.botOperation
     SCB.scbExplicitPresetOperation = nil
+    SCB.presetSubgroupMoveBarrierRevision = nil
     SCB_ResetPresetBurstPlans()
     SCB.scbCheckPlanArmed = nil
     SCB.scbArmedPresetPlan = nil
@@ -1130,6 +1173,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 safety.parkBeforeArrange = nil
             end
             if SCB_ArrangePresetPlayers and SCB_ArrangePresetPlayers() then
+                if not SCB_PresetSubgroupMoveBarrierPassed() then return end
                 SCB_PresetSpawnQueuePop()
                 SCB.presetSpawnElapsed = 0
             else
