@@ -3,8 +3,23 @@
 Current branch: `dev`
 Current addon line: `0.8.49-dev`
 Current functional addon head: `3e71700c06041c9a59339bfb377cdb5b3fd5e467`
-Previous docs checkpoint: `a3bae9d4962d30d15efc1b91446a67a769305ac7`
+Previous docs checkpoint: `4ae96853dbf10b241b1a716f92bf269ab0bb44c2`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.49 runtime investigation — first-summon role/icon mismatch
+
+Observed:
+- on one first summon, the live raid/pfUI tank markings did not match the preset's expected tank slots;
+- a second summon immediately afterward produced the expected result;
+- user notes an older implementation intentionally spawned Group 1 one bot short while a survivor occupied capacity; current design instead parks the survivor in Group 8 before arrangement.
+
+Status:
+- intermittent symptom only; not yet attributed to the 0.8.49 FIFO change, the 0.8.48 wrapper flattening, or role-binding observation timing;
+- do not mark 0.8.49 runtime-passed until this is understood;
+- Replace Dead remains separately untested.
+
+Exact next step:
+- audit current survivor/bootstrap queue construction and assumed-role binding against the pre-flatten 0.8.47 implementation, specifically for any retained Group-1-minus-one/held-assignment path that should have become obsolete after Group-8 survivor parking; then distinguish spawn composition/order bugs from role-name binding timing bugs before changing runtime code.
 
 ## 0.8.49-dev — preset spawn FIFO head-index pass
 
