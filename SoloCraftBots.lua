@@ -128,7 +128,12 @@ function SCB_SendPartyBotCommand(command, options)
     return true
 end
 
-function SCB_SendCommand(command)
+function SCB_SendCommand(command, options)
+    -- Group fan-out owns a very short target-sensitive critical section. Normal
+    -- control sends are ignored until it finishes so they cannot interleave.
+    options = options or {}
+    if SCB.groupCommandState and not options.groupFanout then return false end
+
     -- Control commands use guild chat. Spawn/add traffic deliberately overrides
     -- the shared sender to SAY in SCB_SendSpawnCommand.
     return SCB_SendPartyBotCommand(command, { channel = "GUILD" })
@@ -146,6 +151,7 @@ function SCB_QueueDelayedCommand(command, delay)
             local queued
             this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
             if this.scbElapsed < (this.scbDelay or 0) then return end
+            if SCB.groupCommandState then return end
             queued = this.scbCommand
             this.scbCommand = nil
             this.scbDelay = nil
@@ -846,11 +852,13 @@ end
 function SCB_DistanceOnClick()
     SCB_EnsureSessionDB()
     if SoloCraftBotsDB.session.state.distance == "far" then
-        SCB_SendCommand("distance off")
-        SoloCraftBotsDB.session.state.distance = "near"
+        if SCB_SendCommand("distance off") then
+            SoloCraftBotsDB.session.state.distance = "near"
+        end
     else
-        SCB_SendCommand("distance on")
-        SoloCraftBotsDB.session.state.distance = "far"
+        if SCB_SendCommand("distance on") then
+            SoloCraftBotsDB.session.state.distance = "far"
+        end
     end
     SCB_RefreshDistanceButtons()
 end

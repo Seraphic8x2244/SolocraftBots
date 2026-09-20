@@ -1009,6 +1009,34 @@ function SCB_RefreshGroupCommandRow()
 end
 
 local SCB_GROUP_TARGET_SETTLE = 0.02
+local SCB_GROUP_COMMAND_LIMIT = 24
+local SCB_GROUP_COMMAND_WINDOW = 1.0
+
+local function SCB_PruneGroupCommandHistory(now)
+    local history = SCB.groupCommandSendTimes or {}
+    local kept = {}
+    local i, sentAt
+    for i = 1, table.getn(history) do
+        sentAt = history[i]
+        if sentAt and (now - sentAt) < SCB_GROUP_COMMAND_WINDOW then
+            table.insert(kept, sentAt)
+        end
+    end
+    SCB.groupCommandSendTimes = kept
+    return kept
+end
+
+local function SCB_GroupCommandBudgetAllows(required)
+    local now = GetTime and GetTime() or 0
+    local history = SCB_PruneGroupCommandHistory(now)
+    return table.getn(history) + (required or 0) <= SCB_GROUP_COMMAND_LIMIT
+end
+
+local function SCB_RecordGroupCommandSend()
+    local now = GetTime and GetTime() or 0
+    local history = SCB_PruneGroupCommandHistory(now)
+    table.insert(history, now)
+end
 
 local function SCB_RestoreGroupCommandOriginalTarget(state)
     local originalName, currentName, member
@@ -1072,7 +1100,9 @@ local function SCB_ProcessNextGroupCommandAction()
         state.currentName = name
         if UnitName and UnitName("target") == name and SCB_IsFriendlyBotTarget() then
             for i = 1, table.getn(state.commands or {}) do
-                SCB_SendCommand(state.commands[i])
+                if SCB_SendCommand(state.commands[i], { groupFanout = true }) then
+                    SCB_RecordGroupCommandSend()
+                end
             end
         end
         state.phase = "advance"
@@ -1115,6 +1145,7 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     local group, roster = SCB_GetTargetLiveGroup()
     local bots, commands = {}, {}
     local originalTargetName = UnitName and UnitName("target") or nil
+    local requiredCommands
     local i, frame
 
     if SCB.groupCommandState or not route or not group or not originalTargetName then return false end
@@ -1126,6 +1157,9 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     end
     for i = 1, table.getn(route) do table.insert(commands, route[i]) end
     if table.getn(commands) == 0 then return false end
+
+    requiredCommands = table.getn(bots) * table.getn(commands)
+    if not SCB_GroupCommandBudgetAllows(requiredCommands) then return false end
 
     SCB.groupCommandState = {
         group = group,
@@ -1170,11 +1204,13 @@ end
 
 function SCB_SpreadToggleOnClick()
     if SCB.rangedSpreadOn then
-        SCB_SendCommand("spreadoff")
-        SCB.rangedSpreadOn = false
+        if SCB_SendCommand("spreadoff") then
+            SCB.rangedSpreadOn = false
+        end
     else
-        SCB_SendCommand("spread")
-        SCB.rangedSpreadOn = true
+        if SCB_SendCommand("spread") then
+            SCB.rangedSpreadOn = true
+        end
     end
     SCB_RefreshSpreadToggle(this)
 end
