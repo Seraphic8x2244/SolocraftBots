@@ -1,10 +1,40 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.57-dev`
-Current functional addon head: `c2c71ba70997e89a8c0f3953ccf76188add03dc4`
-Previous docs checkpoint: `9aafc2fa8448ba87f33708896ba9a864e0ee23bd`
+Current addon line: `0.8.58-dev`
+Current functional addon head: `5137eb4fab347535709135831b390be65a5ab36d`
+Previous docs checkpoint: `ec3e3d2ecd8b6652fcb59aed892368529a7884e0`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.58-dev — Group critical section + Group-only 24/s budget
+
+Runtime commit: `5137eb4fab347535709135831b390be65a5ab36d`
+
+Completed:
+- the 24 commands/second rolling budget applies only to Group fan-out sends;
+- normal One/All/role/other control commands are not counted against that Group budget;
+- a Group press calculates the complete fan-out cost before starting and is rejected if that fan-out would exceed 24 Group sends in the current rolling 1.0-second window;
+- normal 5-player Group commands with four bots therefore permit at most six complete one-command fan-outs per rolling second;
+- Ctrl-click Group Come counts both Move and Come for every bot, so its budget cost is doubled;
+- while `SCB.groupCommandState` is active, other normal SCB control sends cannot interleave with the target-sensitive fan-out;
+- delayed control commands wait until the Group cycle finishes rather than firing inside it;
+- Distance and Spread local state now changes only when their control command was actually sent, preventing UI/state drift if clicked during the Group critical section;
+- preset/spawn transport is not rate-limited by this Group budget and retains its existing scheduling.
+
+Preserved:
+- 0.02-second per-recipient post-command target hold from 0.8.57;
+- original target restoration only after the entire subgroup fan-out;
+- live subgroup recipient selection and per-recipient validation;
+- GUILD transport for control commands.
+
+Runtime status:
+- untested as `0.8.58-dev`.
+
+Exact next step:
+- test Group Come in a 5-player party, including rapid repeated clicks, and confirm all four bots respond while repeated presses stop before exceeding six complete fan-outs in a rolling second;
+- then repeat in a 10-player raid, confirming only the selected subgroup responds and the original target is restored;
+- also smoke a normal One/All control during/around Group usage to confirm it does not interleave with the active Group cycle and is otherwise unaffected.
 
 
 ## Group command exclusivity + spam-budget decision — 2026-09-20
