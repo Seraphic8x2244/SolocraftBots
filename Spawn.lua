@@ -49,7 +49,7 @@ function SCB_RecordPresetSubgroupMoveBarrier()
     end
 end
 
-local function SCB_PresetSubgroupMoveBarrierPassed()
+function SCB_PresetSubgroupMoveBarrierPassed()
     local operation = SCB_CurrentPresetOperation()
     local baseline, operationOwned
     if operation and operation.kind == "preset" then
