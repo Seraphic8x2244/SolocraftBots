@@ -1,12 +1,32 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.54-dev`
-Current functional addon head: `0a2688b5567c6a35365d3d2d2a534e02facfb762`
-Previous docs checkpoint: `8d5f732a7d8bd3d1d1c02b51962909f66e1a1a0f`
+Current addon line: `0.8.55-dev`
+Current functional addon head: `66ba0d1ca4e810a1cfdcfda6f84bd2a55ff27ddf`
+Previous docs checkpoint: `eb430eb66f0d561aabc6a4de6323cbb968086986`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
 
+
+
+## 0.8.55-dev — preset subgroup barrier scope fix
+
+Runtime commit: `66ba0d1ca4e810a1cfdcfda6f84bd2a55ff27ddf`
+
+Completed:
+- fixed the deterministic Lua error at `Spawn.lua:1185` by making `SCB_PresetSubgroupMoveBarrierPassed` visible outside the scoped legacy burst prelude where the preset scheduler calls it;
+- helper logic, roster revision semantics, 1.0-second inter-group wait, spawn pacing, survivor handling, and combat retry behavior are unchanged.
+
+Runtime status:
+- untested as `0.8.55-dev`;
+- 0.8.54 GUILD transport is user-confirmed working;
+- 0.8.52 macro-safe Stay/Move is user-confirmed working including no-target safety;
+- 0.8.53 Group scope still fails in a 5-player party and remains unresolved;
+- 0.8.50 first-summon subgroup mismatch remains monitor-in-normal-play;
+- Replace Dead remains separately untested.
+
+Exact next step:
+- retry the dungeon -> 10-player preset summon that previously faulted at `Spawn.lua:1185`; confirm the Lua error is gone and the preset proceeds. Then isolate the 5-player Group-scope failure separately.
 
 ## Runtime results / active bug — 2026-09-20
 
