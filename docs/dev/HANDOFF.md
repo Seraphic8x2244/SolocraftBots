@@ -1,10 +1,36 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.50-dev`
-Current functional addon head: `c7b55b13aa2d0819b45686c7b62d26dac2509070`
-Previous docs checkpoint: `f9d821109756bcd64ba258ce21a6f3cf1032a471`
+Current addon line: `0.8.51-dev`
+Current functional addon head: `29003117948aacfcca4b0618d459a85e412b38a5`
+Previous docs checkpoint: `15df1f008f113470eea9afcd333a0db107679204`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.51-dev — maintenance queue head-index pass
+
+Runtime commit: `29003117948aacfcca4b0618d459a85e412b38a5`
+
+Completed:
+- converted maintenance replacement's potentially large `state.remaining` FIFO from repeated `table.remove(..., 1)` shifts to a logical `remainingHead`;
+- maintenance burst selection now reads the next up-to-five assignments from the logical head;
+- completed bursts advance the head by the number of resolved assignments instead of shifting the retained array;
+- survivor replacement resets the maintenance queue/head to its one retained survivor assignment exactly as before;
+- removal pacing, 3.0-second capacity settle, mixed-group burst size/order, combat gates, identity binding and survivor semantics are unchanged;
+- remaining front-shift audit now contains only two small `pendingAssumedSpawns` pops, two one-shot Group 1 construction edits, and the bounded developer debug log.
+
+Decision:
+- the remaining `pendingAssumedSpawns` queue is intentionally burst-sized and also supports class-aware arbitrary-position consumption, so head-index conversion would add complexity for negligible gain;
+- the Group 1 removals are construction-time one-shot edits;
+- the debug buffer is developer-only and its dominant cost is full log refresh/concat, not the occasional trim shift;
+- therefore the FIFO/head-index optimization pass is complete here.
+
+Runtime status:
+- `0.8.51-dev` is untested;
+- `0.8.50-dev` first-summon subgroup issue remains monitor-in-normal-play rather than runtime-passed;
+- Replace Dead remains separately untested from the recent smoke sequence.
+
+Exact next step:
+- move out of queue archaeology. Review the deferred performance/startup items and choose only changes with a clear practical benefit; otherwise begin the deferred user-facing command-scope work (Group command scope and macro-safe Stay/Move) without mixing both categories in one build.
 
 ## 0.8.50 runtime disposition — monitor in normal play
 
