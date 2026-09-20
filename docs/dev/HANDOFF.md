@@ -1,10 +1,30 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.61-dev`
-Current functional addon head: `74ca6c4040e47d290b775799c0e44404bebfb260`
-Previous docs checkpoint: `8a2bd7d6177269da9f2c95322ae9ceb2e13f480e`
+Current addon line: `0.8.62-dev`
+Current functional addon head: `30e1f5d8f9b0e33a5bddaa8882e0d8d37468f6c9`
+Previous docs checkpoint: `00081235102ec6178f5b82deba6fff51253d101b`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.62-dev — uniform Group target padding
+
+Runtime commit: `30e1f5d8f9b0e33a5bddaa8882e0d8d37468f6c9`
+
+Completed:
+- every Group recipient now uses target -> 0.15s settle -> command(s) -> 0.15s hold;
+- removed the special final-recipient timing path;
+- the working assumption is that the server resolves target-dependent PartyBot chat commands against the client's target with enough latency that a safety buffer is required around each recipient transition;
+- Ctrl-click Group Come still sends Move and Come back-to-back in the same send phase because runtime testing has not shown a same-frame Move/Come problem;
+- Group-only 24 commands/second accounting, Group critical section, subgroup filtering, GUILD transport and original-target restoration are unchanged.
+
+Runtime status:
+- untested as `0.8.62-dev`.
+
+Exact next step:
+- repeatedly test normal Group Come in both a 4-bot and 5-bot subgroup;
+- if reliable, test Ctrl-click Group Come without adding any Move->Come delay;
+- only introduce spacing between Move and Come if runtime evidence specifically shows that pair failing.
 
 
 ## Group timing decision — uniform 0.15s padding
