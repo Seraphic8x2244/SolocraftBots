@@ -26,10 +26,10 @@
   `target -> 0.15s settle -> command(s) -> 0.15s hold -> next target`.
 - Ctrl-click Group Come still sends Move + Come back-to-back in the same recipient send phase; no runtime evidence currently justifies spacing those two commands.
 - Group-only rolling 24 commands/second accounting and the Group control-command critical section remain active.
+- User accepted progressing past a dedicated 0.8.62 timing gate because the change is small; 0.8.62 therefore remains implemented but not user-verified.
 
 ## Current Issues
-- 0.8.62-dev has not yet been runtime-tested.
-- Group command selection currently begins from the cached live roster via `SCB_GetLiveRoster(false)`. Roster events normally refresh that cache, but Group should be tightened so a click snapshots a fresh live roster before resolving target subgroup and recipients.
+- Group command selection currently begins from the cached live roster via `SCB_GetLiveRoster(false)`. Roster events normally refresh that cache, but Group should force a fresh live-roster snapshot before resolving target subgroup and recipients.
 - Active Roster maintenance tracks expected bot slots, not the complete logical preset slot model. If a human leaves a full 5-player preset group, the newly exposed underlying bot slot is therefore not currently reported as Replace Missing.
 - The 5-player preset UI does not yet expose the same front-facing logical-slot workflow as raid presets. Desired model: dragging a human onto a preset slot means that human suppresses the bot intent underneath that exact slot while present.
 - Blizzard party/raid row placement must remain live observation only. Human logical slot assignment must not depend on party-frame or raid-frame row ordering.
@@ -44,10 +44,10 @@
 - Not tested: 0.8.61-dev and 0.8.62-dev timing changes.
 
 ### Next Test
-- Test 0.8.62-dev normal Group Come repeatedly with a 4-bot subgroup.
-- Test the same behaviour with a 5-bot subgroup so the fifth recipient is exercised.
+- After the fresh-roster snapshot change, exercise normal Group Come in both 4-bot and 5-bot subgroups.
 - If normal Group Come is reliable, test Ctrl-click Group Come without adding a Move -> Come delay.
 - In raid, confirm only the selected live subgroup responds and the original target is restored.
+- Re-test the Group command immediately after a roster change so the fresh snapshot path is exercised.
 
 ## Planned / To-do
 - Tighten Group command startup to force a fresh live-roster snapshot before choosing the target's subgroup and snapshotting bot recipients.
@@ -67,6 +67,7 @@
 - Do not add a delay between Ctrl-click Move and Come unless runtime evidence specifically shows the same-frame pair failing.
 - Do not perform unrelated scheduler, identity or maintenance refactors while fixing Group snapshot freshness or logical human-slot maintenance.
 - Do not treat Blizzard row/order as logical preset identity.
+- Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered together with the next Group snapshot build.
 
 ## Exact Next Step
-Runtime-test `0.8.62-dev` Group Come with both 4-bot and 5-bot subgroups. If that timing is reliable, record the result in this file, then implement the isolated fresh-live-roster snapshot at Group-command start before beginning the larger party/raid logical-slot maintenance/editor work.
+Implement the isolated fresh-live-roster snapshot at Group-command start, bump the addon to the next `0.8.x-dev` version, statically review the Group path for scope regressions, then update this file with the resulting commit and runtime test target before beginning the larger party/raid logical-slot maintenance/editor work.
