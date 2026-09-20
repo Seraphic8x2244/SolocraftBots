@@ -105,7 +105,7 @@ local function SCB_TryRemoveParkedSurvivor()
         -- The safety delay belongs at the remove -> next-add boundary. If the
         -- only remaining work is final roster tracking, no add follows and no
         -- artificial 3-second pause is required.
-        nextHead = SCB.presetSpawnQueue and SCB.presetSpawnQueue[1] or nil
+        nextHead = SCB_PresetSpawnQueuePeek and SCB_PresetSpawnQueuePeek() or nil
         if nextHead == SCB.PRESET_CHECK_COMBAT and GetTime then
             now = GetTime()
             if not safety.removalGoneAt then
@@ -875,12 +875,31 @@ local function SCB_HasLaterAssignments(groups, currentGroup, maxGroup)
     return false
 end
 
+local function SCB_ResetPresetBurstPlans(plans)
+    SCB.scbPresetBurstPlans = plans or {}
+    SCB.scbPresetBurstPlansHead = 1
+end
+
+local function SCB_PeekPresetBurstPlan()
+    local plans = SCB.scbPresetBurstPlans or {}
+    local head = SCB.scbPresetBurstPlansHead or 1
+    if head > table.getn(plans) then return nil end
+    return plans[head]
+end
+
+local function SCB_PopPresetBurstPlan()
+    local plan = SCB_PeekPresetBurstPlan()
+    if plan then SCB.scbPresetBurstPlansHead = (SCB.scbPresetBurstPlansHead or 1) + 1 end
+    return plan
+end
+
 local function SCB_ResetSpawnRuntimeState()
     local operation = SCB.botOperation
     SCB.scbExplicitPresetOperation = nil
-    SCB.scbPresetBurstPlans = {}
+    SCB_ResetPresetBurstPlans()
     SCB.scbCheckPlanArmed = nil
     SCB.scbArmedPresetPlan = nil
+    SCB_ResetPresetSpawnQueue()
     if operation and operation.kind == "preset" then operation.safety = nil end
 end
 
@@ -893,7 +912,7 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
     local kickAllAnchorName, safety
 
     if not valid then return false, errorText end
-    if table.getn(SCB.presetSpawnQueue or {}) > 0
+    if SCB_PresetSpawnQueueCount() > 0
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0 then
         return false, SCB_L("ERR_SUMMON_BUSY")
@@ -911,7 +930,7 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
     groupCount = math.ceil(size / 5)
     queue, plans = {}, {}
 
-    SCB.presetSpawnQueue = {}
+    SCB_ResetPresetSpawnQueue()
     SCB.presetSpawnElapsed = 0
     SCB.presetGroupWaitRemaining = 0
     SCB.presetCombatRetryWaitRemaining = 0
@@ -1017,8 +1036,8 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
 
     table.insert(queue, SCB.PRESET_TRACK_ROSTER)
 
-    SCB.presetSpawnQueue = queue
-    SCB.scbPresetBurstPlans = plans
+    SCB_ResetPresetSpawnQueue(queue)
+    SCB_ResetPresetBurstPlans(plans)
     SCB.scbExplicitPresetOperation = true
     if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     SCB.scbCheckPlanArmed = nil
@@ -1041,7 +1060,7 @@ local function SCB_ShouldRemoveParkedSurvivor(head)
     if not safety or not safety.removeAfterGroupOne then return false end
     if head == SCB.PRESET_TRACK_ROSTER then return true end
     if head ~= SCB.PRESET_CHECK_COMBAT then return false end
-    plan = SCB.scbPresetBurstPlans and SCB.scbPresetBurstPlans[1] or nil
+    plan = SCB_PeekPresetBurstPlan()
     return plan and plan.kind == "preset" and plan.group and plan.group > 1
 end
 
@@ -1081,19 +1100,19 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
         return
     end
 
-    while table.getn(queue) > 0 do
-        head = queue[1]
+    while SCB_PresetSpawnQueueCount() > 0 do
+        head = SCB_PresetSpawnQueuePeek()
 
         if SCB_ShouldRemoveParkedSurvivor(head) and not SCB.presetLastBurstRequeued then
             if not SCB.scb072TryRemoveParkedSurvivor
                 or not SCB.scb072TryRemoveParkedSurvivor() then
                 return
             end
-            head = queue[1]
+            head = SCB_PresetSpawnQueuePeek()
         end
 
         if head == SCB.PRESET_WAIT_GROUP then
-            table.remove(queue, 1)
+            SCB_PresetSpawnQueuePop()
             SCB.presetGroupWaitRemaining = 1.0
             if (SCB.presetCombatRetryFailures or 0) > 0 then
                 SCB.presetCombatRetryResetPending = true
@@ -1111,7 +1130,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 safety.parkBeforeArrange = nil
             end
             if SCB_ArrangePresetPlayers and SCB_ArrangePresetPlayers() then
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
                 SCB.presetSpawnElapsed = 0
             else
                 return
@@ -1125,7 +1144,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 and SCB_TryFinalizeRaidRoleTracking(SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil) then
                 SCB.presetCombatRetryFailures = 0
                 SCB.presetCombatRetryResetPending = nil
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
                 SCB.presetSpawnElapsed = 0
             else
                 return
@@ -1142,7 +1161,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
 
             retry = SCB.presetLastBurstRequeued == true
             if not retry then
-                plan = table.remove(SCB.scbPresetBurstPlans, 1)
+                plan = SCB_PopPresetBurstPlan()
                 if not plan or not SCB_BeginAssumedSpawnBurst
                     or not SCB_BeginAssumedSpawnBurst(plan) then
                     SCB_AbortInvalidSchedulerItem("missing explicit burst plan")
@@ -1155,15 +1174,15 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
 
             SCB.presetLastBurstCommands = {}
             SCB.presetLastBurstRequeued = nil
-            table.remove(queue, 1)
+            SCB_PresetSpawnQueuePop()
             SCB.presetSpawnElapsed = 0
 
         elseif head == SCB_CONVERT_NOW then
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
             elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
                 ConvertToRaid()
-                queue[1] = SCB_WAIT_RAID
+                SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
                 return
             else
                 return
@@ -1184,10 +1203,10 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             safety.bootstrapName = bootstrapName
             safety.survivorName = bootstrapName
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                queue[1] = SCB_WAIT_RAID
+                SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
             elseif ConvertToRaid then
                 ConvertToRaid()
-                queue[1] = SCB_WAIT_RAID
+                SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
             else
                 return
             end
@@ -1197,10 +1216,10 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             if not SCB_FindFirstGroupBotName or not SCB_FindFirstGroupBotName() then return end
 
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
             elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
                 ConvertToRaid()
-                queue[1] = SCB_WAIT_RAID
+                SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
                 return
             else
                 return
@@ -1208,7 +1227,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
 
         elseif head == SCB_WAIT_RAID then
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
             else
                 return
             end
@@ -1220,7 +1239,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 return
             end
             if SCB_CountGroupBots and SCB_CountGroupBots() >= (safety.expectedBotCountBeforeHandoff or 0) then
-                table.remove(queue, 1)
+                SCB_PresetSpawnQueuePop()
             else
                 return
             end
@@ -1241,7 +1260,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 end
             end
             safety.partySurvivorGoneAt = nil
-            table.remove(queue, 1)
+            SCB_PresetSpawnQueuePop()
             return
 
         elseif head == SCB.PRESET_WAIT_SURVIVOR_GONE then
@@ -1268,7 +1287,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             safety.survivorName = nil
             safety.expectedBotCountBeforeHandoff = nil
             safety.partySurvivorGoneAt = nil
-            table.remove(queue, 1)
+            SCB_PresetSpawnQueuePop()
 
         elseif SCB_IsSpawnCommandString(head) then
             if not SCB_SendSpawnCommand(head) then
@@ -1277,7 +1296,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             end
             SCB.presetLastBurstCommands = SCB.presetLastBurstCommands or {}
             table.insert(SCB.presetLastBurstCommands, head)
-            table.remove(queue, 1)
+            SCB_PresetSpawnQueuePop()
             if SCB.scbArmedPresetPlan then
                 SCB.scbArmedPresetPlan.released = true
             end
@@ -1292,7 +1311,7 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
         end
     end
 
-    if table.getn(queue) == 0
+    if SCB_PresetSpawnQueueCount() == 0
         and (SCB.presetGroupWaitRemaining or 0) <= 0
         and (SCB.presetCombatRetryWaitRemaining or 0) <= 0 then
         SCB_ResetSpawnRuntimeState()
@@ -1336,7 +1355,7 @@ local function SCB_PendingBotAddsStillActive()
 end
 
 local function SCB_HasLegacyPhysicalBotRuntime()
-    return (SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0)
+    return (SCB_PresetSpawnQueueCount and SCB_PresetSpawnQueueCount() > 0)
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
         or (SCB.refillState and SCB.refillState.active)
@@ -1717,7 +1736,7 @@ local function SCB_SyncPresetOperationPhase()
     end
 
     if SCB.scbExplicitPresetOperation
-        or table.getn(SCB.presetSpawnQueue or {}) > 0
+        or SCB_PresetSpawnQueueCount() > 0
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0 then
         SCB_SetBotOperationPhase("summon")
@@ -1847,11 +1866,12 @@ end
 
 local function SCB_0823CurrentBurstNeedsFreedCapacity()
     local plans = SCB.scbPresetBurstPlans or {}
-    local current = plans[1]
+    local head = SCB.scbPresetBurstPlansHead or 1
+    local current = plans[head]
     local i, plan
 
     if not current or current.kind ~= "preset" then return false end
-    for i = 2, table.getn(plans) do
+    for i = head + 1, table.getn(plans) do
         plan = plans[i]
         if plan and plan.kind == "preset" then return false end
     end
@@ -1870,7 +1890,7 @@ SCB.scb072TryRemoveParkedSurvivor = function()
     safety = SCB_0823BootstrapSafety()
     if not safety then return true end
     queue = SCB.presetSpawnQueue or {}
-    head = queue[1]
+    head = SCB_PresetSpawnQueuePeek()
     if head == SCB.PRESET_TRACK_ROSTER then return false end
     if head == SCB.PRESET_CHECK_COMBAT
         and not SCB.presetLastBurstRequeued

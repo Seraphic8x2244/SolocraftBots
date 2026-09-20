@@ -2413,7 +2413,7 @@ function SCB_StartRefillAssignments(assignments)
     local remaining = {}
     local i
     if not assignments or table.getn(assignments) == 0 then return false end
-    if table.getn(SCB.presetSpawnQueue) > 0
+    if SCB_PresetSpawnQueueCount() > 0
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
         or (SCB.refillState and SCB.refillState.active) then
@@ -2908,7 +2908,7 @@ end
 
 function SCB_HasBotSpawnOperation()
     if SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() then return true end
-    return (SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0)
+    return (SCB_PresetSpawnQueueCount and SCB_PresetSpawnQueueCount() > 0)
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
         or (SCB.refillState and SCB.refillState.active)
@@ -2922,7 +2922,7 @@ function SCB_AbortBotSpawnOperationsCore()
     -- Never leave a consumed spawn burst parked behind a roster barrier that can
     -- no longer succeed. Any bots that really did spawn are observed/adopted
     -- normally after the unfinished preset tracker is discarded.
-    SCB.presetSpawnQueue = {}
+    SCB_ResetPresetSpawnQueue()
     SCB.presetSpawnElapsed = 0
     SCB.presetGroupWaitRemaining = 0
     SCB.presetCombatRetryWaitRemaining = 0

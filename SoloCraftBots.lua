@@ -33,6 +33,7 @@ SCB.draggedPresetPlayerOriginSlot = nil
 SCB.pendingBotAdds = 0
 SCB.pendingBotAddsExpires = 0
 SCB.presetSpawnQueue = {}
+SCB.presetSpawnQueueHead = 1
 SCB.presetSpawnElapsed = 0
 SCB.presetSpawnInterval = 0.10
 SCB.presetGroupWaitRemaining = 0
@@ -43,6 +44,65 @@ SCB.initialSessionValidationPending = false
 SCB.activeRosterReconcilePending = true
 SCB.lastRoster = nil
 SCB.refillState = nil
+
+-- Preset summon queue: keep consumed entries in-place for the duration of an
+-- operation and advance a logical head instead of shifting the whole array.
+function SCB_ResetPresetSpawnQueue(queue)
+    SCB.presetSpawnQueue = queue or {}
+    SCB.presetSpawnQueueHead = 1
+end
+
+function SCB_PresetSpawnQueueCount()
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    local count = table.getn(queue) - head + 1
+    if count < 0 then return 0 end
+    return count
+end
+
+function SCB_PresetSpawnQueuePeek(offset)
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    if SCB_PresetSpawnQueueCount() <= 0 then return nil end
+    return queue[head + (offset or 0)]
+end
+
+function SCB_PresetSpawnQueuePop()
+    local item
+    if SCB_PresetSpawnQueueCount() <= 0 then return nil end
+    item = SCB.presetSpawnQueue[SCB.presetSpawnQueueHead or 1]
+    SCB.presetSpawnQueueHead = (SCB.presetSpawnQueueHead or 1) + 1
+    return item
+end
+
+function SCB_PresetSpawnQueueReplaceHead(item)
+    if SCB_PresetSpawnQueueCount() <= 0 then return false end
+    SCB.presetSpawnQueue[SCB.presetSpawnQueueHead or 1] = item
+    return true
+end
+
+function SCB_PresetSpawnQueuePrepend(items)
+    local count = table.getn(items or {})
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    local newHead = head - count
+    local i, rebuilt
+
+    if count <= 0 then return end
+    if newHead >= 1 then
+        for i = 1, count do queue[newHead + i - 1] = items[i] end
+        SCB.presetSpawnQueueHead = newHead
+        return
+    end
+
+    -- Defensive fallback for callers that prepend before any queue items have
+    -- been consumed. Normal combat retry rewinds into the consumed prefix.
+    rebuilt = {}
+    for i = 1, count do table.insert(rebuilt, items[i]) end
+    for i = head, table.getn(queue) do table.insert(rebuilt, queue[i]) end
+    SCB.presetSpawnQueue = rebuilt
+    SCB.presetSpawnQueueHead = 1
+end
 
 BINDING_HEADER_SOLOCRAFTBOTS = SCB_L("BINDING_HEADER")
 BINDING_NAME_SOLOCRAFTBOTS_TOGGLE = SCB_L("BINDING_TOGGLE")
@@ -1594,7 +1654,7 @@ eventFrame:SetScript("OnEvent", function()
             SCB_AbortBotSpawnOperations()
         end
         if arg1 and string.find(arg1, "Cannot add bots while any party member is in combat", 1, true)
-            and SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0
+            and SCB_PresetSpawnQueueCount and SCB_PresetSpawnQueueCount() > 0
             and SCB.presetLastBurstCommands and table.getn(SCB.presetLastBurstCommands) > 0
             and not SCB.presetLastBurstRequeued then
             -- The server is authoritative when the local UnitAffectingCombat
@@ -1615,9 +1675,7 @@ eventFrame:SetScript("OnEvent", function()
                 for ri = 1, table.getn(SCB.presetLastBurstCommands) do
                     table.insert(retry, SCB.presetLastBurstCommands[ri])
                 end
-                for ri = table.getn(retry), 1, -1 do
-                    table.insert(SCB.presetSpawnQueue, 1, retry[ri])
-                end
+                SCB_PresetSpawnQueuePrepend(retry)
 
                 -- Replace any normal inter-group wait already running for the
                 -- failed burst with the bounded server-error backoff. The combat
@@ -1629,7 +1687,7 @@ eventFrame:SetScript("OnEvent", function()
             else
                 -- Fifth rejected attempt: stop rather than looping forever or
                 -- letting a later logical group corrupt the intended raid comp.
-                SCB.presetSpawnQueue = {}
+                SCB_ResetPresetSpawnQueue()
                 SCB.presetGroupWaitRemaining = 0
                 SCB.presetCombatRetryWaitRemaining = 0
                 SCB.presetCombatPollRemaining = nil
