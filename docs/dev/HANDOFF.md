@@ -1,10 +1,29 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.60-dev`
-Current functional addon head: `483699234761f0e84871c4129b22523269ae8e38`
-Previous docs checkpoint: `4c95d50a12c2100632d7aae28d3b4fa06b217968`
+Current addon line: `0.8.61-dev`
+Current functional addon head: `74ca6c4040e47d290b775799c0e44404bebfb260`
+Previous docs checkpoint: `1dd3b86609bf548ac4639f1b47300fcd76608c03`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.61-dev — final recipient padded on both sides
+
+Runtime commit: `74ca6c4040e47d290b775799c0e44404bebfb260`
+
+Completed:
+- earlier Group recipients remain at 0.10s pre-send / 0.10s post-send;
+- only the final recipient now uses 0.15s before its command and 0.15s after its command;
+- the longer pre-send settle addresses the remaining ~5% final-recipient miss seen on 0.8.60;
+- the longer post-send hold continues to protect against racing the original-target restore;
+- Group-only 24 commands/second accounting, Group critical section, subgroup selection, GUILD transport, Ctrl-click Group Come and original-target restoration are otherwise unchanged.
+
+Runtime status:
+- untested as `0.8.61-dev`.
+
+Exact next step:
+- repeatedly test Group Come in a 5-player party and confirm whether the final bot reaches effectively 100% reliability;
+- if reliable, repeat in a 10-player raid and then smoke Group Move/Stay/Pause/Unpause.
 
 
 ## 0.8.60 runtime result — final recipient ~95% reliable
