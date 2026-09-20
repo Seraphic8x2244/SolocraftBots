@@ -1,10 +1,39 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.47-dev`
-Current functional addon head: `a305bcb9e27a3360e63415bb8436b49670dddce0`
-Previous docs checkpoint: `bb10abd71e34a694f33be99031c19c15e2acfb1c`
+Current addon line: `0.8.48-dev`
+Current functional addon head: `490b93c7574e3f6518732c6fd84b95b3ff372be6`
+Previous docs checkpoint: `629c56105f5c866c050ae923cfe363a7a331688b`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.48-dev — captured-wrapper flattening pass
+
+Runtime commit: `490b93c7574e3f6518732c6fd84b95b3ff372be6`
+
+Completed:
+- flattened all 16 remaining captured duplicate-global families into one authoritative implementation each;
+- duplicate `SCB_*` global audit is now zero across the six owner files;
+- removed the superseded pre-Spawn maintenance update chain entirely; the 3.0-second removal/capacity settle constant now lives with the Spawn owner;
+- folded exact logical-player slot persistence and snapshot validation into Presets while retaining Roster's live logical-layout/snapshot construction responsibilities;
+- folded role-indicator refresh hooks into the Presets UI owners;
+- folded combat-role lifecycle gating into the final Roster implementations at the lexical point where their local lifecycle helpers are in scope;
+- folded safety-message presentation into Communication and combat-role option UI behaviour into Options;
+- static block-balance validation passes for all six Lua owners;
+- raw ownership audit remains clean: one `.partybot` `SendChatMessage` owner and one actual `UninviteByName` call in the paced Communication removal queue.
+
+Runtime status:
+- untested as `0.8.48-dev`;
+- `0.8.47-dev` role-indicator behaviour is runtime-passed;
+- prior smoke coverage remains: summon-over passed, Replace Missing passed, and normal preset summon in combat correctly refused destructive teardown;
+- Replace Dead specifically has not yet been exercised in the short post-cleanup smoke sequence.
+
+Deferred after this gate:
+- FIFO head-index conversion / queue micro-optimisations;
+- optional lazy UI/startup and deeper debug-buffer optimisation;
+- Group command scope and macro-safe Stay/Move feature work.
+
+Exact next step:
+- smoke `0.8.48-dev`: clean load; open Options and toggle combat-role confirmation; verify assumed/confirmation ticks; save/load a raid preset with an explicitly placed human if practical; summon or summon-over once; Replace Missing/Dead if available; and run paced Kick All. If clean, the structural duplicate/wrapper cleanup is complete and work can move to the deferred FIFO/micro-optimisation pass.
 
 ## 0.8.47 runtime result — 2026-09-20
 
