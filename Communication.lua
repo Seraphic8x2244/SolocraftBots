@@ -1144,10 +1144,10 @@ local function SCB_EnsureGroupCommandFrame()
         local delay = SCB_GROUP_TARGET_SETTLE
         this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
 
-        -- Only the final commanded target gets the longer hold. This avoids
-        -- racing the original-target restore without slowing every recipient.
-        if state and state.phase == "advance"
-            and (state.index or 1) >= table.getn(state.bots or {}) then
+        -- Only the final recipient gets the longer settle on both sides of
+        -- its command: before send, then again before restoring the old target.
+        if state and (state.index or 1) >= table.getn(state.bots or {})
+            and (state.phase == "send" or state.phase == "advance") then
             delay = SCB_GROUP_FINAL_HOLD
         end
 
