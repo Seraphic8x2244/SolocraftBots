@@ -1,10 +1,31 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.58-dev`
-Current functional addon head: `5137eb4fab347535709135831b390be65a5ab36d`
-Previous docs checkpoint: `3651aeb6acca9709b5088ae16f53a6c2d571f92c`
+Current addon line: `0.8.59-dev`
+Current functional addon head: `943ae4407b8afaa6ee39f21f4ca002fdcaab8f2b`
+Previous docs checkpoint: `55d6bb4c51e8bfc4eb7deaaa741aa9d39ffef0d2`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.59-dev — pre-send target propagation settle
+
+Runtime commit: `943ae4407b8afaa6ee39f21f4ca002fdcaab8f2b`
+
+Completed:
+- Group now uses target -> 0.10s settle -> send command(s) -> 0.10s hold -> next target;
+- the pre-send settle specifically addresses the observed server-side target propagation race;
+- four bots take about 0.8s for one Group command and five recipients about 1.0s;
+- the Group-only rolling 24 commands/second budget remains unchanged;
+- the Group critical section remains unchanged, so other normal SCB control sends cannot interleave;
+- original target restoration, live subgroup selection, recipient validation, GUILD transport and Ctrl-click Group Come semantics are unchanged.
+
+Runtime status:
+- untested as `0.8.59-dev`.
+
+Exact next step:
+- retest Group Come in a 5-player party first. Confirm all subgroup bots respond consistently rather than 20-50%;
+- if reliable, repeat in a 10-player raid and smoke Move/Stay/Pause/Unpause;
+- only tune the 0.10s settle/hold values if runtime evidence justifies it.
 
 
 ## 0.8.58 Group runtime result — target propagation still races
