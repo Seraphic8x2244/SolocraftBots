@@ -7,6 +7,23 @@ Previous docs checkpoint: `8d5f732a7d8bd3d1d1c02b51962909f66e1a1a0f`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
 
+
+## Runtime results / active bug — 2026-09-20
+
+User-confirmed:
+- 0.8.54 GUILD transport works for tested control commands;
+- 0.8.52 macro-safe `/scb stay` and `/scb move` work, including the no-target safety case;
+- 0.8.53 Group scope did not work in a 5-player group; do not mark Group scope passed yet.
+
+New failure:
+- while in a dungeon and attempting to summon a 10-player preset, Lua error at `Spawn.lua:1185`: nil value;
+- current source shows line 1185 calling `SCB_PresetSubgroupMoveBarrierPassed()`;
+- that helper is currently declared `local` inside the scoped legacy burst prelude near the top of `Spawn.lua`, while line 1185 is outside that scope, so the call resolves as an unavailable global at runtime;
+- this is a code-scope defect, not a server timing result.
+
+Exact next step:
+- export/fix the subgroup-barrier helper visibility without changing its behavior, bump the dev version, then retest the 10-player preset-from-dungeon path. After the crash is fixed, separately diagnose why Group scope is unavailable/nonfunctional in a 5-player party rather than assuming that behavior is intentional.
+
 ## 0.8.54-dev — guild-chat control command transport
 
 Runtime commit: `0a2688b5567c6a35365d3d2d2a534e02facfb762`
