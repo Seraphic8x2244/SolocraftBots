@@ -3,8 +3,27 @@
 Current branch: `dev`
 Current addon line: `0.8.59-dev`
 Current functional addon head: `943ae4407b8afaa6ee39f21f4ca002fdcaab8f2b`
-Previous docs checkpoint: `55d6bb4c51e8bfc4eb7deaaa741aa9d39ffef0d2`
+Previous docs checkpoint: `121bd00315e6b7483f426ec3cf289ee9b1e53dd0`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.59 runtime result — final recipient still occasionally misses
+
+Observed:
+- 0.10s pre-send settle + 0.10s post-send hold improved Group reliability to about 80%;
+- misses now appear concentrated on the final bot in the subgroup.
+
+Interpretation:
+- because every bot receives the same pre-send settle, a last-recipient-specific miss points more strongly at the final original-target restore racing the last target-dependent command;
+- avoid slowing every recipient unless runtime evidence requires it.
+
+Decision:
+- preserve 0.10s pre-send settle and 0.10s normal post-send hold;
+- extend only the final recipient's post-send hold to 0.15s before restoring the user's original target;
+- keep the Group-only 24 commands/second budget, critical section, subgroup selection, command transport and target restoration semantics otherwise unchanged.
+
+Exact next step:
+- implement the final-recipient 0.15s restore delay as the next dev build and retest Group Come repeatedly in a 5-player party.
 
 
 ## 0.8.59-dev — pre-send target propagation settle
