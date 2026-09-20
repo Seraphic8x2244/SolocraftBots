@@ -3,11 +3,33 @@
 Current branch: `dev`
 Current addon line: `0.8.55-dev`
 Current functional addon head: `66ba0d1ca4e810a1cfdcfda6f84bd2a55ff27ddf`
-Previous docs checkpoint: `eb430eb66f0d561aabc6a4de6323cbb968086986`
+Previous docs checkpoint: `0f81fceb9c0a1504f72deab217e7bd77fc395e49`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
 
 
 
+
+
+## Testing hold before next chat — 2026-09-20
+
+Current decision:
+- make no further Group-scope code changes until the user retests it in both a 5-player party and a 10-player raid;
+- the earlier 5-player result is treated as a suspected failure, not yet a confirmed implementation defect;
+- Group scope is intended to work in a 5-player party when a valid friendly target selects the live subgroup;
+- preserve the current 0.8.53 Group implementation unchanged until the two controlled retests provide evidence.
+
+Confirmed passed:
+- 0.8.54 GUILD command transport;
+- 0.8.52 macro-safe `/scb stay` and `/scb move`, including no-target safety.
+
+Still untested / unresolved:
+- 0.8.55 preset subgroup barrier scope fix needs the dungeon -> 10-player preset path retested to confirm the former `Spawn.lua:1185` error is gone;
+- 0.8.53 Group scope needs explicit targeted tests in both a 5-player party and a 10-player raid;
+- 0.8.50 first-summon subgroup mismatch remains monitor-in-normal-play;
+- Replace Dead remains separately untested.
+
+Exact next step:
+- user tests Group scope with a valid friendly target in a 5-player party, then in a 10-player raid, before any further Group code changes. When practical, also retry the dungeon -> 10-player preset summon to clear 0.8.55. Start the next development chat from this handoff with those results.
 
 ## 0.8.55-dev — preset subgroup barrier scope fix
 
