@@ -3,8 +3,30 @@
 Current branch: `dev`
 Current addon line: `0.8.61-dev`
 Current functional addon head: `74ca6c4040e47d290b775799c0e44404bebfb260`
-Previous docs checkpoint: `1dd3b86609bf548ac4639f1b47300fcd76608c03`
+Previous docs checkpoint: `8a2bd7d6177269da9f2c95322ae9ceb2e13f480e`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## Group timing decision — uniform 0.15s padding
+
+Decision:
+- replace the mixed 0.10s / final-recipient 0.15s timing with a uniform 0.15s pre-send settle and 0.15s post-send hold for every Group recipient;
+- reason: runtime testing showed target-dependent command reliability improves as padding increases, and raid subgroups may contain five bots rather than the four-bot 5-player test case;
+- this removes the special-case assumption that only the final recipient needs the larger margin.
+
+Ctrl-click Group Come:
+- Move and Come are currently emitted back-to-back during the same recipient send phase, with no delay between the two commands;
+- preserve that behavior for this timing change unless runtime testing specifically shows that Move -> Come itself needs separation.
+
+Preserve:
+- Group-only rolling 24 commands/second budget;
+- Group critical section preventing normal control-command interleaving;
+- live subgroup recipient filtering;
+- original-target restoration after the fan-out;
+- GUILD transport and existing command syntax.
+
+Exact next step:
+- make Group use 0.15s before and after every recipient, bump the dev version, statically inspect, promote non-force, then retest normal Group Come before separately exercising Ctrl-click Group Come.
 
 
 ## 0.8.61-dev — final recipient padded on both sides
