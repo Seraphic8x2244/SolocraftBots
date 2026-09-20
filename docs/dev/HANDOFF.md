@@ -1,10 +1,36 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.49-dev`
-Current functional addon head: `3e71700c06041c9a59339bfb377cdb5b3fd5e467`
-Previous docs checkpoint: `4ae96853dbf10b241b1a716f92bf269ab0bb44c2`
+Current addon line: `0.8.50-dev`
+Current functional addon head: `c7b55b13aa2d0819b45686c7b62d26dac2509070`
+Previous docs checkpoint: `f9d821109756bcd64ba258ce21a6f3cf1032a471`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.50-dev — initial raid subgroup revision barrier
+
+Runtime commit: `c7b55b13aa2d0819b45686c7b62d26dac2509070`
+
+Completed:
+- survivor/bootstrap Group-8 parking now records the current roster-event revision immediately before `SetRaidSubgroup`;
+- human preset arrangement records the same barrier before each requested subgroup move;
+- `PRESET_ARRANGE_PLAYERS` no longer releases the first real preset burst merely because `GetRaidRosterInfo` already reflects the target layout; at least one later roster event must advance `SCB.rosterEventRevision`;
+- coordinator-side survivor parking is carried on the active preset `botOperation`, so the barrier survives the handoff into the preset queue;
+- direct/shared preset queue entry without a `botOperation` uses a queue-local fallback barrier that is cleared with spawn runtime reset;
+- the established 1.0-second inter-group wait, burst construction, survivor removal timing, combat gates, and FIFO/head-index scheduler semantics are unchanged;
+- candidate diff was staged off-branch, inspected as one commit ahead of `f9d8211`, then promoted to `dev` by non-force ref update.
+
+Runtime status:
+- untested as `0.8.50-dev`;
+- the intermittent first-summon Group 1/2 crossing remains the active runtime gate until this build is exercised;
+- `0.8.49-dev` FIFO/head-index behaviour is therefore not yet marked runtime-passed independently;
+- Replace Dead remains separately untested from the recent smoke sequence.
+
+Deferred:
+- do not change the established 1.0-second inter-group wait unless the initial subgroup barrier fails to resolve the first-summon issue;
+- remaining small FIFO conversions, optional lazy UI/startup work, deeper debug-buffer optimisation, Group command scope, and macro-safe Stay/Move remain deferred.
+
+Exact next step:
+- smoke the same first-summon raid scenario that previously showed Group 1/2 crossing, ideally with a retained survivor so Group-8 parking is exercised. Verify the first attempt has the expected human subgroup placement, tank/role markings, and Group 1/2 composition without needing a second summon. If that passes, run one normal summon-over and the server-combat retry path if practical; keep the 1.0-second inter-group wait unchanged unless a separate failure demonstrates it is needed.
 
 ## 0.8.49 runtime investigation — first-summon role/icon mismatch
 
