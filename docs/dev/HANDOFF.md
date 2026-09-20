@@ -3,8 +3,24 @@
 Current branch: `dev`
 Current addon line: `0.8.60-dev`
 Current functional addon head: `483699234761f0e84871c4129b22523269ae8e38`
-Previous docs checkpoint: `4cbe968f95cb22a98f5fb8f85dcfbbbf1b99736e`
+Previous docs checkpoint: `4c95d50a12c2100632d7aae28d3b4fa06b217968`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.60 runtime result — final recipient ~95% reliable
+
+Observed:
+- extending only the final post-send hold from 0.10s to 0.15s improved the last bot to roughly 95% success;
+- earlier subgroup recipients remain reliable;
+- the remaining miss pattern is still isolated to the final recipient.
+
+Decision:
+- keep earlier recipients at 0.10s pre-send / 0.10s post-send;
+- make only the final recipient use 0.15s pre-send and 0.15s post-send;
+- preserve the Group-only 24 commands/second budget, Group critical section, subgroup resolution, GUILD transport and original-target restore behavior.
+
+Exact next step:
+- implement a final-recipient-specific 0.15s pre-send settle in addition to the existing 0.15s final post-send hold, bump the dev version, statically inspect, and retest repeated Group Come in a 5-player party.
 
 
 ## 0.8.60-dev — longer final target hold
