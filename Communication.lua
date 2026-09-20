@@ -1008,8 +1008,7 @@ function SCB_RefreshGroupCommandRow()
     end
 end
 
-local SCB_GROUP_TARGET_SETTLE = 0.10
-local SCB_GROUP_FINAL_HOLD = 0.15
+local SCB_GROUP_TARGET_SETTLE = 0.15
 local SCB_GROUP_COMMAND_LIMIT = 24
 local SCB_GROUP_COMMAND_WINDOW = 1.0
 
@@ -1140,18 +1139,8 @@ local function SCB_EnsureGroupCommandFrame()
     frame = CreateFrame("Frame", "SoloCraftBotsGroupCommandFrame", UIParent)
     frame:Hide()
     frame:SetScript("OnUpdate", function()
-        local state = SCB.groupCommandState
-        local delay = SCB_GROUP_TARGET_SETTLE
         this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
-
-        -- Only the final recipient gets the longer settle on both sides of
-        -- its command: before send, then again before restoring the old target.
-        if state and (state.index or 1) >= table.getn(state.bots or {})
-            and (state.phase == "send" or state.phase == "advance") then
-            delay = SCB_GROUP_FINAL_HOLD
-        end
-
-        if this.scbElapsed < delay then return end
+        if this.scbElapsed < SCB_GROUP_TARGET_SETTLE then return end
         this.scbElapsed = 0
         SCB_ProcessNextGroupCommandAction()
     end)
