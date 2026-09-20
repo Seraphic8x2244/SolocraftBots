@@ -427,7 +427,9 @@ local function SCB_ActiveObservedClass(member)
 end
 
 function SCB_EstablishActiveRosterFromTracker(tracker, observed)
-    local roster, i, assignment, member, slot
+    local roster, i, assignment, member, slot, player
+    local playersBySlot = {}
+    local now = GetTime and GetTime() or 0
     if not tracker or not tracker.ready or not tracker.assignments then return false end
     roster = SCB_EnsureActiveRosterDB()
     observed = observed or SCB_GetLiveRoster(false) or SCB_GetLiveRoster(true)
@@ -435,23 +437,34 @@ function SCB_EstablishActiveRosterFromTracker(tracker, observed)
     roster.suppressed = false
     roster.slots = {}
     SCB_UpdateActiveRosterLocation(roster, tracker.size, observed and observed.count or 0)
+
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        if player and player.slotIndex then playersBySlot[player.slotIndex] = player end
+    end
+
     for i = 1, table.getn(tracker.assignments) do
         assignment = tracker.assignments[i]
-        if assignment and assignment.botName then
-            member = observed and observed.byName and observed.byName[assignment.botName] or nil
+        player = assignment and playersBySlot[assignment.slotIndex] or nil
+        if assignment and (assignment.botName or player) then
+            member = assignment.botName and observed and observed.byName and observed.byName[assignment.botName] or nil
             slot = {
-                id = assignment.slotIndex, expected = true, currentName = assignment.botName,
+                id = assignment.slotIndex,
+                expected = assignment.botName and true or false,
+                currentName = assignment.botName,
                 class = SCB_ActiveObservedClass(member) or assignment.class,
                 role = assignment.role, extra = assignment.extra,
                 assumedRole = assignment.role, confirmedRole = nil, roleEvidence = nil, detected = nil,
-                currentGroup = member and member.currentGroup or assignment.group or 1,
+                currentGroup = member and member.currentGroup or (player and player.group) or assignment.group or 1,
                 intendedGroup = assignment.group, source = "preset", trackerSlotIndex = assignment.slotIndex,
-                state = member and member.dead and "dead" or "alive", lastSeenAt = GetTime and GetTime() or 0,
+                state = assignment.botName and (member and member.dead and "dead" or "alive") or "covered",
+                coveredBy = player and player.name or nil,
+                lastSeenAt = now,
             }
             roster.slots[assignment.slotIndex] = slot
         end
     end
-    roster.updatedAt = GetTime and GetTime() or 0
+    roster.updatedAt = now
     SCB.activeRosterTransition = nil
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton(observed, false) end
     return true
