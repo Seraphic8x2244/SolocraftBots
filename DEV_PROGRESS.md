@@ -38,7 +38,7 @@
 ## Current Issues
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
-- Policy remains intentionally undefined for a saved human returning after Replace Missing has already filled that logical slot with a bot; do not auto-kick the live replacement without an explicit policy.
+- Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
 - Pending regression items remain: dungeon -> 10-player preset retest for the 0.8.55 scope fix; monitor the intermittent 0.8.50 first-summon subgroup mismatch; Replace Dead still needs its separate runtime smoke.
 
 ## Testing
@@ -47,7 +47,7 @@
 - Version/commit: `0.8.60-dev` / `483699234761f0e84871c4129b22523269ae8e38`
 - Passed: Group retargeting generally worked and reliability was substantially improved.
 - Failed: the final bot could still occasionally miss; observed success was roughly 95%.
-- Not tested: 0.8.61-dev through 0.8.65-dev.
+- 0.8.65-dev runtime feedback: Group controls subjectively feel less responsive on the fourth member again. It is not yet established whether this means visible latency or an occasional missed command.
 
 ### Next Test
 - Exercise normal Group Come in both 4-bot and 5-bot subgroups; re-test immediately after a roster change.
@@ -61,10 +61,9 @@
 - Stop deriving 5-player logical human ownership from Blizzard party-row order once explicit assignment exists.
 - Preserve deterministic bot logical order while treating human physical placement as observational.
 - Reuse existing tracker/preset slot data and proven refill semantics; avoid duplicating raid logic in a party-only path.
-- After the 5-player editor path is stable, define the post-replacement human-return policy separately.
+- Post-replacement human-return policy is resolved: the user must manually free a group slot before the human can return; no automatic addon action is required.
 
 ## Ideas / Backlog
-- Define the policy for a saved human returning after Replace Missing has already filled that human's logical slot with its underlying bot.
 - Consider whether Group row availability/UI refresh should also force a fresh snapshot, or whether fresh-on-command is sufficient after runtime testing.
 - After the logical-slot work is stable, simplify or retire overlapping legacy refill paths only with migration/runtime proof.
 
@@ -75,4 +74,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.65-dev at the covered-slot boundary before changing the 5-player editor: verify human leave -> Replace Missing, human rejoin before replacement -> re-cover, and actual replacement -> exact underlying bot assignment. Group-command validation can be folded into the same session.
+Clarify the 0.8.65 Group fourth-member regression by testing whether the fourth bot is merely delayed or actually misses commands. If it is only latency, tune the intermediate Group timing without weakening final-recipient reliability. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
