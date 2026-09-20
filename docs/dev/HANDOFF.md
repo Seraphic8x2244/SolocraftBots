@@ -1,10 +1,37 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.48-dev`
-Current functional addon head: `490b93c7574e3f6518732c6fd84b95b3ff372be6`
-Previous docs checkpoint: `4a0c62c27bc2b61169e29911e607e77c40b3621b`
+Current addon line: `0.8.49-dev`
+Current functional addon head: `3e71700c06041c9a59339bfb377cdb5b3fd5e467`
+Previous docs checkpoint: `a3bae9d4962d30d15efc1b91446a67a769305ac7`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+## 0.8.49-dev — preset spawn FIFO head-index pass
+
+Runtime commit: `3e71700c06041c9a59339bfb377cdb5b3fd5e467`
+
+Completed:
+- converted the hot preset-spawn scheduler from repeated `table.remove(queue, 1)` shifts to a logical queue head;
+- converted preset burst-plan consumption to a logical head as well;
+- combat retry now rewinds into the already-consumed queue prefix instead of repeatedly inserting at physical index 1;
+- queue count/peek/pop/replace/prepend/reset operations are centralized in `SoloCraftBots.lua`;
+- all queue observers in SoloCraftBots/Presets/Spawn now use logical-head semantics;
+- operation completion and abort paths explicitly reset retained queue storage;
+- static block-balance validation passes for all six Lua owner files;
+- targeted audit confirms no remaining front-removal/index-1 access on the preset spawn queue or burst-plan queue.
+
+Runtime status:
+- untested as `0.8.49-dev`.
+
+Still deliberately unchanged / deferred:
+- `pendingAssumedSpawns` still has two small front-removal call sites;
+- maintenance `state.remaining`, temporary group-construction arrays, and the bounded debug line buffer still use front removal where applicable;
+- Replace Dead remains untested from the 0.8.48 smoke sequence;
+- optional lazy UI/startup and deeper debug-buffer optimisation remain deferred;
+- Group command scope and macro-safe Stay/Move feature work remain deferred.
+
+Exact next step:
+- smoke `0.8.49-dev` with a normal preset summon and summon-over, plus the server-combat retry path if practical; verify queue ordering, group pacing, final roster tracking, and Kick All/maintenance coexistence. If clean, decide whether the remaining small FIFOs merit conversion or whether to move on.
 
 ## 0.8.48 runtime result — 2026-09-20
 
