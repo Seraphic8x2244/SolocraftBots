@@ -827,6 +827,7 @@ local SCB = SoloCraftBots
 
 SCB.recipients = {
     { key = "all", label = SCB_L("RECIPIENT_ALL"), icon = "all.tga", highlightIcon = "all_h.tga" },
+    { key = "group", label = SCB_L("RECIPIENT_GROUP"), icon = "all.tga", highlightIcon = "all_h.tga" },
     { key = "target", label = SCB_L("RECIPIENT_ONE"), icon = "one.tga", highlightIcon = "one_h.tga" },
     { key = "tank", label = SCB_L("RECIPIENT_TANKS"), icon = "tank.tga", highlightIcon = "tank_h.tga" },
     { key = "melee", label = SCB_L("RECIPIENT_MELEE"), icon = "melee.tga", highlightIcon = "melee_h.tga" },
@@ -968,6 +969,152 @@ function SCB_IsFriendlyBotTarget()
     return true
 end
 
+function SCB_GetTargetLiveGroup()
+    local name, roster, member
+    if not UnitExists or not UnitExists("target") then return nil, nil end
+    if UnitIsFriend and UnitIsFriend("player", "target") ~= 1 then return nil, nil end
+
+    name = UnitName and UnitName("target") or nil
+    if not name then return nil, nil end
+
+    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    member = roster and roster.byName and roster.byName[name] or nil
+    if not member then return nil, roster end
+    return member.currentGroup or member.subgroup or 1, roster
+end
+
+local function SCB_GetGroupScopedBots(group, roster)
+    local bots = {}
+    local i, member
+    for i = 1, table.getn(roster and roster.members or {}) do
+        member = roster.members[i]
+        if member and member.isBot and member.name
+            and (member.currentGroup or member.subgroup or 1) == group then
+            table.insert(bots, member.name)
+        end
+    end
+    return bots
+end
+
+function SCB_RefreshGroupCommandRow()
+    local group, roster = SCB_GetTargetLiveGroup()
+    local available = false
+    local alpha, i, button
+    if group and table.getn(SCB_GetGroupScopedBots(group, roster)) > 0 then available = true end
+    alpha = available and 1 or 0.5
+    for i = 1, table.getn(SCB.groupCommandButtons or {}) do
+        button = SCB.groupCommandButtons[i]
+        if button then button:SetAlpha(alpha) end
+    end
+end
+
+local function SCB_FinishGroupCommandQueue()
+    SCB.groupCommandState = nil
+    if SCB.groupCommandFrame then SCB.groupCommandFrame:Hide() end
+end
+
+local function SCB_ProcessNextGroupCommandAction()
+    local state = SCB.groupCommandState
+    local action, member, hadTarget, originalName, changedTarget, didRetarget
+    if not state then
+        SCB_FinishGroupCommandQueue()
+        return
+    end
+
+    action = state.actions and state.actions[state.index or 1] or nil
+    if not action then
+        SCB_FinishGroupCommandQueue()
+        return
+    end
+
+    member = SCB_GetLiveMember and SCB_GetLiveMember(action.name, false) or nil
+    if member and member.isBot and member.unit
+        and (member.currentGroup or member.subgroup or 1) == state.group then
+        hadTarget = UnitExists and UnitExists("target") and true or false
+        originalName = hadTarget and UnitName and UnitName("target") or nil
+        changedTarget = originalName ~= action.name
+        didRetarget = false
+
+        if changedTarget and TargetUnit then
+            TargetUnit(member.unit)
+            didRetarget = UnitName and UnitName("target") == action.name and true or false
+        end
+
+        if (not changedTarget or didRetarget)
+            and UnitName and UnitName("target") == action.name
+            and SCB_IsFriendlyBotTarget() then
+            SCB_SendCommand(action.command)
+        end
+
+        if didRetarget then
+            if hadTarget and TargetLastTarget then
+                TargetLastTarget()
+            elseif not hadTarget and ClearTarget then
+                ClearTarget()
+            end
+        end
+    end
+
+    state.index = (state.index or 1) + 1
+    if state.index > table.getn(state.actions or {}) then
+        SCB_FinishGroupCommandQueue()
+    end
+end
+
+local function SCB_EnsureGroupCommandFrame()
+    local frame = SCB.groupCommandFrame
+    if frame then return frame end
+
+    frame = CreateFrame("Frame", "SoloCraftBotsGroupCommandFrame", UIParent)
+    frame:Hide()
+    frame:SetScript("OnUpdate", function()
+        this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+        if this.scbElapsed < 0.15 then return end
+        this.scbElapsed = 0
+        SCB_ProcessNextGroupCommandAction()
+    end)
+    SCB.groupCommandFrame = frame
+    return frame
+end
+
+function SCB_QueueGroupScopedCommand(commandKey, forceMove)
+    local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
+    local route = commandInfo and commandInfo.routes and commandInfo.routes.target or nil
+    local moveRoute = SCB.commands and SCB.commands.move and SCB.commands.move.routes.target or nil
+    local group, roster = SCB_GetTargetLiveGroup()
+    local bots, commands, actions = {}, {}, {}
+    local i, j, frame
+
+    if SCB.groupCommandState or not route or not group then return false end
+    bots = SCB_GetGroupScopedBots(group, roster)
+    if table.getn(bots) == 0 then return false end
+
+    if forceMove and commandKey == "come" and moveRoute then
+        for i = 1, table.getn(moveRoute) do table.insert(commands, moveRoute[i]) end
+    end
+    for i = 1, table.getn(route) do table.insert(commands, route[i]) end
+
+    for i = 1, table.getn(bots) do
+        for j = 1, table.getn(commands) do
+            table.insert(actions, { name = bots[i], command = commands[j] })
+        end
+    end
+    if table.getn(actions) == 0 then return false end
+
+    SCB.groupCommandState = {
+        group = group,
+        actions = actions,
+        index = 1,
+    }
+    frame = SCB_EnsureGroupCommandFrame()
+    frame.scbElapsed = 0
+
+    -- First action is immediate; remaining actions are paced to avoid chat/server spam.
+    SCB_ProcessNextGroupCommandAction()
+    if SCB.groupCommandState then frame:Show() end
+    return true
+end
+
 function SCB_RefreshTargetCommandRow()
     local available = SCB_IsFriendlyBotTarget()
     local alpha = available and 1 or 0.5
@@ -976,6 +1123,7 @@ function SCB_RefreshTargetCommandRow()
         button = SCB.targetCommandButtons[i]
         if button then button:SetAlpha(alpha) end
     end
+    SCB_RefreshGroupCommandRow()
 end
 
 function SCB_RefreshSpreadToggle(button)
@@ -1008,6 +1156,14 @@ function SCB_DirectCommandOnClick()
     local i
 
     if not commandInfo then
+        return
+    end
+
+    if this.scbRecipientKey == "group" then
+        SCB_QueueGroupScopedCommand(
+            this.scbCommandKey,
+            this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
+        )
         return
     end
 

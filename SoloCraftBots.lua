@@ -1171,8 +1171,10 @@ function SCB_CreateCommandUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "commands", SCB_L("SECTION_COMMANDS"), 310)
     local buttonSize = 36
     SCB.targetCommandButtons = {}
+    SCB.groupCommandButtons = {}
     local rows = {
         { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
+        { recipient = "group", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
         { recipient = "melee", indent = 1, commands = { "move", "stay" } },
@@ -1205,12 +1207,17 @@ function SCB_CreateCommandUI(frame)
         button.scbRecipientLabel = recipient.label
         comeRecipientLabel = row.recipient == "target" and SCB_L("RECIPIENT_TARGET") or recipient.label
         button.scbTooltip = string.format(SCB_L("TIP_COME_RECIPIENT"), comeRecipientLabel, comeRecipientLabel)
+        if row.recipient == "group" then
+            button.scbTooltip = button.scbTooltip .. "\n" .. SCB_L("TIP_GROUP_SCOPE")
+        end
         button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
         layoutRow.recipientButton = button
         if row.recipient == "target" then
             table.insert(SCB.targetCommandButtons, button)
+        elseif row.recipient == "group" then
+            table.insert(SCB.groupCommandButtons, button)
         end
 
         for i = 1, table.getn(row.commands) do
@@ -1226,6 +1233,9 @@ function SCB_CreateCommandUI(frame)
             button.scbRecipientKey = row.recipient
             button.scbRecipientLabel = recipient.label
             button.scbTooltip = string.format(SCB_L("COMMAND_TOOLTIP"), recipient.label, commandInfo.label)
+            if row.recipient == "group" then
+                button.scbTooltip = button.scbTooltip .. "\n" .. SCB_L("TIP_GROUP_SCOPE")
+            end
             if commandKey == "spreadtoggle" then
                 SCB.spreadToggleButton = button
                 SCB_RefreshSpreadToggle(button)
@@ -1238,15 +1248,17 @@ function SCB_CreateCommandUI(frame)
             table.insert(layoutRow.commandButtons, button)
             if row.recipient == "target" then
                 table.insert(SCB.targetCommandButtons, button)
+            elseif row.recipient == "group" then
+                table.insert(SCB.groupCommandButtons, button)
             end
         end
         table.insert(layoutRows, layoutRow)
     end
 
     local pairDefs = {
-        { key = "tankmelee", upperRow = 3, lowerRow = 4, tooltipKey = "TIP_COME_TANK_MELEE" },
-        { key = "meleeranged", upperRow = 4, lowerRow = 5, tooltipKey = "TIP_COME_MELEE_RANGED" },
-        { key = "rangedhealer", upperRow = 5, lowerRow = 6, tooltipKey = "TIP_COME_RANGED_HEALER" },
+        { key = "tankmelee", upperRow = 4, lowerRow = 5, tooltipKey = "TIP_COME_TANK_MELEE" },
+        { key = "meleeranged", upperRow = 5, lowerRow = 6, tooltipKey = "TIP_COME_MELEE_RANGED" },
+        { key = "rangedhealer", upperRow = 6, lowerRow = 7, tooltipKey = "TIP_COME_RANGED_HEALER" },
     }
     for i = 1, table.getn(pairDefs) do
         local pair = pairDefs[i]
@@ -1644,6 +1656,9 @@ eventFrame:SetScript("OnEvent", function()
             SCB_RefreshPresetPlayers()
         end
         SCB_TryFinalizeRaidRoleTracking(observed)
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshGroupCommandRow then
+            SCB_RefreshGroupCommandRow()
+        end
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
         SCB_DebugUnitFlags(arg1)
