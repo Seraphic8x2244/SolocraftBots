@@ -1,10 +1,46 @@
 # SoloCraftBots Development Handoff
 
 Current branch: `dev`
-Current addon line: `0.8.55-dev`
-Current functional addon head: `66ba0d1ca4e810a1cfdcfda6f84bd2a55ff27ddf`
-Previous docs checkpoint: `a4efeb93f25765daf35c85b5fe9cee7ea46b4166`
+Current addon line: `0.8.56-dev`
+Current functional addon head: `3d3f6c40011542c66a48917854669ddf1eab8be0`
+Previous docs checkpoint: `fa915e5779bcd2f70a7d726e6116059d791210c7`
 Behavioural reference: `main` 0.7.14 (`6170b1535dba83882ee55eb38c35160c8fec9ca2`)
+
+
+## 0.8.56-dev — paced Group target cycle
+
+Runtime commit: `3d3f6c40011542c66a48917854669ddf1eab8be0`
+
+Completed:
+- replaced Group's same-frame retarget -> send -> restore sequence with a per-bot target state machine;
+- the original friendly target is captured once at Group-command start;
+- SCB selects each bot physically present in the selected live subgroup, then holds that target for 0.20 seconds before sending the target-only command;
+- after sending, SCB holds the same target for another 0.20 seconds before selecting the next bot;
+- the user's original target is restored only after the complete subgroup fan-out finishes;
+- Ctrl-click Group Come still sends Move then Come to each recipient while that recipient remains targeted;
+- recipients are still revalidated against the live roster immediately before send, and bots that vanish or change subgroup are skipped;
+- Group selection semantics, GUILD command transport, normal One/All commands, preset timing and roster ownership are unchanged.
+
+Reason for change:
+- runtime testing of 0.8.55 confirmed Group failed in both 5-player and 10-player groups;
+- only the already-targeted bot responded, and the target never visibly cycled;
+- the old implementation restored the original target in the same update step as the command send, making server-side target evaluation race the immediate restore.
+
+Runtime status:
+- untested as `0.8.56-dev`;
+- no Lua/luac interpreter is available in the development environment, so static inspection cannot replace the in-game smoke.
+
+Still untested / unresolved:
+- 0.8.55 dungeon -> 10-player preset regression test remains pending;
+- 0.8.50 first-summon subgroup mismatch remains monitor-in-normal-play;
+- Replace Dead remains separately untested.
+
+Deferred:
+- do not tune the 0.20-second dwell unless runtime evidence shows it is too short or unnecessarily slow;
+- do not change Group recipient selection or command syntax unless the paced target cycle still fails.
+
+Exact next step:
+- in a 5-player party, target any valid friendly member and click Group Come. Confirm the visible target cycles through each bot in Group 1, each bot comes, and the original target returns at the end. Then repeat in a 10-player raid and confirm only bots in the selected subgroup respond. If that passes, smoke Group Move/Stay/Pause/Unpause and Ctrl-click Group Come once.
 
 
 ## Group scope confirmed broken — 2026-09-20
