@@ -43,11 +43,17 @@
 
 ## Testing
 
+### Group Command Timing History
+- No pause between retarget and command: did not work.
+- 0.20s single pause: worked roughly 20% of the time.
+- 0.10s before + 0.10s after each recipient: roughly 99% overall, except bot 4 remained unreliable.
+- 0.10s before + 0.10s after, with bot 4 using 0.15s before + 0.15s after: roughly 99% for bots 1-3 and roughly 90% for bot 4.
+- Uniform 0.15s before + 0.15s after every recipient: regressed to approximately the same behaviour as uniform 0.10s before + 0.10s after rather than improving monotonically.
+- Current 0.8.65-dev feedback: the fourth member again feels less responsive.
+
 ### Last Test
 - Version/commit: `0.8.60-dev` / `483699234761f0e84871c4129b22523269ae8e38`
-- Passed: Group retargeting generally worked and reliability was substantially improved.
-- Failed: the final bot could still occasionally miss; observed success was roughly 95%.
-- 0.8.65-dev runtime feedback: Group controls subjectively feel less responsive on the fourth member again. It is not yet established whether this means visible latency or an occasional missed command.
+- Group retargeting was substantially improved, but the fourth/final recipient remained the distinctive failure point.
 
 ### Next Test
 - Exercise normal Group Come in both 4-bot and 5-bot subgroups; re-test immediately after a roster change.
@@ -74,4 +80,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Clarify the 0.8.65 Group fourth-member regression by testing whether the fourth bot is merely delayed or actually misses commands. If it is only latency, tune the intermediate Group timing without weakening final-recipient reliability. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
+Investigate Group timing as an ordering/propagation problem rather than assuming larger fixed delays are better. The observed curve is non-monotonic and bot 4 is the distinctive failure point. Compare client target-selection propagation and chat-command processing, then choose the smallest timing experiment that can distinguish queue-position effects from a target-state race. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
