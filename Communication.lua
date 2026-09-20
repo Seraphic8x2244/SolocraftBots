@@ -1220,7 +1220,10 @@ function SCB_SafetyMessageOnUpdate()
     frame:SetAlpha(pulse * fade)
 end
 
-function SCB_ShowSafetyMessage()
+function SCB_ShowSafetyMessage(message)
+    if SCB.safetyMessageFrame and SCB.safetyMessageFrame.text then
+        SCB.safetyMessageFrame.text:SetText(message or SCB_L("SURVIVOR_MESSAGE"))
+    end
     SCB_EnsureOptionsDB()
     if SoloCraftBotsDB.options.hideSCBScreenWarnings then return end
     if not SCB.safetyMessageFrame then return end
@@ -1605,15 +1608,6 @@ end
 
 -- Reuse the existing centre-screen warning frame for summon failures while
 -- preserving its normal survivor-safety wording for all existing callers.
-local SCB_ChatPreviousShowSafetyMessage = SCB_ShowSafetyMessage
-if SCB_ChatPreviousShowSafetyMessage then
-    function SCB_ShowSafetyMessage(message)
-        if SCB.safetyMessageFrame and SCB.safetyMessageFrame.text then
-            SCB.safetyMessageFrame.text:SetText(message or SCB_L("SURVIVOR_MESSAGE"))
-        end
-        return SCB_ChatPreviousShowSafetyMessage()
-    end
-end
 
 local SCB_HIDDEN_AURAS = {
     ["Stealth"] = "stealth",

@@ -8,6 +8,8 @@ do
 SoloCraftBots = SoloCraftBots or {}
 local SCB = SoloCraftBots
 
+SCB.REPLACE_REMOVAL_SETTLE_DELAY = 3.0
+
 local function SCB_CurrentPresetSafety(create)
     if SCB_GetBotOperationSafety then return SCB_GetBotOperationSafety(create) end
     return nil

@@ -673,6 +673,8 @@ function SCB_RefreshPresetSlots()
     if SCB_RefreshPresetCounters then
         SCB_RefreshPresetCounters()
     end
+    if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+
 end
 
 function SCB_FrameContainsCursor(frame)
@@ -835,7 +837,7 @@ function SCB_PresetPlayerOnClick()
     local roster, i, info, classInfo, roleInfo, groupStart, groupEnd, j, groupSlot, size
 
     if SCB.draggedPresetPlayer and this.scbSlotIndex then
-        SCB_FinishPresetPlayerDrag(math.floor((this.scbSlotIndex - 1) / 5) + 1)
+        SCB_FinishPresetPlayerDrag(this.scbSlotIndex)
         return
     end
 
@@ -875,6 +877,8 @@ function SCB_PresetPlayerOnClick()
 
     if arg1 == "RightButton" and SCB_CurrentPresetSize() > 5 and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
         SCB.presetEditorPlayers[this.scbPlayerKey] = nil
+        SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
+        SCB.presetEditorPlayerSlots[this.scbPlayerKey] = nil
         SCB_SetPresetDirty(true)
         if SCB_RefreshPresetPlayers then
             SCB_RefreshPresetPlayers()
@@ -1026,11 +1030,39 @@ SCB_RefreshPresetPlayers = function()
     if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
 end
 
+local function SCB_CopyExactPresetPlayerSlots(source, size)
+    local copy = {}
+    local key, slot
+    size = tonumber(size) or 0
+    for key, slot in pairs(source or {}) do
+        if type(key) == "string" and type(slot) == "number"
+            and slot >= 1 and slot <= size then
+            copy[key] = slot
+        end
+    end
+    return copy
+end
+
+local function SCB_PresetPlayerSlotGroup(slotIndex)
+    if not slotIndex then return nil end
+    return math.floor((slotIndex - 1) / 5) + 1
+end
+
 function SCB_LoadPreset(groupIndex, presetIndex)
-    local group, preset, size
+    local group, preset, size, key, slotIndex
+    SCB.presetEditorPlayerSlots = {}
     SCB_EnsurePresetDB()
     group = SoloCraftBotsDB.presetGroups[groupIndex]
     if not group then
+        group = SCB_CurrentPresetGroup()
+        preset = SCB_CurrentPreset()
+        size = group and group.size or SCB_CurrentPresetSize()
+        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
+        SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+        for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+            SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
+        end
+        if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
         return
     end
     SoloCraftBotsDB.currentPresetGroup = groupIndex
@@ -1064,10 +1096,18 @@ function SCB_LoadPreset(groupIndex, presetIndex)
     if SCB_RefreshPresetSummonWarning then
         SCB_RefreshPresetSummonWarning()
     end
+
+    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
+    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
+    end
+    if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
 end
 
 function SCB_SaveCurrentPreset()
     local group, preset, size
+    local exact = SCB_CopyExactPresetPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
     SCB_EnsurePresetDB()
     group = SCB_CurrentPresetGroup()
     preset = SCB_CurrentPreset()
@@ -1081,6 +1121,8 @@ function SCB_SaveCurrentPreset()
     preset.playerSlots = nil
     preset.playerRoles = SCB_CopyPlayerRoles(SCB.presetEditorPlayerRoles)
     SCB_SetPresetDirty(false, true)
+    preset.playerSlots = exact
+    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
 end
 
 function SCB_PresetSaveOnClick()
@@ -1538,6 +1580,7 @@ function SCB_AcceptPresetName(dialog)
     local name = editBox and editBox:GetText() or ""
     local group = SCB_CurrentPresetGroup()
     local preset
+    local exact = SCB_CopyExactPresetPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
     if not name or name == "" then name = SCB.pendingPresetDefaultName or "Preset" end
     if not group then return end
 
@@ -1553,6 +1596,12 @@ function SCB_AcceptPresetName(dialog)
     group.currentPreset = table.getn(group.presets)
     SCB.pendingPresetDefaultName = nil
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group.currentPreset)
+    preset = SCB_CurrentPreset()
+    if preset then
+        preset.playerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
+        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
+        if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
+    end
 end
 
 function SCB_AcceptPresetGroupName(dialog)
@@ -2098,6 +2147,10 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
 
     -- Keep the existing SavedVariables field name for migration compatibility.
     SoloCraftBotsCharDB.raidRoleTracker = tracker
+    if snapshot then
+        tracker.presetGroupIndex = snapshot.presetGroupIndex
+        tracker.presetIndex = snapshot.presetIndex
+    end
     return tracker
 end
 
@@ -2415,66 +2468,6 @@ local function SCB_ReplacementEarliestAt(record, now)
 end
 
 
-function SCB_MaintenanceReplaceOnUpdate()
-    local state = SCB.replaceDeadState
-    local now = GetTime and GetTime() or 0
-    local ok, errorText
-    if not state or not state.active then return end
-
-    if state.phase == "waitremoved" then
-        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
-        ok, errorText = SCB_StartRefillAssignments(state.assignments)
-        if not ok then
-            if errorText then SCB_Print(errorText) end
-            state.active = false
-            SCB_RefreshReplaceDeadButton()
-            return
-        end
-        state.phase = "waitrefill"
-        return
-    end
-
-    if state.phase == "waitrefill" then
-        if SCB.refillState and SCB.refillState.active then return end
-        if state.survivorAssignment and state.survivorName then
-            if SCB_CountGroupBots() <= 1 then
-                SCB_Print(SCB_L("REPLACE_DEAD_LAST_UNSAFE"))
-                state.active = false
-                SCB_RefreshReplaceDeadButton()
-                return
-            end
-            if SCB_GroupHasName(state.survivorName) then UninviteByName(state.survivorName) end
-            state.removedNames = { [state.survivorName] = true }
-            state.earliestAt = now + 1.0
-            state.phase = "waitsurvivorremoved"
-            return
-        end
-        state.active = false
-        if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-        SCB_RefreshReplaceDeadButton()
-        return
-    end
-
-    if state.phase == "waitsurvivorremoved" then
-        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
-        ok, errorText = SCB_StartRefillAssignments({ state.survivorAssignment })
-        if not ok then
-            if errorText then SCB_Print(errorText) end
-            state.active = false
-            SCB_RefreshReplaceDeadButton()
-            return
-        end
-        state.phase = "waitsurvivorrefill"
-        return
-    end
-
-    if state.phase == "waitsurvivorrefill" then
-        if SCB.refillState and SCB.refillState.active then return end
-        state.active = false
-        if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-        SCB_RefreshReplaceDeadButton()
-    end
-end
 
 function SCB_RefillOnUpdate(elapsed)
     local state = SCB.refillState
@@ -2761,9 +2754,8 @@ SCB_RefreshPresetSummonWarning = function()
 end
 
 function SCB_GetSnapshotOccupiedSlots(snapshot)
-    local occupied = {}
-    local groupCounts = {}
-    local i, player, groupIndex
+    local occupied, groupNext = {}, {}
+    local i, player, groupIndex, slotIndex, groupStart, groupEnd
     if not snapshot or not snapshot.players then return occupied end
 
     if (snapshot.size or 0) <= 5 then
@@ -2771,13 +2763,34 @@ function SCB_GetSnapshotOccupiedSlots(snapshot)
             player = snapshot.players[i]
             if player.slotIndex then occupied[player.slotIndex] = true end
         end
-    else
-        for i = 1, table.getn(snapshot.players) do
-            player = snapshot.players[i]
+        return occupied
+    end
+
+    -- Exact logical human slots win. Compatibility snapshots that provide only
+    -- a subgroup retain the old group-front occupancy behavior.
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        slotIndex = player and player.slotIndex or nil
+        if slotIndex and slotIndex >= 1 and slotIndex <= snapshot.size then
+            occupied[slotIndex] = true
+        end
+    end
+
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        if player and not player.slotIndex then
             groupIndex = player.group
-            groupCounts[groupIndex] = (groupCounts[groupIndex] or 0) + 1
-            if groupCounts[groupIndex] <= 5 then
-                occupied[((groupIndex - 1) * 5) + groupCounts[groupIndex]] = true
+            if groupIndex then
+                groupStart = ((groupIndex - 1) * 5) + 1
+                groupEnd = math.min(groupStart + 4, snapshot.size)
+                slotIndex = groupNext[groupIndex] or groupStart
+                while slotIndex <= groupEnd and occupied[slotIndex] do
+                    slotIndex = slotIndex + 1
+                end
+                if slotIndex <= groupEnd then
+                    occupied[slotIndex] = true
+                    groupNext[groupIndex] = slotIndex + 1
+                end
             end
         end
     end
@@ -2805,9 +2818,9 @@ end
 
 function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
     local validSizes = { [5] = true, [10] = true, [15] = true, [20] = true, [40] = true }
-    local seenPlayers, groupCounts, seenPartySlots = {}, {}, {}
+    local seenPlayers, groupCounts, seenPartySlots, seenSlots = {}, {}, {}, {}
     local currentNames, roster = {}, nil
-    local i, slot, player, role, expected, actual, name
+    local i, slot, player, role, expected, actual, name, slotIndex, expectedGroup
 
     if type(snapshot) ~= "table" or not validSizes[snapshot.size] then
         return false, SCB_L("ERR_SNAPSHOT_SIZE")
@@ -2868,6 +2881,24 @@ function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
         for name in pairs(seenPlayers) do
             if not currentNames[name] then
                 return false, SCB_L("ERR_SNAPSHOT_ROSTER_CHANGED")
+            end
+        end
+    end
+    if snapshot.size > 5 then
+        for i = 1, table.getn(snapshot.players or {}) do
+            player = snapshot.players[i]
+            slotIndex = player and player.slotIndex or nil
+            if slotIndex ~= nil then
+                if type(slotIndex) ~= "number"
+                    or slotIndex < 1 or slotIndex > snapshot.size
+                    or seenSlots[slotIndex] then
+                    return false, SCB_L("ERR_SNAPSHOT_PLAYERS")
+                end
+                expectedGroup = math.floor((slotIndex - 1) / 5) + 1
+                if expectedGroup ~= player.group then
+                    return false, SCB_L("ERR_SNAPSHOT_RAID_GROUP")
+                end
+                seenSlots[slotIndex] = true
             end
         end
     end
@@ -3729,6 +3760,8 @@ function SCB_CreatePresetUI(frame)
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group and group.currentPreset or nil)
     SCB_TryFinalizeRaidRoleTracking(SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     SCB_RefreshRefillButton()
+    if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+
 end
 
 -- -------------------------------------------------------------------------

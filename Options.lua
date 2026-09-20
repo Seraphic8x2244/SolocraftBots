@@ -96,7 +96,8 @@ function SCB_CreateAutoLootOption(parent)
 end
 
 function SCB_OptionCheckOnClick()
-    if not this or not this.scbOptionKey then return end
+    local key = this and this.scbOptionKey or nil
+    if not key then return end
     SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options[this.scbOptionKey] = this:GetChecked() and true or false
     if this.scbOptionKey == "hideSCBScreenWarnings" and SoloCraftBotsDB.options.hideSCBScreenWarnings
@@ -105,6 +106,11 @@ function SCB_OptionCheckOnClick()
     if this.scbOptionKey == "autoSwapPresetGroup" and SoloCraftBotsDB.options.autoSwapPresetGroup and SCB_ApplyCurrentLocationPresetGroup then
         SCB_ApplyCurrentLocationPresetGroup()
     end
+    if key == "confirmBotRolesFromCombat" then
+        if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle() end
+        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+    end
+
 end
 
 function SCB_CreateOptionCheck(parent, key, labelKey, y)
@@ -427,6 +433,15 @@ function SCB_RefreshOptionsUI()
         end
         control.value:SetText(target[valueKey] or 0)
     end
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
+        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
+    end
+    if SCB.optionConfirmBotRolesCheck then
+        SCB.optionConfirmBotRolesCheck:SetChecked(SoloCraftBotsDB.options.confirmBotRolesFromCombat and 1 or nil)
+    end
+
 end
 
 function SCB_SetOptionsPanelShown(show)
@@ -449,7 +464,7 @@ end
 
 function SCB_CreateOptionsUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
-    local heading, resetTutorials, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control
+    local heading, resetTutorials, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control, check
     panel:SetWidth(290)
     panel:SetHeight(220)
     panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
@@ -540,6 +555,18 @@ function SCB_CreateOptionsUI(frame)
     SCB_RefreshOptionsUI()
     SCB_LayoutOptionsUI()
     panel:Hide()
+    if miscContent and SCB_CreateOptionCheck and not SCB.optionConfirmBotRolesCheck then
+        check = SCB_CreateOptionCheck(miscContent, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -112)
+        check.scbTooltip = SCB_L("OPTION_CONFIRM_BOT_ROLES_TIP")
+        check:SetScript("OnEnter", SCB_TooltipOnEnter)
+        check:SetScript("OnLeave", SCB_TooltipOnLeave)
+        SCB.optionConfirmBotRolesCheck = check
+        SCB.optionMiscSection.scbExpandedHeight = 168
+        miscContent:SetHeight(142)
+    end
+    SCB_RefreshOptionsUI()
+    if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
+
 end
 
 -- -------------------------------------------------------------------------
@@ -670,49 +697,6 @@ end
 if SoloCraftBotsLocale then
     SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES"] = SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES"] or "Confirm bot roles from combat"
     SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES_TIP"] = SoloCraftBotsLocale["OPTION_CONFIRM_BOT_ROLES_TIP"] or "Validate requested bot roles from combat text. Disabled by default for performance."
-end
-
-local SCB_OptionsBaseOptionCheckOnClick = SCB_OptionCheckOnClick
-function SCB_OptionCheckOnClick()
-    local key = this and this.scbOptionKey or nil
-    SCB_OptionsBaseOptionCheckOnClick()
-    if key == "confirmBotRolesFromCombat" then
-        if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle() end
-        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
-    end
-end
-
-local SCB_OptionsBaseRefreshOptionsUI = SCB_RefreshOptionsUI
-function SCB_RefreshOptionsUI()
-    local result = SCB_OptionsBaseRefreshOptionsUI()
-    SoloCraftBotsDB = SoloCraftBotsDB or {}
-    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
-    if SoloCraftBotsDB.options.confirmBotRolesFromCombat == nil then
-        SoloCraftBotsDB.options.confirmBotRolesFromCombat = false
-    end
-    if SCB.optionConfirmBotRolesCheck then
-        SCB.optionConfirmBotRolesCheck:SetChecked(SoloCraftBotsDB.options.confirmBotRolesFromCombat and 1 or nil)
-    end
-    return result
-end
-
-local SCB_OptionsBaseCreateOptionsUI = SCB_CreateOptionsUI
-function SCB_CreateOptionsUI(frame)
-    local result = SCB_OptionsBaseCreateOptionsUI(frame)
-    local content = SCB.optionMiscSection and SCB.optionMiscSection.scbContent or nil
-    local check
-    if content and SCB_CreateOptionCheck and not SCB.optionConfirmBotRolesCheck then
-        check = SCB_CreateOptionCheck(content, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -112)
-        check.scbTooltip = SCB_L("OPTION_CONFIRM_BOT_ROLES_TIP")
-        check:SetScript("OnEnter", SCB_TooltipOnEnter)
-        check:SetScript("OnLeave", SCB_TooltipOnLeave)
-        SCB.optionConfirmBotRolesCheck = check
-        SCB.optionMiscSection.scbExpandedHeight = 168
-        content:SetHeight(142)
-    end
-    SCB_RefreshOptionsUI()
-    if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
-    return result
 end
 
 -- -------------------------------------------------------------------------
