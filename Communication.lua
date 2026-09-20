@@ -1008,57 +1008,98 @@ function SCB_RefreshGroupCommandRow()
     end
 end
 
+local SCB_GROUP_TARGET_SETTLE = 0.20
+
+local function SCB_RestoreGroupCommandOriginalTarget(state)
+    local originalName, currentName, member
+    if not state or not state.originalTargetName or not TargetUnit then return end
+
+    originalName = state.originalTargetName
+    currentName = UnitName and UnitName("target") or nil
+    if currentName == originalName then return end
+
+    member = SCB_GetLiveMember and SCB_GetLiveMember(originalName, false) or nil
+    if member and member.unit then
+        TargetUnit(member.unit)
+    end
+end
+
 local function SCB_FinishGroupCommandQueue()
+    local state = SCB.groupCommandState
+    if state then SCB_RestoreGroupCommandOriginalTarget(state) end
     SCB.groupCommandState = nil
     if SCB.groupCommandFrame then SCB.groupCommandFrame:Hide() end
 end
 
 local function SCB_ProcessNextGroupCommandAction()
     local state = SCB.groupCommandState
-    local action, member, hadTarget, originalName, changedTarget, didRetarget
+    local name, member, currentName, i
     if not state then
-        SCB_FinishGroupCommandQueue()
+        if SCB.groupCommandFrame then SCB.groupCommandFrame:Hide() end
         return
     end
 
-    action = state.actions and state.actions[state.index or 1] or nil
-    if not action then
-        SCB_FinishGroupCommandQueue()
-        return
-    end
+    if state.phase == "target" then
+        name = state.bots and state.bots[state.index or 1] or nil
+        if not name then
+            SCB_FinishGroupCommandQueue()
+            return
+        end
 
-    member = SCB_GetLiveMember and SCB_GetLiveMember(action.name, false) or nil
-    if member and member.isBot and member.unit
-        and (member.currentGroup or member.subgroup or 1) == state.group then
-        hadTarget = UnitExists and UnitExists("target") and true or false
-        originalName = hadTarget and UnitName and UnitName("target") or nil
-        changedTarget = originalName ~= action.name
-        didRetarget = false
+        member = SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+        if not member or not member.isBot or not member.unit
+            or (member.currentGroup or member.subgroup or 1) ~= state.group then
+            state.index = (state.index or 1) + 1
+            SCB_ProcessNextGroupCommandAction()
+            return
+        end
 
-        if changedTarget and TargetUnit then
+        currentName = UnitName and UnitName("target") or nil
+        if currentName ~= name then
+            if not TargetUnit then
+                state.index = (state.index or 1) + 1
+                SCB_ProcessNextGroupCommandAction()
+                return
+            end
             TargetUnit(member.unit)
-            didRetarget = UnitName and UnitName("target") == action.name and true or false
-        end
-
-        if (not changedTarget or didRetarget)
-            and UnitName and UnitName("target") == action.name
-            and SCB_IsFriendlyBotTarget() then
-            SCB_SendCommand(action.command)
-        end
-
-        if didRetarget then
-            if hadTarget and TargetLastTarget then
-                TargetLastTarget()
-            elseif not hadTarget and ClearTarget then
-                ClearTarget()
+            if not UnitName or UnitName("target") ~= name then
+                state.index = (state.index or 1) + 1
+                SCB_ProcessNextGroupCommandAction()
+                return
             end
         end
+
+        state.currentName = name
+        state.phase = "send"
+        return
+    end
+
+    if state.phase == "send" then
+        name = state.currentName
+        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+        if member and member.isBot and member.unit
+            and (member.currentGroup or member.subgroup or 1) == state.group
+            and UnitName and UnitName("target") == name
+            and SCB_IsFriendlyBotTarget() then
+            for i = 1, table.getn(state.commands or {}) do
+                SCB_SendCommand(state.commands[i])
+            end
+        end
+        state.phase = "advance"
+        return
     end
 
     state.index = (state.index or 1) + 1
-    if state.index > table.getn(state.actions or {}) then
+    state.currentName = nil
+    if state.index > table.getn(state.bots or {}) then
         SCB_FinishGroupCommandQueue()
+        return
     end
+
+    state.phase = "target"
+    -- The preceding update interval is the post-command settle. Select the next
+    -- bot now, then let the next interval become its pre-command target settle.
+    SCB_ProcessNextGroupCommandAction()
 end
 
 local function SCB_EnsureGroupCommandFrame()
@@ -1069,7 +1110,7 @@ local function SCB_EnsureGroupCommandFrame()
     frame:Hide()
     frame:SetScript("OnUpdate", function()
         this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
-        if this.scbElapsed < 0.15 then return end
+        if this.scbElapsed < SCB_GROUP_TARGET_SETTLE then return end
         this.scbElapsed = 0
         SCB_ProcessNextGroupCommandAction()
     end)
@@ -1082,10 +1123,11 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     local route = commandInfo and commandInfo.routes and commandInfo.routes.target or nil
     local moveRoute = SCB.commands and SCB.commands.move and SCB.commands.move.routes.target or nil
     local group, roster = SCB_GetTargetLiveGroup()
-    local bots, commands, actions = {}, {}, {}
-    local i, j, frame
+    local bots, commands = {}, {}
+    local originalTargetName = UnitName and UnitName("target") or nil
+    local i, frame
 
-    if SCB.groupCommandState or not route or not group then return false end
+    if SCB.groupCommandState or not route or not group or not originalTargetName then return false end
     bots = SCB_GetGroupScopedBots(group, roster)
     if table.getn(bots) == 0 then return false end
 
@@ -1093,23 +1135,21 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
         for i = 1, table.getn(moveRoute) do table.insert(commands, moveRoute[i]) end
     end
     for i = 1, table.getn(route) do table.insert(commands, route[i]) end
-
-    for i = 1, table.getn(bots) do
-        for j = 1, table.getn(commands) do
-            table.insert(actions, { name = bots[i], command = commands[j] })
-        end
-    end
-    if table.getn(actions) == 0 then return false end
+    if table.getn(commands) == 0 then return false end
 
     SCB.groupCommandState = {
         group = group,
-        actions = actions,
+        bots = bots,
+        commands = commands,
         index = 1,
+        phase = "target",
+        originalTargetName = originalTargetName,
     }
     frame = SCB_EnsureGroupCommandFrame()
     frame.scbElapsed = 0
 
-    -- First action is immediate; remaining actions are paced to avoid chat/server spam.
+    -- Select the first recipient immediately, then deliberately hold that target
+    -- before sending. Each send is followed by the same settle before advancing.
     SCB_ProcessNextGroupCommandAction()
     if SCB.groupCommandState then frame:Show() end
     return true
