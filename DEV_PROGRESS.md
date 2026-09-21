@@ -2,12 +2,13 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.67-dev`
-- Current runtime commit: `8daa9aaca9567bc183c9e00ac4b88507e1cce33e`
-- Latest status commit before this update: `608380d47b32095e23268c397bd2454060b3954a`
+- Version: `0.8.68-dev`
+- Current runtime commit: `b02d67e7a35104a8fed4c5543ad4a26c0c1fe10a`
+- Latest status commit before this update: `18dc49090dba37436c20ca9293a0840acfea0028`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
+- `b02d67e7a35104a8fed4c5543ad4a26c0c1fe10a` — 0.8.68-dev: share one acknowledgement sequencer between Single and Group targeted controls; narrow exclusivity so global controls remain live.
 - `8daa9aaca9567bc183c9e00ac4b88507e1cce33e` — 0.8.67-dev: remove speculative Group ack timeout/retarget retries; wrong acknowledgements immediately resend to the already-selected intended bot.
 - `aa7f6f5aa3add58cc6b19461a9f69d7f23a92a9e` — 0.8.66-dev: Group fan-out advances from actor-identifying server acknowledgements and retries stale/missing recipients.
 - `04807e4789646b6f3d87b228853ecd578c4107ad` — 0.8.65-dev: covered preset slots become Missing when their tracked human leaves and re-cover if that human returns before replacement.
@@ -43,6 +44,17 @@
   - Ctrl-Come remains one attempt containing back-to-back Move + Come; both response kinds are consumed before deciding success/failure, preventing a leftover response from the failed pair contaminating the retry;
   - the existing rolling 24 commands/sec budget remains the only pacing constraint beyond the 0.10s settle after actual target changes.
 - 0.8.67-dev also narrows duplicate ChatFrame acknowledgement suppression to cross-frame copies, so a genuine repeated server reply during an immediate retry is still processed.
+- 0.8.68-dev generalizes the Group acknowledgement engine into one targeted-command sequencer shared by Single and Group:
+  - only one Single/Group targeted sequence can be active; a second targeted click is neither invoked nor queued;
+  - Single captures the manually selected bot and sends immediately with no initial settle;
+  - a wrong-actor Single acknowledgement retries once only while that same intended bot is still the player's current target;
+  - a second wrong acknowledgement, or a player target change before retry, aborts without retargeting the player and emits the localized failure message plus `igQuestFailed` sound;
+  - Ctrl-Come uses the same two-ack Move + Come attempt in both Single and Group modes;
+  - Group preserves the 0.10s settle only after addon-driven target changes and its acknowledgement-driven immediate retry/advance behavior;
+  - Single and Group share one rolling 24 commands/sec history.
+- 0.8.68-dev removes the old broad `SCB_SendCommand` Group lock. All/role/standalone commands can send while a targeted sequence is active, and delayed `/scb attackstart` no longer waits for Group completion.
+- Macro `/scb move` and `/scb stay` now enter the same Single-target acknowledgement sequencer instead of bypassing it.
+- Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
   - Come: `Name* is coming to your position.`
@@ -51,7 +63,7 @@
   - Pause: `Name* ... paused for 30 seconds.`
   - Play/unpause: `Name* ... unpaused.`
   Actor-specific movement failures also identify the selected name. These messages are filtered only at ChatFrame display, so they can be consumed internally as acknowledgements while remaining hidden.
-- 0.8.61-0.8.67 changes remain implemented but not yet user-verified.
+- 0.8.61-0.8.68 changes remain implemented but not yet user-verified.
 
 ## Current Issues
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
@@ -74,23 +86,16 @@
 - Group retargeting was substantially improved, but the fourth/final recipient remained the distinctive failure point.
 
 ### Next Test
-- On 0.8.67-dev, repeatedly exercise Group Come with four bots and normal message filtering enabled. Confirm each correct acknowledgement advances immediately with no visible fixed post-command pause.
-- Temporarily unfilter movement messages for a stale-target diagnostic pass. Expected failure/recovery shape: intended C is client-targeted, command produces a B movement line, SoloCraftBots immediately resends without another target swap/settle, then C's movement line confirms and the queue targets D.
-- Smoke Group Move, Stay, Pause and Play/unpause so each acknowledgement pattern is confirmed in-game.
-- Test Ctrl-click Group Come: Move + Come stay back-to-back; both replies for one attempt must be consumed before the pair advances or retries.
-- Re-test immediately after a roster change and confirm the original selected target is restored at completion.
-- Covered-slot multiplayer testing remains pending until a second human is available: leave -> Replace Missing, rejoin-before-replace -> re-cover, then actual replacement -> exact underlying class/role/extra.
+- Single success path: target one bot, click Move/Stay/Pause/Play/Come and confirm the command sends immediately with no artificial pre-click settle and completes on that bot's acknowledgement.
+- Single stale-target path: with movement messages visible for diagnosis, reproduce a wrong-bot acknowledgement while the intended bot is still selected; confirm exactly one immediate retry occurs and success completes without addon retargeting.
+- Single failure/user-control path: change target before a stale acknowledgement resolves, or force the one retry to fail; confirm SoloCraftBots does not take the target back, prints the failure message, and plays the error sound.
+- Exclusivity: while a Single or Group targeted sequence is active, click another Single/Group control and confirm no second targeted sequence is started or queued.
+- Emergency/global concurrency: while Group is waiting on acknowledgements, use Pause All and another non-targeted control; confirm they send immediately and do not stop the targeted sequence.
+- All-route server audit: with a bot selected, test Come All, Play All, Move All, Stay All and Pause All (plus standalone All controls where meaningful) and verify they remain genuinely all-bot. Only if a route proves target-sensitive should its All control be greyed while a target exists.
+- Reconfirm Group four-bot stale-target recovery and Ctrl-Come after the shared-sequencer refactor.
+- Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
-- Generalize the current Group acknowledgement state machine into one targeted-command sequencer shared by Target and Group controls:
-  - only one Target/Group acknowledgement sequence may be active at a time;
-  - a second Target or Group click while one is active must not start or queue another sequence;
-  - non-sequenced controls such as All must remain immediately usable while a Target/Group sequence is active and must not be blocked by that critical section;
-  - Target mode captures the intended bot and sends immediately with no initial settle;
-  - on wrong-bot acknowledgement, Target retries at most once and only if the player still targets the originally intended bot;
-  - if the player has changed target, or the single retry still fails, abort without changing the player's target, print an error, and play an error sound;
-  - Group retains the 0.10s settle after actual addon-driven target changes and continues until each intended recipient is confirmed;
-  - Target and Group share the same rolling 24 commands/sec accounting.
 - Audit every All-row command against actual server behaviour. The addon currently routes All through explicit all-style PartyBot commands, but verify that having a selected target cannot make any of them target-scoped. If any All command becomes target-sensitive while a target exists, disable/grey that All control while a target is selected rather than allowing ambiguous behaviour.
 - Expose human-over-bot drag/drop for 5-player presets: exact human identity -> exact logical slot -> suppress underlying bot intent while that human is present.
 - Stop deriving 5-player logical human ownership from Blizzard party-row order once explicit assignment exists.
@@ -109,4 +114,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.67-dev Group acknowledgement flow first. After that, generalize the proven acknowledgement state machine into a shared Target/Group sequencer with one active sequence at a time, shared 24 commands/sec accounting, one non-invasive Target retry, and no blocking of All controls. Separately audit actual server semantics for every All command while a target is selected; grey any All control that proves target-sensitive.
+Runtime-test 0.8.68-dev in this order: Single success and one-retry failure behavior; targeted-sequence exclusivity; Pause All/global controls during an active Group sequence; then the server-side All-route audit with a bot selected. Do not add All-row greying unless runtime evidence shows a nominally global command becomes target-sensitive.
