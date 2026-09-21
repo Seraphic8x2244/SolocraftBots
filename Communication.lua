@@ -846,7 +846,7 @@ SCB.commands = {
         icon = "unpause.tga",
         highlightIcon = "unpause_h.tga",
         routes = {
-            all = { "unpause all" },
+            all = { "unpause" },
             target = { "unpause" },
         },
     },
@@ -900,7 +900,7 @@ SCB.commands = {
         icon = "pause.tga",
         highlightIcon = "pause_h.tga",
         routes = {
-            all = { "pause all" },
+            all = { "pause" },
             target = { "pause" },
         },
     },
@@ -967,6 +967,39 @@ function SCB_IsFriendlyBotTarget()
         return false
     end
     return true
+end
+
+local function SCB_IsFriendlyPlayerOrBotTarget()
+    if not UnitExists or not UnitExists("target") then return false end
+    if UnitIsFriend and UnitIsFriend("player", "target") ~= 1 then return false end
+    if SCB_IsFriendlyBotTarget() then return true end
+    if UnitIsPlayer and UnitIsPlayer("target") then return true end
+    return false
+end
+
+local function SCB_IsConditionalAllCommand(commandKey)
+    return commandKey == "come" or commandKey == "pause" or commandKey == "play"
+end
+
+function SCB_RefreshConditionalAllButtons()
+    local layout = SCB.commandLayout
+    local row = layout and layout.rows and layout.rows[1] or nil
+    local blocked = SCB_IsFriendlyPlayerOrBotTarget()
+    local i, button
+
+    if not row then return end
+
+    button = row.recipientButton
+    if button and button.scbCommandKey == "come" then
+        button:SetAlpha(blocked and 0.5 or 1)
+    end
+
+    for i = 1, table.getn(row.commandButtons or {}) do
+        button = row.commandButtons[i]
+        if button and SCB_IsConditionalAllCommand(button.scbCommandKey) then
+            button:SetAlpha(blocked and 0.5 or 1)
+        end
+    end
 end
 
 local function SCB_ShowTargetedCommandError(key)
@@ -1457,6 +1490,7 @@ function SCB_RefreshTargetCommandRow()
         if button then button:SetAlpha(alpha) end
     end
     SCB_RefreshGroupCommandRow()
+    SCB_RefreshConditionalAllButtons()
 end
 
 function SCB_RefreshSpreadToggle(button)
@@ -1493,6 +1527,12 @@ function SCB_DirectCommandOnClick()
 
     if not commandInfo then return end
     forceMove = this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
+
+    if this.scbRecipientKey == "all"
+        and SCB_IsConditionalAllCommand(this.scbCommandKey)
+        and SCB_IsFriendlyPlayerOrBotTarget() then
+        return
+    end
 
     if this.scbRecipientKey == "group" then
         SCB_QueueGroupScopedCommand(this.scbCommandKey, forceMove)
