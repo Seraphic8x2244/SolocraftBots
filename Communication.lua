@@ -846,7 +846,7 @@ SCB.commands = {
         icon = "unpause.tga",
         highlightIcon = "unpause_h.tga",
         routes = {
-            all = { "unpause" },
+            all = { "unpause all" },
             target = { "unpause" },
         },
     },
@@ -900,7 +900,7 @@ SCB.commands = {
         icon = "pause.tga",
         highlightIcon = "pause_h.tga",
         routes = {
-            all = { "pause" },
+            all = { "pause all" },
             target = { "pause" },
         },
     },
