@@ -1008,38 +1008,38 @@ function SCB_RefreshGroupCommandRow()
     end
 end
 
-local SCB_GROUP_TARGET_SETTLE = 0.10
-local SCB_GROUP_BUDGET_POLL = 0.05
-local SCB_GROUP_COMMAND_LIMIT = 24
-local SCB_GROUP_COMMAND_WINDOW = 1.0
+local SCB_TARGETED_TARGET_SETTLE = 0.10
+local SCB_TARGETED_BUDGET_POLL = 0.05
+local SCB_TARGETED_COMMAND_LIMIT = 24
+local SCB_TARGETED_COMMAND_WINDOW = 1.0
 
-local function SCB_PruneGroupCommandHistory(now)
-    local history = SCB.groupCommandSendTimes or {}
+local function SCB_PruneTargetedCommandHistory(now)
+    local history = SCB.targetedCommandSendTimes or {}
     local kept = {}
     local i, sentAt
     for i = 1, table.getn(history) do
         sentAt = history[i]
-        if sentAt and (now - sentAt) < SCB_GROUP_COMMAND_WINDOW then
+        if sentAt and (now - sentAt) < SCB_TARGETED_COMMAND_WINDOW then
             table.insert(kept, sentAt)
         end
     end
-    SCB.groupCommandSendTimes = kept
+    SCB.targetedCommandSendTimes = kept
     return kept
 end
 
-local function SCB_GroupCommandBudgetAllows(required)
+local function SCB_TargetedCommandBudgetAllows(required)
     local now = GetTime and GetTime() or 0
-    local history = SCB_PruneGroupCommandHistory(now)
-    return table.getn(history) + (required or 0) <= SCB_GROUP_COMMAND_LIMIT
+    local history = SCB_PruneTargetedCommandHistory(now)
+    return table.getn(history) + (required or 0) <= SCB_TARGETED_COMMAND_LIMIT
 end
 
-local function SCB_RecordGroupCommandSend()
+local function SCB_RecordTargetedCommandSend()
     local now = GetTime and GetTime() or 0
-    local history = SCB_PruneGroupCommandHistory(now)
+    local history = SCB_PruneTargetedCommandHistory(now)
     table.insert(history, now)
 end
 
-local function SCB_GroupAckKindForCommand(command)
+local function SCB_TargetedAckKindForCommand(command)
     if command == "move" then return "move" end
     if command == "come" then return "come" end
     if command == "stay" then return "stay" end
@@ -1048,12 +1048,12 @@ local function SCB_GroupAckKindForCommand(command)
     return nil
 end
 
-local function SCB_BuildGroupExpectedAcks(commands)
+local function SCB_BuildTargetedExpectedAcks(commands)
     local expected = {}
     local count = 0
     local i, kind
     for i = 1, table.getn(commands or {}) do
-        kind = SCB_GroupAckKindForCommand(commands[i])
+        kind = SCB_TargetedAckKindForCommand(commands[i])
         if not kind then return nil, 0 end
         if not expected[kind] then
             expected[kind] = true
@@ -1063,7 +1063,7 @@ local function SCB_BuildGroupExpectedAcks(commands)
     return expected, count
 end
 
-local function SCB_ParseGroupCommandAck(text)
+local function SCB_ParseTargetedCommandAck(text)
     local _, _, actor
     if not text or text == "" then return nil, nil end
     _, _, actor = string.find(text, "^([^%s]+%*) ")
@@ -1092,28 +1092,62 @@ local function SCB_ParseGroupCommandAck(text)
     return nil, nil
 end
 
-local function SCB_RestoreGroupCommandOriginalTarget(state)
+local function SCB_BuildTargetedCommandAttempt(commandKey, forceMove)
+    local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
+    local route = commandInfo and commandInfo.routes and commandInfo.routes.target or nil
+    local moveRoute = SCB.commands and SCB.commands.move and SCB.commands.move.routes.target or nil
+    local commands = {}
+    local expectedAcks, expectedCount
+    local i
+
+    if not route then return nil, nil, nil end
+    if forceMove and commandKey == "come" and moveRoute then
+        for i = 1, table.getn(moveRoute) do table.insert(commands, moveRoute[i]) end
+    end
+    for i = 1, table.getn(route) do table.insert(commands, route[i]) end
+    if table.getn(commands) == 0 then return nil, nil, nil end
+
+    expectedAcks, expectedCount = SCB_BuildTargetedExpectedAcks(commands)
+    if not expectedAcks or expectedCount ~= table.getn(commands) then
+        return nil, nil, nil
+    end
+    return commandInfo, commands, expectedAcks
+end
+
+local function SCB_RestoreTargetedOriginalTarget(state)
     local originalName, currentName, member
-    if not state or not state.originalTargetName or not TargetUnit then return end
+    if not state or state.mode ~= "group" or not state.originalTargetName or not TargetUnit then return end
 
     originalName = state.originalTargetName
     currentName = UnitName and UnitName("target") or nil
     if currentName == originalName then return end
 
     member = SCB_GetLiveMember and SCB_GetLiveMember(originalName, false) or nil
-    if member and member.unit then
-        TargetUnit(member.unit)
+    if member and member.unit then TargetUnit(member.unit) end
+end
+
+local function SCB_FinishTargetedCommandSequence()
+    local state = SCB.targetedCommandState
+    if state then SCB_RestoreTargetedOriginalTarget(state) end
+    SCB.targetedCommandState = nil
+    if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
+end
+
+local function SCB_FailSingleTargetCommand()
+    local state = SCB.targetedCommandState
+    if state and state.mode == "single" then
+        SCB_Print(string.format(
+            SCB_L("TARGET_COMMAND_FAILED", "Couldn't confirm %s for %s."),
+            state.commandLabel or (state.commands and state.commands[1]) or "command",
+            state.currentName or SCB_L("UNKNOWN")
+        ))
+        if PlaySound then PlaySound("igQuestFailed") end
     end
+    SCB.targetedCommandState = nil
+    if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
 end
 
-local function SCB_FinishGroupCommandQueue()
-    local state = SCB.groupCommandState
-    if state then SCB_RestoreGroupCommandOriginalTarget(state) end
-    SCB.groupCommandState = nil
-    if SCB.groupCommandFrame then SCB.groupCommandFrame:Hide() end
-end
-
-local function SCB_GroupCommandAllAcksSeen(state)
+local function SCB_TargetedCommandAllAcksSeen(state)
     local kind
     if not state then return false end
     for kind in pairs(state.expectedAcks or {}) do
@@ -1123,9 +1157,9 @@ local function SCB_GroupCommandAllAcksSeen(state)
 end
 
 local function SCB_SelectCurrentGroupRecipient()
-    local state = SCB.groupCommandState
+    local state = SCB.targetedCommandState
     local name, member, currentName
-    if not state then return false end
+    if not state or state.mode ~= "group" then return false end
 
     while (state.index or 1) <= table.getn(state.bots or {}) do
         name = state.bots[state.index or 1]
@@ -1135,7 +1169,7 @@ local function SCB_SelectCurrentGroupRecipient()
             currentName = UnitName and UnitName("target") or nil
             if currentName ~= name then
                 if not TargetUnit then
-                    SCB_FinishGroupCommandQueue()
+                    SCB_FinishTargetedCommandSequence()
                     return false
                 end
                 TargetUnit(member.unit)
@@ -1158,104 +1192,126 @@ local function SCB_SelectCurrentGroupRecipient()
         end
     end
 
-    SCB_FinishGroupCommandQueue()
+    SCB_FinishTargetedCommandSequence()
     return false
 end
 
-local function SCB_AdvanceGroupCommandRecipient()
-    local state = SCB.groupCommandState
-    if not state then return end
+local function SCB_AdvanceGroupTargetedRecipient()
+    local state = SCB.targetedCommandState
+    if not state or state.mode ~= "group" then return end
     state.index = (state.index or 1) + 1
     state.currentName = nil
     state.ackSeen = {}
     state.ackFailed = nil
     if state.index > table.getn(state.bots or {}) then
-        SCB_FinishGroupCommandQueue()
+        SCB_FinishTargetedCommandSequence()
         return
     end
     SCB_SelectCurrentGroupRecipient()
 end
 
-local function SCB_SendCurrentGroupCommands()
-    local state = SCB.groupCommandState
+local function SCB_SendCurrentTargetedCommands()
+    local state = SCB.targetedCommandState
     local name, member, i
     if not state then return end
 
     name = state.currentName
-    member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
-    if not member or not member.isBot or not member.unit
-        or (member.currentGroup or member.subgroup or 1) ~= state.group then
-        SCB_AdvanceGroupCommandRecipient()
-        return
+    if state.mode == "group" then
+        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+        if not member or not member.isBot or not member.unit
+            or (member.currentGroup or member.subgroup or 1) ~= state.group then
+            SCB_AdvanceGroupTargetedRecipient()
+            return
+        end
+
+        -- Group owns its target while sequencing. A real target change gets the
+        -- normal 0.10-second settle before the next send.
+        if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
+            SCB_SelectCurrentGroupRecipient()
+            return
+        end
+    else
+        -- Single-target control never takes the target back from the player.
+        -- This check mainly matters if the shared rate budget delayed the send.
+        if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
+            SCB_FailSingleTargetCommand()
+            return
+        end
     end
 
-    -- If something else changed the client target, this is a real target swap:
-    -- re-select the intended bot and give only that swap the normal 0.10 settle.
-    if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
-        SCB_SelectCurrentGroupRecipient()
-        return
-    end
-
-    if not SCB_GroupCommandBudgetAllows(table.getn(state.commands or {})) then
+    if not SCB_TargetedCommandBudgetAllows(table.getn(state.commands or {})) then
         state.phase = "budget"
         state.phaseElapsed = 0
         return
     end
 
-    -- Each send is one acknowledgement attempt. Ctrl-Come remains a single
-    -- attempt containing back-to-back Move + Come and waits for both responses.
     state.ackSeen = {}
     state.ackFailed = nil
     state.phase = "await"
     state.phaseElapsed = 0
     for i = 1, table.getn(state.commands or {}) do
-        if SCB_SendCommand(state.commands[i], { groupFanout = true }) then
-            SCB_RecordGroupCommandSend()
+        if SCB_SendCommand(state.commands[i], { targetedSequence = true }) then
+            SCB_RecordTargetedCommandSend()
         end
     end
 end
 
-function SCB_GroupCommandHandleServerMessage(text)
-    local state = SCB.groupCommandState
+function SCB_TargetedCommandHandleServerMessage(text)
+    local state = SCB.targetedCommandState
     local actor, kind
     if not state or state.phase ~= "await" then return false end
 
-    actor, kind = SCB_ParseGroupCommandAck(text)
+    actor, kind = SCB_ParseTargetedCommandAck(text)
     if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
         return false
     end
 
-    -- Ignore duplicate routing of the same acknowledgement kind for this attempt.
+    -- One command attempt expects at most one reply of each kind. Ctrl-Come
+    -- therefore consumes both Move and Come before deciding whether the pair
+    -- succeeded or failed.
     if state.ackSeen[kind] then return true end
 
     state.ackSeen[kind] = true
-    if actor ~= state.currentName then
-        state.ackFailed = true
+    if actor ~= state.currentName then state.ackFailed = true end
+    if not SCB_TargetedCommandAllAcksSeen(state) then return true end
+
+    if not state.ackFailed then
+        if state.mode == "group" then
+            SCB_AdvanceGroupTargetedRecipient()
+        else
+            SCB_FinishTargetedCommandSequence()
+        end
+        return true
     end
 
-    if not SCB_GroupCommandAllAcksSeen(state) then return true end
+    if state.mode == "group" then
+        -- Group still owns the intended client target. A stale server selection
+        -- is corrected by immediately resending without another settle.
+        SCB_SendCurrentTargetedCommands()
+        return true
+    end
 
-    if state.ackFailed then
-        -- The client is already targeting the intended bot. By the time the
-        -- stale server response arrives, do not add another target swap/settle:
-        -- resend this same attempt immediately and let the next ack decide.
-        SCB_SendCurrentGroupCommands()
+    -- Single-target control is intentionally non-invasive: retry exactly once,
+    -- and only if the player still has the original intended bot selected.
+    if (state.retryCount or 0) < 1
+        and UnitName and UnitName("target") == state.currentName
+        and SCB_IsFriendlyBotTarget() then
+        state.retryCount = 1
+        SCB_SendCurrentTargetedCommands()
     else
-        -- No post-command hold: a confirmed recipient immediately advances to
-        -- the next target, whose actual target change starts its own 0.10 settle.
-        SCB_AdvanceGroupCommandRecipient()
+        SCB_FailSingleTargetCommand()
     end
     return true
 end
 
-local function SCB_EnsureGroupCommandFrame()
-    local frame = SCB.groupCommandFrame
+local function SCB_EnsureTargetedCommandFrame()
+    local frame = SCB.targetedCommandFrame
     if frame then return frame end
 
-    frame = CreateFrame("Frame", "SoloCraftBotsGroupCommandFrame", UIParent)
+    frame = CreateFrame("Frame", "SoloCraftBotsTargetedCommandFrame", UIParent)
     frame:Hide()
     frame:SetScript("OnUpdate", function()
-        local state = SCB.groupCommandState
+        local state = SCB.targetedCommandState
         local elapsed = arg1 or 0
         if not state then
             this:Hide()
@@ -1263,48 +1319,67 @@ local function SCB_EnsureGroupCommandFrame()
         end
 
         state.phaseElapsed = (state.phaseElapsed or 0) + elapsed
-
         if state.phase == "settle" then
-            if state.phaseElapsed < SCB_GROUP_TARGET_SETTLE then return end
+            if state.phaseElapsed < SCB_TARGETED_TARGET_SETTLE then return end
             state.phaseElapsed = 0
-            SCB_SendCurrentGroupCommands()
+            SCB_SendCurrentTargetedCommands()
         elseif state.phase == "budget" then
-            if state.phaseElapsed < SCB_GROUP_BUDGET_POLL then return end
+            if state.phaseElapsed < SCB_TARGETED_BUDGET_POLL then return end
             state.phaseElapsed = 0
-            SCB_SendCurrentGroupCommands()
+            SCB_SendCurrentTargetedCommands()
         end
     end)
-    SCB.groupCommandFrame = frame
+    SCB.targetedCommandFrame = frame
     return frame
 end
 
-function SCB_QueueGroupScopedCommand(commandKey, forceMove)
-    local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
-    local route = commandInfo and commandInfo.routes and commandInfo.routes.target or nil
-    local moveRoute = SCB.commands and SCB.commands.move and SCB.commands.move.routes.target or nil
-    local group, roster = SCB_GetTargetLiveGroup(true)
-    local bots, commands = {}, {}
-    local originalTargetName = UnitName and UnitName("target") or nil
-    local expectedAcks, expectedCount, requiredCommands
-    local i, frame
+function SCB_QueueSingleTargetCommand(commandKey, forceMove)
+    local commandInfo, commands, expectedAcks = SCB_BuildTargetedCommandAttempt(commandKey, forceMove)
+    local targetName = UnitName and UnitName("target") or nil
+    local frame
 
-    if SCB.groupCommandState or not route or not group or not originalTargetName then return false end
+    if SCB.targetedCommandState or not commandInfo or not targetName or not SCB_IsFriendlyBotTarget() then
+        return false
+    end
+    if not SCB_TargetedCommandBudgetAllows(table.getn(commands)) then return false end
+
+    SCB.targetedCommandState = {
+        mode = "single",
+        commands = commands,
+        expectedAcks = expectedAcks,
+        ackSeen = {},
+        currentName = targetName,
+        commandLabel = commandInfo.label,
+        retryCount = 0,
+        phase = "send",
+        phaseElapsed = 0,
+    }
+    frame = SCB_EnsureTargetedCommandFrame()
+
+    -- Human target selection happened before the click, so Single sends
+    -- immediately: there is intentionally no initial 0.10-second settle.
+    SCB_SendCurrentTargetedCommands()
+    if SCB.targetedCommandState then frame:Show() end
+    return true
+end
+
+function SCB_QueueGroupScopedCommand(commandKey, forceMove)
+    local commandInfo, commands, expectedAcks = SCB_BuildTargetedCommandAttempt(commandKey, forceMove)
+    local group, roster = SCB_GetTargetLiveGroup(true)
+    local bots = {}
+    local originalTargetName = UnitName and UnitName("target") or nil
+    local requiredCommands
+    local frame
+
+    if SCB.targetedCommandState or not commandInfo or not group or not originalTargetName then return false end
     bots = SCB_GetGroupScopedBots(group, roster)
     if table.getn(bots) == 0 then return false end
 
-    if forceMove and commandKey == "come" and moveRoute then
-        for i = 1, table.getn(moveRoute) do table.insert(commands, moveRoute[i]) end
-    end
-    for i = 1, table.getn(route) do table.insert(commands, route[i]) end
-    if table.getn(commands) == 0 then return false end
-
-    expectedAcks, expectedCount = SCB_BuildGroupExpectedAcks(commands)
-    if not expectedAcks or expectedCount ~= table.getn(commands) then return false end
-
     requiredCommands = table.getn(bots) * table.getn(commands)
-    if not SCB_GroupCommandBudgetAllows(requiredCommands) then return false end
+    if not SCB_TargetedCommandBudgetAllows(requiredCommands) then return false end
 
-    SCB.groupCommandState = {
+    SCB.targetedCommandState = {
+        mode = "group",
         group = group,
         bots = bots,
         commands = commands,
@@ -1314,13 +1389,13 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
         phase = "target",
         phaseElapsed = 0,
         originalTargetName = originalTargetName,
+        commandLabel = commandInfo.label,
     }
-    frame = SCB_EnsureGroupCommandFrame()
+    frame = SCB_EnsureTargetedCommandFrame()
 
-    -- Select the first recipient immediately. Every real target change gets one
-    -- 0.10-second settle; after that, acknowledgements drive all progress.
+    -- Group changes targets itself, so every actual target change gets 0.10s.
     SCB_SelectCurrentGroupRecipient()
-    if SCB.groupCommandState then frame:Show() end
+    if SCB.targetedCommandState then frame:Show() end
     return true
 end
 
@@ -1364,23 +1439,20 @@ function SCB_DirectCommandOnClick()
     local commandInfo = SCB.commands[this.scbCommandKey]
     local route
     local moveRoute
+    local forceMove
     local i
 
-    if not commandInfo then
-        return
-    end
+    if not commandInfo then return end
+    forceMove = this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
 
     if this.scbRecipientKey == "group" then
-        SCB_QueueGroupScopedCommand(
-            this.scbCommandKey,
-            this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
-        )
+        SCB_QueueGroupScopedCommand(this.scbCommandKey, forceMove)
         return
-    end
-
-    -- SoloCraft target commands fall back to ALL when no valid bot target exists.
-    -- Protect the ONE row from accidentally commanding the entire bot group.
-    if this.scbRecipientKey == "target" and not SCB_IsFriendlyBotTarget() then
+    elseif this.scbRecipientKey == "target" then
+        -- Target and Group share one acknowledgement sequencer. A click while
+        -- another targeted sequence is active is deliberately neither invoked
+        -- nor queued.
+        SCB_QueueSingleTargetCommand(this.scbCommandKey, forceMove)
         return
     end
 
@@ -1390,20 +1462,16 @@ function SCB_DirectCommandOnClick()
         return
     end
 
-    -- Ctrl-click Come replaces the old ForceMove button: issue Move first to
-    -- clear Stay, then immediately issue the matching Come command.
-    if this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown() then
+    -- Non-targeted controls remain live even while a Target/Group sequence is
+    -- active. This preserves emergency/global controls such as Pause All.
+    if forceMove then
         moveRoute = SCB.commands.move.routes[this.scbRecipientKey]
         if moveRoute then
-            for i = 1, table.getn(moveRoute) do
-                SCB_SendCommand(moveRoute[i])
-            end
+            for i = 1, table.getn(moveRoute) do SCB_SendCommand(moveRoute[i]) end
         end
     end
 
-    for i = 1, table.getn(route) do
-        SCB_SendCommand(route[i])
-    end
+    for i = 1, table.getn(route) do SCB_SendCommand(route[i]) end
 end
 
 -- -------------------------------------------------------------------------

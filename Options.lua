@@ -666,28 +666,28 @@ local function SCB_ShouldHideBotChatMessage(text)
     return false
 end
 
-local function SCB_TapGroupCommandServerMessage(frame, text)
+local function SCB_TapTargetedCommandServerMessage(frame, text)
     local now
-    if not text or not SCB.groupCommandState or not SCB_GroupCommandHandleServerMessage then return end
+    if not text or not SCB.targetedCommandState or not SCB_TargetedCommandHandleServerMessage then return end
 
-    -- One server line may be routed to several ChatFrames. Suppress those
-    -- cross-frame copies, but do not suppress a genuine repeated server reply
-    -- arriving on the same frame during an immediate retry.
+    -- One server line may be routed to several ChatFrames. Suppress only those
+    -- cross-frame copies; a genuine repeated reply during an immediate retry
+    -- must still reach the sequencer.
     now = GetTime and GetTime() or 0
-    if SCB.groupAckLastChatText == text
-        and SCB.groupAckLastChatFrame ~= frame
-        and SCB.groupAckLastChatAt
-        and (now - SCB.groupAckLastChatAt) < 0.05 then
+    if SCB.targetedAckLastChatText == text
+        and SCB.targetedAckLastChatFrame ~= frame
+        and SCB.targetedAckLastChatAt
+        and (now - SCB.targetedAckLastChatAt) < 0.05 then
         return
     end
-    SCB.groupAckLastChatText = text
-    SCB.groupAckLastChatFrame = frame
-    SCB.groupAckLastChatAt = now
-    SCB_GroupCommandHandleServerMessage(text)
+    SCB.targetedAckLastChatText = text
+    SCB.targetedAckLastChatFrame = frame
+    SCB.targetedAckLastChatAt = now
+    SCB_TargetedCommandHandleServerMessage(text)
 end
 
 local function SCB_FilteredChatFrameAddMessage(frame, text, r, g, b, id)
-    SCB_TapGroupCommandServerMessage(frame, text)
+    SCB_TapTargetedCommandServerMessage(frame, text)
     if SCB_ShouldHideBotChatMessage(text) then return end
     if frame and frame.scbBotChatOriginalAddMessage then
         return frame.scbBotChatOriginalAddMessage(frame, text, r, g, b, id)

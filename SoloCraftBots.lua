@@ -129,13 +129,9 @@ function SCB_SendPartyBotCommand(command, options)
 end
 
 function SCB_SendCommand(command, options)
-    -- Group fan-out owns a very short target-sensitive critical section. Normal
-    -- control sends are ignored until it finishes so they cannot interleave.
-    options = options or {}
-    if SCB.groupCommandState and not options.groupFanout then return false end
-
-    -- Control commands use guild chat. Spawn/add traffic deliberately overrides
-    -- the shared sender to SAY in SCB_SendSpawnCommand.
+    -- Target/Group exclusivity is owned by the targeted-command entry points,
+    -- not by the generic sender. Global/role/emergency controls must remain live
+    -- while a targeted acknowledgement sequence is in progress.
     return SCB_SendPartyBotCommand(command, { channel = "GUILD" })
 end
 
@@ -151,7 +147,6 @@ function SCB_QueueDelayedCommand(command, delay)
             local queued
             this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
             if this.scbElapsed < (this.scbDelay or 0) then return end
-            if SCB.groupCommandState then return end
             queued = this.scbCommand
             this.scbCommand = nil
             this.scbDelay = nil
@@ -1531,11 +1526,9 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
         SCB_QueueDelayedCommand("attackstart", 0.25)
         return
     elseif command == "stay" or command == "move" then
-        -- SoloCraft's target-only commands fall back dangerously when there is
-        -- no valid bot target. Match the UI's One-row safety exactly for macros.
-        if SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget() then
-            SCB_SendCommand(command)
-        end
+        -- Macro target controls use the same acknowledgement/retry rules as the
+        -- One row, including the one-active-targeted-sequence rule.
+        if SCB_QueueSingleTargetCommand then SCB_QueueSingleTargetCommand(command, false) end
         return
     elseif command == "location" then
         SCB_PrintLocationProbe()
