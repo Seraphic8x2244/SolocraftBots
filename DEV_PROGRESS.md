@@ -4,7 +4,7 @@
 - Branch: `dev`
 - Version: `0.8.65-dev`
 - Current runtime commit: `04807e4789646b6f3d87b228853ecd578c4107ad`
-- Latest status commit before this update: `c87421fde49bb5171344e3822c9e823d5d4c3018`
+- Latest status commit before this update: `7f7a8348b30ddf1200c0fbeebd40de1cf9991634`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
