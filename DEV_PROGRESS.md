@@ -2,9 +2,9 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.74-dev`
-- Current runtime commit: `cc0a3856ba22d76d0ce0769f22d33f7240e0e108`
-- Latest status commit before this update: `ea79f5e6da62fe37b4b9f8bbb7c09c79755cc212`
+- Version: `0.8.75-dev`
+- Current runtime commit: `2b19431de271906ae99d67b55e779488d8ca14d0`
+- Latest status commit before this update: `3cbd18d653e30bb083e3610df7405bf0d02d0c4e`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -61,6 +61,7 @@
 - 0.8.72-dev adds localized centre-screen blocked-start feedback: active Group -> `Already commanding a group, please wait...`; active Single -> `Already commanding a bot, please wait...`; friendly human/self target -> `Humans cannot be commanded...`; no target/other invalid target -> `Command... what?`. Busy-state feedback takes precedence over target validation.
 - 0.8.73-dev introduced friendly-player/bot gating for conditional All controls, but also changed the existing All Play/Pause server routes; that route change caused a regression and was not part of the requested UI gating.
 - 0.8.74-dev restores the pre-existing All Play/Pause routes and keeps only the requested gating: All Come/Play/Pause are greyed and blocked when a friendly player or bot is targeted, and remain available for no target, hostile targets and friendly NPC targets.
+- 0.8.75-dev changes Single controls to direct fire-and-forget sends: friendly-bot target remains the only availability guard; repeated clicks are never ack-locked and Single sends bypass the targeted 24 commands/sec budget. Group keeps acknowledgement sequencing and its pacing budget unchanged.
 - Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
@@ -105,13 +106,12 @@
   - Server advertises `comehealer` and `spreadon`, but the existing aliases `comeheal` and `spread` are confirmed working.
 
 ### Next Test
-- Runtime-test 0.8.73-dev All-row conditional controls:
-  - friendly player target -> Come/Play/Pause All grey and blocked;
-  - bot target -> Come/Play/Pause All grey and blocked;
-  - no target -> Come/Play/Pause All active and global;
-  - hostile target -> Come/Play/Pause All active and global;
-  - friendly NPC target -> Come/Play/Pause All active and global.
-- Reconfirm Move All and Stay All remain active regardless of target.
+- Runtime-test 0.8.75-dev Single controls in combat:
+  - no friendly bot target -> Single row remains unavailable/blocked;
+  - friendly bot target -> repeated Single clicks send immediately without an "Already commanding a bot" lock;
+  - rapid Single spam is not limited by the targeted 24/sec budget;
+  - Ctrl-Come Single still sends Move + Come on every click.
+- Reconfirm Group still waits for actor acknowledgements and retains its existing 24/sec pacing.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -137,4 +137,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.74-dev to confirm All Play works again with an enemy NPC targeted while All Come/Play/Pause remain blocked only for friendly player/bot targets. Reconfirm friendly NPC and no-target behavior.
+Runtime-test 0.8.75-dev Single controls under real combat spam. Confirm there is no Single acknowledgement lock or 24/sec throttle with a friendly bot targeted, while Group sequencing remains unchanged.
