@@ -34,14 +34,14 @@
   - once a replacement bot is bound, `coveredBy` is cleared and the slot becomes a normal expected bot slot.
 - Replace Missing therefore reuses the existing Active Roster replacement record and spawn path; no separate party refill mechanism or spawn scheduler was added.
 - Ctrl-click Group Come still sends Move + Come back-to-back in the same recipient send phase.
-- 0.8.66-dev replaces fixed post-command advancement with acknowledgement-driven Group fan-out:
-  - target recipient -> 0.10s settle -> send command(s) -> wait for matching hidden server response;
-  - matching actor acknowledgement -> advance immediately;
-  - wrong actor acknowledgement -> force a real target reset, retarget the intended bot, and retry;
-  - missing acknowledgement -> retry after 0.75s;
-  - retries are bounded to four per recipient and still obey the existing rolling 24 commands/sec budget;
-  - Ctrl-Come still sends Move + Come back-to-back, then requires both response kinds from the intended bot before advancing;
-  - original target is restored only after the final recipient is acknowledged or the bounded queue aborts.
+- 0.8.66-dev introduced acknowledgement-driven Group fan-out, but its speculative timeout/retarget retry policy is being corrected before runtime validation.
+- Agreed Group queue semantics:
+  - after changing target, wait exactly 0.10s before sending;
+  - after sending, wait only for the server acknowledgement(s), with no fixed post-command hold and no speculative acknowledgement timeout;
+  - all expected acknowledgements from the intended bot -> immediately target the next recipient, whose own 0.10s settle then begins;
+  - a wrong-bot acknowledgement completes that failed attempt; keep the intended client target and resend the same command(s) immediately, without another target swap or settle;
+  - Ctrl-Come remains one attempt containing back-to-back Move + Come and waits for both response kinds before either advancing or retrying the pair;
+  - the existing rolling 24 commands/sec budget remains the only pacing constraint beyond the 0.10s settle after actual target changes.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
   - Come: `Name* is coming to your position.`
@@ -98,4 +98,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.66-dev acknowledgement-driven Group control. The primary gate is repeated four-bot Group Come with normal chat filtering enabled, followed by one unfiltered diagnostic run to prove a stale previous-bot response causes an automatic retry rather than advancement. Then smoke Move/Stay/Pause/Play and Ctrl-Come acknowledgement coverage. Covered-slot multiplayer testing remains pending until a second human is available.
+Correct the Group acknowledgement state machine: remove the 0.75s missing-ack timeout, bounded retry count, forced target reset and retry settle. A wrong-bot acknowledgement should cause an immediate resend to the already-selected intended target; Ctrl-Come must consume both Move and Come responses for the attempt before deciding success/failure. Then runtime-test repeated four-bot Group Come and one unfiltered stale-target diagnostic pass.
