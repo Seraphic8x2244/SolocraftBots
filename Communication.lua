@@ -1063,6 +1063,11 @@ local function SCB_BuildTargetedExpectedAcks(commands)
     return expected, count
 end
 
+local function SCB_IsTargetedNonBotRejection(text)
+    return text == "Target is not a party bot"
+        or text == "Target is not a party bot."
+end
+
 local function SCB_ParseTargetedCommandAck(text)
     local _, _, actor
     if not text or text == "" then return nil, nil end
@@ -1247,6 +1252,7 @@ local function SCB_SendCurrentTargetedCommands()
 
     state.ackSeen = {}
     state.ackFailed = nil
+    state.responseCount = 0
     state.phase = "await"
     state.phaseElapsed = 0
     for i = 1, table.getn(state.commands or {}) do
@@ -1256,24 +1262,8 @@ local function SCB_SendCurrentTargetedCommands()
     end
 end
 
-function SCB_TargetedCommandHandleServerMessage(text)
-    local state = SCB.targetedCommandState
-    local actor, kind
-    if not state or state.phase ~= "await" then return false end
-
-    actor, kind = SCB_ParseTargetedCommandAck(text)
-    if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
-        return false
-    end
-
-    -- One command attempt expects at most one reply of each kind. Ctrl-Come
-    -- therefore consumes both Move and Come before deciding whether the pair
-    -- succeeded or failed.
-    if state.ackSeen[kind] then return true end
-
-    state.ackSeen[kind] = true
-    if actor ~= state.currentName then state.ackFailed = true end
-    if not SCB_TargetedCommandAllAcksSeen(state) then return true end
+local function SCB_ResolveTargetedAttempt(state)
+    if not state then return end
 
     if not state.ackFailed then
         if state.mode == "group" then
@@ -1281,14 +1271,15 @@ function SCB_TargetedCommandHandleServerMessage(text)
         else
             SCB_FinishTargetedCommandSequence()
         end
-        return true
+        return
     end
 
     if state.mode == "group" then
-        -- Group still owns the intended client target. A stale server selection
-        -- is corrected by immediately resending without another settle.
+        -- The client is already on the intended bot. A stale server selection,
+        -- including a stale human locator, is corrected by resending immediately
+        -- without another target change or settle.
         SCB_SendCurrentTargetedCommands()
-        return true
+        return
     end
 
     -- Single-target control is intentionally non-invasive: retry exactly once,
@@ -1301,6 +1292,42 @@ function SCB_TargetedCommandHandleServerMessage(text)
     else
         SCB_FailSingleTargetCommand()
     end
+end
+
+function SCB_TargetedCommandHandleServerMessage(text)
+    local state = SCB.targetedCommandState
+    local actor, kind
+    local expectedResponses
+    if not state or state.phase ~= "await" then return false end
+
+    expectedResponses = table.getn(state.commands or {})
+    if SCB_IsTargetedNonBotRejection(text) then
+        -- A human may be the Group locator/original target, but never a command
+        -- recipient. This generic server rejection means selection propagation
+        -- lagged behind the client retarget. Count the failed response as part of
+        -- this attempt so Ctrl-Come still consumes both replies before retrying.
+        state.ackFailed = true
+        state.responseCount = (state.responseCount or 0) + 1
+        if state.responseCount >= expectedResponses then SCB_ResolveTargetedAttempt(state) end
+        return true
+    end
+
+    actor, kind = SCB_ParseTargetedCommandAck(text)
+    if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
+        return false
+    end
+
+    -- One command attempt expects at most one reply of each kind. Ctrl-Come
+    -- therefore consumes both Move and Come before deciding whether the pair
+    -- succeeded or failed.
+    if state.ackSeen[kind] then return true end
+
+    state.ackSeen[kind] = true
+    state.responseCount = (state.responseCount or 0) + 1
+    if actor ~= state.currentName then state.ackFailed = true end
+    if state.responseCount < expectedResponses then return true end
+
+    SCB_ResolveTargetedAttempt(state)
     return true
 end
 
