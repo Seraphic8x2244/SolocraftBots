@@ -2,12 +2,13 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.65-dev`
-- Current runtime commit: `04807e4789646b6f3d87b228853ecd578c4107ad`
-- Latest status commit before this update: `7f7a8348b30ddf1200c0fbeebd40de1cf9991634`
+- Version: `0.8.66-dev`
+- Current runtime commit: `aa7f6f5aa3add58cc6b19461a9f69d7f23a92a9e`
+- Latest status commit before this update: `ef7976160ec38d15f3be958702f4069a543d9690`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
+- `aa7f6f5aa3add58cc6b19461a9f69d7f23a92a9e` — 0.8.66-dev: Group fan-out advances from actor-identifying server acknowledgements and retries stale/missing recipients.
 - `04807e4789646b6f3d87b228853ecd578c4107ad` — 0.8.65-dev: covered preset slots become Missing when their tracked human leaves and re-cover if that human returns before replacement.
 - `160620b37b697963999fd61712dbde322df6e1a2` — 0.8.64-dev: preserve human-covered preset bot intent as dormant Active Roster slots.
 - `541821f7e2cf6e27f7f51ce275f3b5befe038aad` — 0.8.63-dev: Group command startup refreshes the live roster once before resolving subgroup and recipients.
@@ -33,6 +34,15 @@
   - once a replacement bot is bound, `coveredBy` is cleared and the slot becomes a normal expected bot slot.
 - Replace Missing therefore reuses the existing Active Roster replacement record and spawn path; no separate party refill mechanism or spawn scheduler was added.
 - Ctrl-click Group Come still sends Move + Come back-to-back in the same recipient send phase.
+- 0.8.66-dev replaces fixed post-command advancement with acknowledgement-driven Group fan-out:
+  - target recipient -> 0.10s settle -> send command(s) -> wait for matching hidden server response;
+  - matching actor acknowledgement -> advance immediately;
+  - wrong actor acknowledgement -> force a real target reset, retarget the intended bot, and retry;
+  - missing acknowledgement -> retry after 0.75s;
+  - retries are bounded to four per recipient and still obey the existing rolling 24 commands/sec budget;
+  - Ctrl-Come still sends Move + Come back-to-back, then requires both response kinds from the intended bot before advancing;
+  - original target is restored only after the final recipient is acknowledged or the bounded queue aborts.
+- The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
   - Come: `Name* is coming to your position.`
   - Move: `Name* is now moving.` / `Name* is moving.`
@@ -40,7 +50,7 @@
   - Pause: `Name* ... paused for 30 seconds.`
   - Play/unpause: `Name* ... unpaused.`
   Actor-specific movement failures also identify the selected name. These messages are filtered only at ChatFrame display, so they can be consumed internally as acknowledgements while remaining hidden.
-- 0.8.61-0.8.65 changes remain implemented but not yet user-verified.
+- 0.8.61-0.8.66 changes remain implemented but not yet user-verified.
 
 ## Current Issues
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
@@ -63,11 +73,12 @@
 - Group retargeting was substantially improved, but the fourth/final recipient remained the distinctive failure point.
 
 ### Next Test
-- Exercise normal Group Come in both 4-bot and 5-bot subgroups; re-test immediately after a roster change.
-- If normal Group Come is reliable, test Ctrl-click Group Come without adding a Move -> Come delay.
-- Summon a full 5-player preset containing another human, have that human leave, and confirm Replace Missing appears for the underlying exact bot assignment.
-- Before clicking Replace Missing, have that human rejoin and confirm the slot becomes covered again and Replace Missing clears.
-- Repeat the leave case, run Replace Missing, and confirm the exact underlying class/role/extra is restored through the existing maintenance flow.
+- On 0.8.66-dev, keep bot movement/chat filtering enabled and repeatedly exercise Group Come with four bots. Confirm all four respond and the queue no longer silently advances when the server still has the previous bot selected.
+- Temporarily unfilter movement messages for one diagnostic pass: if a stale acknowledgement shows the previous bot acting twice, confirm SoloCraftBots retargets/retries and the intended bot then acts before the queue advances.
+- Smoke Group Move, Stay, Pause and Play/unpause so each acknowledgement pattern is confirmed in-game.
+- Test Ctrl-click Group Come: Move + Come should remain back-to-back per bot, and the queue should advance only after both acknowledgements identify that bot.
+- Re-test immediately after a roster change and confirm the original selected target is restored at completion.
+- Covered-slot multiplayer testing remains pending until a second human is available: leave -> Replace Missing, rejoin-before-replace -> re-cover, then actual replacement -> exact underlying class/role/extra.
 
 ## Planned / To-do
 - Expose human-over-bot drag/drop for 5-player presets: exact human identity -> exact logical slot -> suppress underlying bot intent while that human is present.
@@ -87,4 +98,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Prototype acknowledgement-driven Group fan-out using the existing actor-identifying bot response lines instead of further fixed-delay tuning. For each recipient, send the target command, wait for the matching server response, advance only when the acknowledged bot name equals the intended recipient, and retarget/retry on a stale-name acknowledgement with a bounded retry/timeout. First verify which CHAT_MSG_* event carries the already-filtered response lines so the queue can consume them before display suppression. Ctrl-Come preserves its proven back-to-back Move + Come send: settle -> send both -> wait for both acknowledgements from the intended bot -> advance, otherwise retarget and retry the pair. Covered-slot testing remains pending until a second human is available; do not block 5-player editor work on that unavailable test.
+Runtime-test 0.8.66-dev acknowledgement-driven Group control. The primary gate is repeated four-bot Group Come with normal chat filtering enabled, followed by one unfiltered diagnostic run to prove a stale previous-bot response causes an automatic retry rather than advancement. Then smoke Move/Stay/Pause/Play and Ctrl-Come acknowledgement coverage. Covered-slot multiplayer testing remains pending until a second human is available.
