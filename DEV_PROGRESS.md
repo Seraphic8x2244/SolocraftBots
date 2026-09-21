@@ -66,6 +66,7 @@
 - 0.8.61-0.8.68 changes remain implemented but not yet user-verified.
 
 ## Current Issues
+- 0.8.68-dev user test: Group control is highly responsive/reliable overall, but starting Group control from a human target can hang. The addon correctly uses the human only to resolve subgroup and builds a bots-only recipient list; however, after client retarget to the first bot, the server can still have the human selected and reply `Target is not a party bot`. That generic rejection is not actor-prefixed, so the current acknowledgement parser ignores it and the targeted sequence remains active until reload. Treat this server line as a failed targeted attempt and immediately resend to the already-selected intended bot; never add humans as targeted recipients.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
 - Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
@@ -82,8 +83,9 @@
 - Current 0.8.65-dev feedback: when the fourth bot appears to miss a Group movement command, unfiltered bot movement output shows the third bot receives that movement command a second time. The chat/control command is therefore reaching the server, but server-side target state is still bot 3 when the fourth recipient's command is processed.
 
 ### Last Test
-- Version/commit: `0.8.60-dev` / `483699234761f0e84871c4129b22523269ae8e38`
-- Group retargeting was substantially improved, but the fourth/final recipient remained the distinctive failure point.
+- Version/commit: `0.8.68-dev` / `b02d67e7a35104a8fed4c5543ad4a26c0c1fe10a`
+- User reports the acknowledgement-driven Group controls work extremely well and feel responsive.
+- Reproduced edge case: use a human target as the Group locator, then Group Stay; the server can answer `Target is not a party bot` for the first attempt and the sequence hangs because that rejection is not currently parsed.
 
 ### Next Test
 - Single success path: target one bot, click Move/Stay/Pause/Play/Come and confirm the command sends immediately with no artificial pre-click settle and completes on that bot's acknowledgement.
@@ -114,4 +116,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.68-dev in this order: Single success and one-retry failure behavior; targeted-sequence exclusivity; Pause All/global controls during an active Group sequence; then the server-side All-route audit with a bot selected. Do not add All-row greying unless runtime evidence shows a nominally global command becomes target-sensitive.
+Patch the targeted acknowledgement parser for the human-locator stale-target case: recognise `Target is not a party bot` as a failed attempt while a targeted sequence is awaiting acknowledgement. For Group, immediately resend the same attempt to the already client-selected intended bot with no extra target swap/settle; humans remain valid only for subgroup discovery/original-target restoration and never enter the recipient list. Then re-test Group Stay/Come starting from a human target.
