@@ -2,9 +2,9 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.71-dev`
-- Current runtime commit: `9d2b2d7be8081fa001fa7766e163bbe79a2dea1a`
-- Latest status commit before this update: `f0abee976406461ef12864a5f2517c7dbc07cf30`
+- Version: `0.8.72-dev`
+- Current runtime commit: `15586faeade26e4c0ec16698c25cb80239c45208`
+- Latest status commit before this update: `a3a0d275741f1959adeacdf5c8b143389e441c10`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -57,6 +57,7 @@
 - Macro `/scb move` and `/scb stay` now enter the same Single-target acknowledgement sequencer instead of bypassing it.
 - 0.8.69/0.8.70 human-target recovery was superseded after runtime testing proved bare `come`, `pause` and `unpause` can fall back to global behavior when the server target is a player or absent.
 - 0.8.71-dev adopts the simpler safety rule: Group controls only operate when a friendly bot is currently targeted. A human/player target cannot be used as a Group locator and no Group sequence starts from it. Group command-row availability follows the same bot-target requirement. The normal bot-to-bot acknowledgement/retry sequencer remains unchanged.
+- 0.8.72-dev adds localized centre-screen blocked-start feedback: active Group -> `Already commanding a group, please wait...`; active Single -> `Already commanding a bot, please wait...`; friendly human/self target -> `Humans cannot be commanded...`; no target/other invalid target -> `Command... what?`. Busy-state feedback takes precedence over target validation.
 - Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
@@ -110,6 +111,9 @@
 - Post-replacement human-return policy is resolved: the user must manually free a group slot before the human can return; no automatic addon action is required.
 
 ## Ideas / Backlog
+- Do a full pass over button artwork/colour states so available, disabled, active and selected states are visually consistent across the addon.
+- Audit every centre-screen error/warning message for wording, severity, consistency and whether it belongs in centre-screen UI versus chat.
+- Future visualiser concept: a gnomish LCD/pixel-display panel showing what the command machine is doing. The shared Single/Group pipeline should make queued state/status/icon output possible later; keep the visualiser as a consumer of pipeline state/events rather than coupling UI logic into the sequencer.
 - Consider whether Group row availability/UI refresh should also force a fresh snapshot, or whether fresh-on-command is sufficient after runtime testing.
 - After the logical-slot work is stable, simplify or retire overlapping legacy refill paths only with migration/runtime proof.
 
@@ -120,4 +124,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.71-dev: first verify Group commands cannot start from human/self/no target, then target a bot and smoke-test Group Come, Pause, Play and Ctrl-Come. The intended design is now simple: Group controls require a friendly bot target; no human-locator recovery or special non-bot retry state remains.
+Runtime-test 0.8.72-dev blocked-start feedback: while a Group sequence is active, attempt any Target/Group command and confirm `Already commanding a group, please wait...`; while a Single sequence is active, confirm `Already commanding a bot, please wait...`; with a human/self selected confirm `Humans cannot be commanded...`; with no target confirm `Command... what?`. Then continue the 0.8.71 bot-target Group smoke test.
