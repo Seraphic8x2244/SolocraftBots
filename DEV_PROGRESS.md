@@ -4,7 +4,7 @@
 - Branch: `dev`
 - Version: `0.8.72-dev`
 - Current runtime commit: `15586faeade26e4c0ec16698c25cb80239c45208`
-- Latest status commit before this update: `a3a0d275741f1959adeacdf5c8b143389e441c10`
+- Latest status commit before this update: `743f1bf89252f7275279025310a259443b6966ba`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -24,6 +24,7 @@
 - Runtime testing showed target-propagation padding materially improves Group reliability: 0.8.60-dev reached roughly 95% success on the final recipient in the tested 5-player case.
 - The preset execution tracker already stores every logical bot assignment plus exact tracked human `slotIndex`; the loss was in the tracker -> Active Roster handoff, not in preset storage.
 - Active Roster slot consumers consistently gate bot expectations on `slot.expected`.
+- 0.8.72-dev targeted-command smoke test is user-verified: bot-target Group controls, Ctrl-Come, busy-sequence messages, human/self blocking and no-target blocking all work as expected.
 
 ## Implemented / Awaiting Test
 - 0.8.62-dev introduced uniform Group timing:
@@ -86,20 +87,27 @@
 - Current 0.8.65-dev feedback: when the fourth bot appears to miss a Group movement command, unfiltered bot movement output shows the third bot receives that movement command a second time. The chat/control command is therefore reaching the server, but server-side target state is still bot 3 when the fourth recipient's command is processed.
 
 ### Last Test
-- Version/commit: `0.8.70-dev` / `66ef02a0fd8091ccd42c799bd7cec5e9f4ea8bc5`
-- Server command semantics verified by user:
-  - `move` with no target/player target -> `Target is not a party bot.`;
-  - `stay` with no target/player target -> `Target is not a party bot.`;
-  - `come` with no target/player target -> Come All;
-  - `pause` with no target/player target -> Pause All;
-  - `unpause` with no target/player target -> Unpause All.
-- User also reproduced Ctrl-Come from a player target as `Target is not a party bot` followed by `All party bots are coming to your position`, confirming the dangerous global fallback.
+- Version/commit: `0.8.72-dev` / `15586faeade26e4c0ec16698c25cb80239c45208`
+- User thoroughly tested targeted controls and reports all expected behavior working:
+  - Group commands require a bot target and do not run from human/self/no target;
+  - Group and Single busy-state centre messages are correct;
+  - human/self and no-target centre messages are correct;
+  - bot-target Group commands and Ctrl-Come complete normally without leaving the sequencer locked.
 
 ### Next Test
-- On 0.8.71-dev, target a human/self/no target and confirm Group controls are unavailable/do nothing and send no PartyBot command.
-- Target a bot and reconfirm Group Move/Stay/Come/Pause/Play remain responsive across the subgroup.
-- Reconfirm Ctrl-Come works from a bot target and does not leave the targeted sequencer stuck.
-- Continue remaining All-route audit only where useful; the unsafe bare-target fallback semantics above are now established.
+- Audit explicit All-route server semantics with different current-target states.
+- Addon-side routing is statically confirmed:
+  - Play All -> `unpause all`
+  - Move All -> `moveall`
+  - Come All -> `cometome`
+  - Stay All -> `stayall`
+  - Pause All -> `pause all`
+  - Object All -> `usegobject`
+  - AoE All -> `aoe`
+  - Attack Start All -> `attackstart`
+  - Attack Stop All -> `attackstop`
+  - Ctrl-Come All -> `moveall` then `cometome`
+- Runtime-test these with no target, a bot target and a human/self target where practical. Confirm explicit All routes remain global and are not narrowed by current target.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -124,4 +132,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.72-dev blocked-start feedback: while a Group sequence is active, attempt any Target/Group command and confirm `Already commanding a group, please wait...`; while a Single sequence is active, confirm `Already commanding a bot, please wait...`; with a human/self selected confirm `Humans cannot be commanded...`; with no target confirm `Command... what?`. Then continue the 0.8.71 bot-target Group smoke test.
+Runtime-test the explicit All command routes with no target, a bot target and a human/self target. Begin with Play, Move, Come, Stay and Pause because they parallel the targeted controls and have known bare-command target semantics. Confirm each explicit All route remains global regardless of current target; then check Object, AoE, Attack Start/Stop and Ctrl-Come All.
