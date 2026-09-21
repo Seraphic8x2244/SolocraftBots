@@ -971,15 +971,14 @@ end
 
 function SCB_GetTargetLiveGroup(refresh)
     local name, roster, member
-    if not UnitExists or not UnitExists("target") then return nil, nil end
-    if UnitIsFriend and UnitIsFriend("player", "target") ~= 1 then return nil, nil end
+    if not SCB_IsFriendlyBotTarget() then return nil, nil end
 
     name = UnitName and UnitName("target") or nil
     if not name then return nil, nil end
 
     roster = SCB_GetLiveRoster and SCB_GetLiveRoster(refresh and true or false) or nil
     member = roster and roster.byName and roster.byName[name] or nil
-    if not member then return nil, roster end
+    if not member or not member.isBot then return nil, roster end
     return member.currentGroup or member.subgroup or 1, roster
 end
 
@@ -1061,11 +1060,6 @@ local function SCB_BuildTargetedExpectedAcks(commands)
         end
     end
     return expected, count
-end
-
-local function SCB_IsTargetedNonBotRejection(text)
-    return text == "Target is not a party bot"
-        or text == "Target is not a party bot."
 end
 
 local function SCB_ParseTargetedCommandAck(text)
@@ -1274,9 +1268,8 @@ local function SCB_ResolveTargetedAttempt(state)
     end
 
     if state.mode == "group" then
-        -- The client is already on the intended bot. A stale server selection,
-        -- including a stale human locator, is corrected by resending immediately
-        -- without another target change or settle.
+        -- Group starts only from a bot target. If the server is one bot behind,
+        -- resend immediately to the already client-selected intended bot.
         SCB_SendCurrentTargetedCommands()
         return
     end
@@ -1298,26 +1291,14 @@ function SCB_TargetedCommandHandleServerMessage(text)
     local actor, kind
     if not state or state.phase ~= "await" then return false end
 
-    if SCB_IsTargetedNonBotRejection(text) then
-        -- A human/self target is valid only as the Group locator. If the server
-        -- is still one selection behind, it may reject a back-to-back Ctrl-Come
-        -- pair with only this generic line rather than one reply per command.
-        -- Therefore this line invalidates the whole current attempt immediately.
-        -- The client is already on the intended bot, so retry the same attempt
-        -- without another target change or settle.
-        state.ackFailed = true
-        SCB_ResolveTargetedAttempt(state)
-        return true
-    end
-
     actor, kind = SCB_ParseTargetedCommandAck(text)
     if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
         return false
     end
 
-    -- Normal attempts retain the proven completion rule: each expected ack kind
-    -- must be seen once. Ctrl-Come therefore still requires both Move and Come
-    -- when the server is producing actor-specific responses.
+    -- One command attempt expects at most one reply of each kind. Ctrl-Come
+    -- therefore consumes both Move and Come before deciding whether the pair
+    -- succeeded or failed.
     if state.ackSeen[kind] then return true end
 
     state.ackSeen[kind] = true
@@ -1395,7 +1376,10 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     local requiredCommands
     local frame
 
-    if SCB.targetedCommandState or not commandInfo or not group or not originalTargetName then return false end
+    if SCB.targetedCommandState or not commandInfo or not group or not originalTargetName
+        or not SCB_IsFriendlyBotTarget() then
+        return false
+    end
     bots = SCB_GetGroupScopedBots(group, roster)
     if table.getn(bots) == 0 then return false end
 
