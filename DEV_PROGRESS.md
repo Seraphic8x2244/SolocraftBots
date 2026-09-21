@@ -82,6 +82,16 @@
 - Covered-slot multiplayer testing remains pending until a second human is available: leave -> Replace Missing, rejoin-before-replace -> re-cover, then actual replacement -> exact underlying class/role/extra.
 
 ## Planned / To-do
+- Generalize the current Group acknowledgement state machine into one targeted-command sequencer shared by Target and Group controls:
+  - only one Target/Group acknowledgement sequence may be active at a time;
+  - a second Target or Group click while one is active must not start or queue another sequence;
+  - non-sequenced controls such as All must remain immediately usable while a Target/Group sequence is active and must not be blocked by that critical section;
+  - Target mode captures the intended bot and sends immediately with no initial settle;
+  - on wrong-bot acknowledgement, Target retries at most once and only if the player still targets the originally intended bot;
+  - if the player has changed target, or the single retry still fails, abort without changing the player's target, print an error, and play an error sound;
+  - Group retains the 0.10s settle after actual addon-driven target changes and continues until each intended recipient is confirmed;
+  - Target and Group share the same rolling 24 commands/sec accounting.
+- Audit every All-row command against actual server behaviour. The addon currently routes All through explicit all-style PartyBot commands, but verify that having a selected target cannot make any of them target-scoped. If any All command becomes target-sensitive while a target exists, disable/grey that All control while a target is selected rather than allowing ambiguous behaviour.
 - Expose human-over-bot drag/drop for 5-player presets: exact human identity -> exact logical slot -> suppress underlying bot intent while that human is present.
 - Stop deriving 5-player logical human ownership from Blizzard party-row order once explicit assignment exists.
 - Preserve deterministic bot logical order while treating human physical placement as observational.
@@ -99,4 +109,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.67-dev against the exact acknowledgement flow: target change -> 0.10s settle -> send -> wait; correct actor -> immediate next target; wrong actor -> immediate resend to the unchanged intended target. Confirm this first with four-bot Group Come and one unfiltered stale-target diagnostic pass, then smoke the remaining Group commands and Ctrl-Come.
+Runtime-test 0.8.67-dev Group acknowledgement flow first. After that, generalize the proven acknowledgement state machine into a shared Target/Group sequencer with one active sequence at a time, shared 24 commands/sec accounting, one non-invasive Target retry, and no blocking of All controls. Separately audit actual server semantics for every All command while a target is selected; grey any All control that proves target-sensitive.
