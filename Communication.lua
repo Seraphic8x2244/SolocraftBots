@@ -969,6 +969,36 @@ function SCB_IsFriendlyBotTarget()
     return true
 end
 
+local function SCB_ShowTargetedCommandError(key)
+    local text = SCB_L(key)
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage(text, 1.0, 0.1, 0.1, 1.0)
+    else
+        SCB_Print(text)
+    end
+end
+
+local function SCB_ShowTargetedBusyError()
+    local state = SCB.targetedCommandState
+    if state and state.mode == "group" then
+        SCB_ShowTargetedCommandError("TARGETED_BUSY_GROUP")
+    else
+        SCB_ShowTargetedCommandError("TARGETED_BUSY_SINGLE")
+    end
+end
+
+local function SCB_ShowInvalidTargetError()
+    if not UnitExists or not UnitExists("target") then
+        SCB_ShowTargetedCommandError("TARGETED_NO_TARGET")
+        return
+    end
+    if UnitIsFriend and UnitIsFriend("player", "target") == 1 then
+        SCB_ShowTargetedCommandError("TARGETED_HUMAN_TARGET")
+        return
+    end
+    SCB_ShowTargetedCommandError("TARGETED_NO_TARGET")
+end
+
 function SCB_GetTargetLiveGroup(refresh)
     local name, roster, member
     if not SCB_IsFriendlyBotTarget() then return nil, nil end
@@ -1343,7 +1373,13 @@ function SCB_QueueSingleTargetCommand(commandKey, forceMove)
     local targetName = UnitName and UnitName("target") or nil
     local frame
 
-    if SCB.targetedCommandState or not commandInfo or not targetName or not SCB_IsFriendlyBotTarget() then
+    if SCB.targetedCommandState then
+        SCB_ShowTargetedBusyError()
+        return false
+    end
+    if not commandInfo then return false end
+    if not targetName or not SCB_IsFriendlyBotTarget() then
+        SCB_ShowInvalidTargetError()
         return false
     end
     if not SCB_TargetedCommandBudgetAllows(table.getn(commands)) then return false end
@@ -1376,8 +1412,13 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     local requiredCommands
     local frame
 
-    if SCB.targetedCommandState or not commandInfo or not group or not originalTargetName
-        or not SCB_IsFriendlyBotTarget() then
+    if SCB.targetedCommandState then
+        SCB_ShowTargetedBusyError()
+        return false
+    end
+    if not commandInfo then return false end
+    if not group or not originalTargetName or not SCB_IsFriendlyBotTarget() then
+        SCB_ShowInvalidTargetError()
         return false
     end
     bots = SCB_GetGroupScopedBots(group, roster)
