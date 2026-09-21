@@ -2,9 +2,9 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.72-dev`
-- Current runtime commit: `15586faeade26e4c0ec16698c25cb80239c45208`
-- Latest status commit before this update: `301f604f8b9b66f9fc800e01d74f49539188d5b8`
+- Version: `0.8.73-dev`
+- Current runtime commit: `7ff97db2f30c39c64ffe3f0e6f82d40d70baeaea`
+- Latest status commit before this update: `2789d55198a30b6a23863a70cabcc5f1f9848494`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -59,6 +59,7 @@
 - 0.8.69/0.8.70 human-target recovery was superseded after runtime testing proved bare `come`, `pause` and `unpause` can fall back to global behavior when the server target is a player or absent.
 - 0.8.71-dev adopts the simpler safety rule: Group controls only operate when a friendly bot is currently targeted. A human/player target cannot be used as a Group locator and no Group sequence starts from it. Group command-row availability follows the same bot-target requirement. The normal bot-to-bot acknowledgement/retry sequencer remains unchanged.
 - 0.8.72-dev adds localized centre-screen blocked-start feedback: active Group -> `Already commanding a group, please wait...`; active Single -> `Already commanding a bot, please wait...`; friendly human/self target -> `Humans cannot be commanded...`; no target/other invalid target -> `Command... what?`. Busy-state feedback takes precedence over target validation.
+- 0.8.73-dev implements the verified conditional-All rule: addon All Play now sends bare `unpause`; addon All Pause sends bare `pause`; All Come remains `cometome`. Those three All-row controls are greyed and blocked only while a friendly player or bot is targeted. They remain available with no target, hostile targets and friendly NPC targets. Move All/Stay All remain always available.
 - Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
@@ -71,8 +72,6 @@
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
 ## Current Issues
-- Play All and Pause All currently route to invalid server commands (`unpause all` / `pause all`).
-- Come All currently routes to conditional `cometome`; with a valid bot selected the server narrows it to that bot, so the addon does not currently guarantee All semantics for Come.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
 - Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
@@ -105,20 +104,17 @@
   - Server advertises `comehealer` and `spreadon`, but the existing aliases `comeheal` and `spread` are confirmed working.
 
 ### Next Test
-- No further server-command audit is required for the currently exposed command matrix.
-- Resolve the addon-side All-route mismatches exposed by the audit before promotion:
-  - Play All currently sends invalid `unpause all`.
-  - Pause All currently sends invalid `pause all`.
-  - Come All currently sends conditional `cometome`, so with a valid bot selected it affects only that bot rather than all bots.
-- Preserve proven routes:
-  - Move All -> `moveall`
-  - Stay All -> `stayall`
-  - role routes remain target-agnostic
-  - AoE/Attack Start/Attack Stop remain enemy-target-dependent
-  - Object remains global-with-proximity semantics.
+- Runtime-test 0.8.73-dev All-row conditional controls:
+  - friendly player target -> Come/Play/Pause All grey and blocked;
+  - bot target -> Come/Play/Pause All grey and blocked;
+  - no target -> Come/Play/Pause All active and global;
+  - hostile target -> Come/Play/Pause All active and global;
+  - friendly NPC target -> Come/Play/Pause All active and global.
+- Reconfirm Move All and Stay All remain active regardless of target.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
+- Resummon a single group within an active preset without rebuilding the entire preset.
 - Audit every All-row command against actual server behaviour. The addon currently routes All through explicit all-style PartyBot commands, but verify that having a selected target cannot make any of them target-scoped. If any All command becomes target-sensitive while a target exists, disable/grey that All control while a target is selected rather than allowing ambiguous behaviour.
 - Expose human-over-bot drag/drop for 5-player presets: exact human identity -> exact logical slot -> suppress underlying bot intent while that human is present.
 - Stop deriving 5-player logical human ownership from Blizzard party-row order once explicit assignment exists.
@@ -140,4 +136,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Design the safest addon-side implementation for All Come, All Pause and All Play using the verified server semantics. Do not rely on invented `pause all` / `unpause all` commands. Do not assume clearing the client target immediately guarantees a no-target server state; previous stale-target testing proved client/server target propagation can lag.
+Runtime-test 0.8.73-dev target-state gating for the addon All Come, Play and Pause controls, with particular attention to friendly NPC targets remaining enabled. If verified, the command-matrix audit is complete and development can move on to the next preset/maintenance item.
