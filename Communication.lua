@@ -1009,9 +1009,6 @@ function SCB_RefreshGroupCommandRow()
 end
 
 local SCB_GROUP_TARGET_SETTLE = 0.10
-local SCB_GROUP_RETARGET_RESET = 0.10
-local SCB_GROUP_ACK_TIMEOUT = 0.75
-local SCB_GROUP_MAX_RETRIES = 4
 local SCB_GROUP_BUDGET_POLL = 0.05
 local SCB_GROUP_COMMAND_LIMIT = 24
 local SCB_GROUP_COMMAND_WINDOW = 1.0
@@ -1165,39 +1162,13 @@ local function SCB_SelectCurrentGroupRecipient()
     return false
 end
 
-local function SCB_RetryCurrentGroupRecipient()
-    local state = SCB.groupCommandState
-    if not state then return false end
-
-    state.retryCount = (state.retryCount or 0) + 1
-    if state.retryCount > SCB_GROUP_MAX_RETRIES then
-        SCB_FinishGroupCommandQueue()
-        return false
-    end
-
-    state.ackSeen = {}
-    state.phaseElapsed = 0
-
-    -- A stale acknowledgement proves the client and server disagree about the
-    -- selected bot. Force a real local target transition before selecting the
-    -- intended bot again; targeting the already-selected unit may emit nothing.
-    if ClearTarget and UnitExists and UnitExists("target") then
-        ClearTarget()
-    elseif TargetUnit then
-        TargetUnit("player")
-    end
-
-    state.phase = "retarget"
-    return true
-end
-
 local function SCB_AdvanceGroupCommandRecipient()
     local state = SCB.groupCommandState
     if not state then return end
     state.index = (state.index or 1) + 1
     state.currentName = nil
-    state.retryCount = 0
     state.ackSeen = {}
+    state.ackFailed = nil
     if state.index > table.getn(state.bots or {}) then
         SCB_FinishGroupCommandQueue()
         return
@@ -1218,8 +1189,10 @@ local function SCB_SendCurrentGroupCommands()
         return
     end
 
+    -- If something else changed the client target, this is a real target swap:
+    -- re-select the intended bot and give only that swap the normal 0.10 settle.
     if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
-        SCB_RetryCurrentGroupRecipient()
+        SCB_SelectCurrentGroupRecipient()
         return
     end
 
@@ -1229,9 +1202,10 @@ local function SCB_SendCurrentGroupCommands()
         return
     end
 
-    -- Arm acknowledgement tracking before sending. Ctrl-Come deliberately keeps
-    -- Move + Come back-to-back; both response kinds must identify this bot.
+    -- Each send is one acknowledgement attempt. Ctrl-Come remains a single
+    -- attempt containing back-to-back Move + Come and waits for both responses.
     state.ackSeen = {}
+    state.ackFailed = nil
     state.phase = "await"
     state.phaseElapsed = 0
     for i = 1, table.getn(state.commands or {}) do
@@ -1251,15 +1225,24 @@ function SCB_GroupCommandHandleServerMessage(text)
         return false
     end
 
-    if actor ~= state.currentName then
-        -- The server consumed an expected command kind using the wrong selected
-        -- bot. Do not advance: reset selection and retry this same recipient.
-        SCB_RetryCurrentGroupRecipient()
-        return true
-    end
+    -- Ignore duplicate routing of the same acknowledgement kind for this attempt.
+    if state.ackSeen[kind] then return true end
 
     state.ackSeen[kind] = true
-    if SCB_GroupCommandAllAcksSeen(state) then
+    if actor ~= state.currentName then
+        state.ackFailed = true
+    end
+
+    if not SCB_GroupCommandAllAcksSeen(state) then return true end
+
+    if state.ackFailed then
+        -- The client is already targeting the intended bot. By the time the
+        -- stale server response arrives, do not add another target swap/settle:
+        -- resend this same attempt immediately and let the next ack decide.
+        SCB_SendCurrentGroupCommands()
+    else
+        -- No post-command hold: a confirmed recipient immediately advances to
+        -- the next target, whose actual target change starts its own 0.10 settle.
         SCB_AdvanceGroupCommandRecipient()
     end
     return true
@@ -1285,18 +1268,10 @@ local function SCB_EnsureGroupCommandFrame()
             if state.phaseElapsed < SCB_GROUP_TARGET_SETTLE then return end
             state.phaseElapsed = 0
             SCB_SendCurrentGroupCommands()
-        elseif state.phase == "retarget" then
-            if state.phaseElapsed < SCB_GROUP_RETARGET_RESET then return end
-            state.phaseElapsed = 0
-            SCB_SelectCurrentGroupRecipient()
         elseif state.phase == "budget" then
             if state.phaseElapsed < SCB_GROUP_BUDGET_POLL then return end
             state.phaseElapsed = 0
             SCB_SendCurrentGroupCommands()
-        elseif state.phase == "await" then
-            if state.phaseElapsed < SCB_GROUP_ACK_TIMEOUT then return end
-            state.phaseElapsed = 0
-            SCB_RetryCurrentGroupRecipient()
         end
     end)
     SCB.groupCommandFrame = frame
@@ -1336,15 +1311,14 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
         expectedAcks = expectedAcks,
         ackSeen = {},
         index = 1,
-        retryCount = 0,
         phase = "target",
         phaseElapsed = 0,
         originalTargetName = originalTargetName,
     }
     frame = SCB_EnsureGroupCommandFrame()
 
-    -- Select the first recipient immediately. The fixed timer now covers only
-    -- target propagation; recipient advancement is driven by server responses.
+    -- Select the first recipient immediately. Every real target change gets one
+    -- 0.10-second settle; after that, acknowledgements drive all progress.
     SCB_SelectCurrentGroupRecipient()
     if SCB.groupCommandState then frame:Show() end
     return true
