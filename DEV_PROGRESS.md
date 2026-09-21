@@ -68,6 +68,7 @@
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
 ## Current Issues
+- Confirmed Ctrl-Come stale-target hazard: when Group Ctrl-Come starts from a human/player locator and server selection has not caught up to the first bot, the back-to-back pair can produce `Target is not a party bot` for Move followed by `All party bots are coming to your position` for Come. This proves targeted `come` can fall back to Come All when the server still considers a non-bot/player selected. Therefore Ctrl-Come must not blindly send Move + Come back-to-back before target correctness is confirmed.
 - New 0.8.69/0.8.70 test evidence suggests the remaining hang may be Ctrl-Come-specific rather than player-target-specific: Ctrl-Come can visibly act, then subsequent Single/Group commands do nothing until `/reload`, consistent with the targeted sequencer remaining in `await` for an acknowledgement kind that never arrives. Do not assume every back-to-back Move + Come attempt produces both actor-specific replies. Re-test Ctrl-Come on bot and human/self locators with movement messages visible before changing the completion rule further.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
@@ -115,4 +116,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Diagnose Ctrl-Come acknowledgement cardinality before further runtime changes. On 0.8.70-dev with movement messages visible, Ctrl-Come using (1) a bot target and (2) a human/self Group locator, then capture exactly which Move/Come/non-bot response lines appear before the sequencer becomes stuck or completes. The current evidence suggests the pair may emit fewer than two usable acknowledgements, so do not add another speculative timeout or response-count rule.
+Revise Ctrl-Come from a blind back-to-back pair into an acknowledgement-gated targeted sequence: send targeted Move first; only after Move confirms the intended bot may targeted Come be sent. If Move receives a stale/wrong/non-bot acknowledgement, retry Move against the already client-selected intended bot until confirmed, then send Come. Apply the same safety rule anywhere targeted Come could otherwise fall back to All on stale/non-bot server selection. Do not add timing guesses; gate Come on confirmed target correctness.
