@@ -666,7 +666,25 @@ local function SCB_ShouldHideBotChatMessage(text)
     return false
 end
 
+local function SCB_TapGroupCommandServerMessage(text)
+    local now
+    if not text or not SCB.groupCommandState or not SCB_GroupCommandHandleServerMessage then return end
+
+    -- The same chat line can be routed through more than one ChatFrame. Consume
+    -- it once for Group acknowledgements while preserving normal frame routing.
+    now = GetTime and GetTime() or 0
+    if SCB.groupAckLastChatText == text
+        and SCB.groupAckLastChatAt
+        and (now - SCB.groupAckLastChatAt) < 0.05 then
+        return
+    end
+    SCB.groupAckLastChatText = text
+    SCB.groupAckLastChatAt = now
+    SCB_GroupCommandHandleServerMessage(text)
+end
+
 local function SCB_FilteredChatFrameAddMessage(frame, text, r, g, b, id)
+    SCB_TapGroupCommandServerMessage(text)
     if SCB_ShouldHideBotChatMessage(text) then return end
     if frame and frame.scbBotChatOriginalAddMessage then
         return frame.scbBotChatOriginalAddMessage(frame, text, r, g, b, id)
