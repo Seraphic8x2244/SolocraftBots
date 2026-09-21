@@ -2,9 +2,9 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.70-dev`
-- Current runtime commit: `66ef02a0fd8091ccd42c799bd7cec5e9f4ea8bc5`
-- Latest status commit before this update: `f88f410a4fbc9a76029f5374b5eb724a6300da1b`
+- Version: `0.8.71-dev`
+- Current runtime commit: `9d2b2d7be8081fa001fa7766e163bbe79a2dea1a`
+- Latest status commit before this update: `f0abee976406461ef12864a5f2517c7dbc07cf30`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -55,7 +55,8 @@
   - Single and Group share one rolling 24 commands/sec history.
 - 0.8.68-dev removes the old broad `SCB_SendCommand` Group lock. All/role/standalone commands can send while a targeted sequence is active, and delayed `/scb attackstart` no longer waits for Group completion.
 - Macro `/scb move` and `/scb stay` now enter the same Single-target acknowledgement sequencer instead of bypassing it.
-- 0.8.69-dev recognises the server's generic `Target is not a party bot` response while a targeted attempt is awaiting acknowledgement. Humans remain valid only as Group locators/original targets; recipient snapshots stay bots-only. The rejection counts as a failed response for the current attempt, so Group immediately resends to the already client-selected intended bot once that attempt's expected responses are consumed. Ctrl-Come still consumes both responses before retrying the pair.
+- 0.8.69/0.8.70 human-target recovery was superseded after runtime testing proved bare `come`, `pause` and `unpause` can fall back to global behavior when the server target is a player or absent.
+- 0.8.71-dev adopts the simpler safety rule: Group controls only operate when a friendly bot is currently targeted. A human/player target cannot be used as a Group locator and no Group sequence starts from it. Group command-row availability follows the same bot-target requirement. The normal bot-to-bot acknowledgement/retry sequencer remains unchanged.
 - Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
@@ -68,8 +69,6 @@
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
 ## Current Issues
-- Confirmed Ctrl-Come stale-target hazard: when Group Ctrl-Come starts from a human/player locator and server selection has not caught up to the first bot, the back-to-back pair can produce `Target is not a party bot` for Move followed by `All party bots are coming to your position` for Come. This proves targeted `come` can fall back to Come All when the server still considers a non-bot/player selected. Therefore Ctrl-Come must not blindly send Move + Come back-to-back before target correctness is confirmed.
-- New 0.8.69/0.8.70 test evidence suggests the remaining hang may be Ctrl-Come-specific rather than player-target-specific: Ctrl-Come can visibly act, then subsequent Single/Group commands do nothing until `/reload`, consistent with the targeted sequencer remaining in `await` for an acknowledgement kind that never arrives. Do not assume every back-to-back Move + Come attempt produces both actor-specific replies. Re-test Ctrl-Come on bot and human/self locators with movement messages visible before changing the completion rule further.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
 - Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
@@ -86,15 +85,20 @@
 - Current 0.8.65-dev feedback: when the fourth bot appears to miss a Group movement command, unfiltered bot movement output shows the third bot receives that movement command a second time. The chat/control command is therefore reaching the server, but server-side target state is still bot 3 when the fourth recipient's command is processed.
 
 ### Last Test
-- Version/commit: `0.8.68-dev` / `b02d67e7a35104a8fed4c5543ad4a26c0c1fe10a`
-- User reports the acknowledgement-driven Group controls work extremely well and feel responsive.
-- Reproduced edge case: use a human target as the Group locator, then Group Stay; the server can answer `Target is not a party bot` for the first attempt and the sequence hangs because that rejection is not currently parsed.
+- Version/commit: `0.8.70-dev` / `66ef02a0fd8091ccd42c799bd7cec5e9f4ea8bc5`
+- Server command semantics verified by user:
+  - `move` with no target/player target -> `Target is not a party bot.`;
+  - `stay` with no target/player target -> `Target is not a party bot.`;
+  - `come` with no target/player target -> Come All;
+  - `pause` with no target/player target -> Pause All;
+  - `unpause` with no target/player target -> Unpause All.
+- User also reproduced Ctrl-Come from a player target as `Target is not a party bot` followed by `All party bots are coming to your position`, confirming the dangerous global fallback.
 
 ### Next Test
-- On 0.8.69-dev, target a human in a subgroup containing bots and use Group Stay/Come. Confirm the first stale `Target is not a party bot` response no longer hangs the sequencer and the intended first bot is retried/confirmed automatically.
-- Repeat with Ctrl-Come from a human locator to confirm both failed pair responses are consumed before retry and no leftover response contaminates the retry.
-- Reconfirm the previously successful four-bot Group responsiveness and Single one-retry behavior.
-- Continue the All-route server audit with and without a selected target.
+- On 0.8.71-dev, target a human/self/no target and confirm Group controls are unavailable/do nothing and send no PartyBot command.
+- Target a bot and reconfirm Group Move/Stay/Come/Pause/Play remain responsive across the subgroup.
+- Reconfirm Ctrl-Come works from a bot target and does not leave the targeted sequencer stuck.
+- Continue remaining All-route audit only where useful; the unsafe bare-target fallback semantics above are now established.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -116,4 +120,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Revise Ctrl-Come from a blind back-to-back pair into an acknowledgement-gated targeted sequence: send targeted Move first; only after Move confirms the intended bot may targeted Come be sent. If Move receives a stale/wrong/non-bot acknowledgement, retry Move against the already client-selected intended bot until confirmed, then send Come. Apply the same safety rule anywhere targeted Come could otherwise fall back to All on stale/non-bot server selection. Do not add timing guesses; gate Come on confirmed target correctness.
+Runtime-test 0.8.71-dev: first verify Group commands cannot start from human/self/no target, then target a bot and smoke-test Group Come, Pause, Play and Ctrl-Come. The intended design is now simple: Group controls require a friendly bot target; no human-locator recovery or special non-bot retry state remains.
