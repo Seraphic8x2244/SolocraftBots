@@ -4,7 +4,7 @@
 - Branch: `dev`
 - Version: `0.8.72-dev`
 - Current runtime commit: `15586faeade26e4c0ec16698c25cb80239c45208`
-- Latest status commit before this update: `743f1bf89252f7275279025310a259443b6966ba`
+- Latest status commit before this update: `301f604f8b9b66f9fc800e01d74f49539188d5b8`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -71,6 +71,8 @@
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
 ## Current Issues
+- Play All and Pause All currently route to invalid server commands (`unpause all` / `pause all`).
+- Come All currently routes to conditional `cometome`; with a valid bot selected the server narrows it to that bot, so the addon does not currently guarantee All semantics for Come.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
 - Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
@@ -88,26 +90,32 @@
 
 ### Last Test
 - Version/commit: `0.8.72-dev` / `15586faeade26e4c0ec16698c25cb80239c45208`
-- User thoroughly tested targeted controls and reports all expected behavior working:
-  - Group commands require a bot target and do not run from human/self/no target;
-  - Group and Single busy-state centre messages are correct;
-  - human/self and no-target centre messages are correct;
-  - bot-target Group commands and Ctrl-Come complete normally without leaving the sequencer locked.
+- Targeted-command behavior remains thoroughly user-verified and working as expected.
+- Server command semantics were directly verified from server chat responses:
+  - `moveall` works globally with a player target or no target.
+  - `stayall` works globally with a player target or no target.
+  - `cometome` (and undocumented `come`) is conditional: valid bot target -> that one bot; no valid bot target -> all bots.
+  - `pause all` is not a valid server command. The server command is bare `pause`, whose previously verified semantics are valid bot target -> one bot; no valid bot target -> all bots.
+  - `unpause all` is not a valid server command. The server command is bare `unpause`, whose previously verified semantics are valid bot target -> one bot; no valid bot target -> all bots.
+  - `aoe` requires a living enemy target.
+  - `usegobject` is global for bots in the group but requires both player and bots to be near the object; it cannot remotely operate an object.
+  - `attackstart` requires a living enemy target.
+  - `attackstop` requires a living enemy target.
+  - All tested role commands are target-agnostic.
+  - Server advertises `comehealer` and `spreadon`, but the existing aliases `comeheal` and `spread` are confirmed working.
 
 ### Next Test
-- Audit explicit All-route server semantics with different current-target states.
-- Addon-side routing is statically confirmed:
-  - Play All -> `unpause all`
+- No further server-command audit is required for the currently exposed command matrix.
+- Resolve the addon-side All-route mismatches exposed by the audit before promotion:
+  - Play All currently sends invalid `unpause all`.
+  - Pause All currently sends invalid `pause all`.
+  - Come All currently sends conditional `cometome`, so with a valid bot selected it affects only that bot rather than all bots.
+- Preserve proven routes:
   - Move All -> `moveall`
-  - Come All -> `cometome`
   - Stay All -> `stayall`
-  - Pause All -> `pause all`
-  - Object All -> `usegobject`
-  - AoE All -> `aoe`
-  - Attack Start All -> `attackstart`
-  - Attack Stop All -> `attackstop`
-  - Ctrl-Come All -> `moveall` then `cometome`
-- Runtime-test these with no target, a bot target and a human/self target where practical. Confirm explicit All routes remain global and are not narrowed by current target.
+  - role routes remain target-agnostic
+  - AoE/Attack Start/Attack Stop remain enemy-target-dependent
+  - Object remains global-with-proximity semantics.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -132,4 +140,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test the explicit All command routes with no target, a bot target and a human/self target. Begin with Play, Move, Come, Stay and Pause because they parallel the targeted controls and have known bare-command target semantics. Confirm each explicit All route remains global regardless of current target; then check Object, AoE, Attack Start/Stop and Ctrl-Come All.
+Design the safest addon-side implementation for All Come, All Pause and All Play using the verified server semantics. Do not rely on invented `pause all` / `unpause all` commands. Do not assume clearing the client target immediately guarantees a no-target server state; previous stale-target testing proved client/server target propagation can lag.
