@@ -2,9 +2,9 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.69-dev`
-- Current runtime commit: `25f3a915e17470346629bbdb7c3904f40114fef0`
-- Latest status commit before this update: `c1c16e6b5f6d111a0bf383f50d645f8c15fd9393`
+- Version: `0.8.70-dev`
+- Current runtime commit: `66ef02a0fd8091ccd42c799bd7cec5e9f4ea8bc5`
+- Latest status commit before this update: `f88f410a4fbc9a76029f5374b5eb724a6300da1b`
 - Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
 
 ## Recent Commits
@@ -68,6 +68,7 @@
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
 ## Current Issues
+- New 0.8.69/0.8.70 test evidence suggests the remaining hang may be Ctrl-Come-specific rather than player-target-specific: Ctrl-Come can visibly act, then subsequent Single/Group commands do nothing until `/reload`, consistent with the targeted sequencer remaining in `await` for an acknowledgement kind that never arrives. Do not assume every back-to-back Move + Come attempt produces both actor-specific replies. Re-test Ctrl-Come on bot and human/self locators with movement messages visible before changing the completion rule further.
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
 - Post-replacement human return needs no addon arbitration: once Replace Missing has filled the group, the returning human cannot rejoin until the user manually frees a slot. SoloCraftBots must not auto-kick or otherwise make that choice.
@@ -114,4 +115,4 @@
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.69-dev specifically from a human Group locator: Group Stay/Come first, then Ctrl-Come. Expected behavior is that `Target is not a party bot` is treated as a failed attempt and the same intended bot is retried without reload or addon-driven human targeting. If that passes, resume the remaining All-route audit and promotion decision.
+Diagnose Ctrl-Come acknowledgement cardinality before further runtime changes. On 0.8.70-dev with movement messages visible, Ctrl-Come using (1) a bot target and (2) a human/self Group locator, then capture exactly which Move/Come/non-bot response lines appear before the sequencer becomes stuck or completes. The current evidence suggests the pair may emit fewer than two usable acknowledgements, so do not add another speculative timeout or response-count rule.
