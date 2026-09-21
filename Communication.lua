@@ -1252,7 +1252,6 @@ local function SCB_SendCurrentTargetedCommands()
 
     state.ackSeen = {}
     state.ackFailed = nil
-    state.responseCount = 0
     state.phase = "await"
     state.phaseElapsed = 0
     for i = 1, table.getn(state.commands or {}) do
@@ -1297,18 +1296,17 @@ end
 function SCB_TargetedCommandHandleServerMessage(text)
     local state = SCB.targetedCommandState
     local actor, kind
-    local expectedResponses
     if not state or state.phase ~= "await" then return false end
 
-    expectedResponses = table.getn(state.commands or {})
     if SCB_IsTargetedNonBotRejection(text) then
-        -- A human may be the Group locator/original target, but never a command
-        -- recipient. This generic server rejection means selection propagation
-        -- lagged behind the client retarget. Count the failed response as part of
-        -- this attempt so Ctrl-Come still consumes both replies before retrying.
+        -- A human/self target is valid only as the Group locator. If the server
+        -- is still one selection behind, it may reject a back-to-back Ctrl-Come
+        -- pair with only this generic line rather than one reply per command.
+        -- Therefore this line invalidates the whole current attempt immediately.
+        -- The client is already on the intended bot, so retry the same attempt
+        -- without another target change or settle.
         state.ackFailed = true
-        state.responseCount = (state.responseCount or 0) + 1
-        if state.responseCount >= expectedResponses then SCB_ResolveTargetedAttempt(state) end
+        SCB_ResolveTargetedAttempt(state)
         return true
     end
 
@@ -1317,15 +1315,14 @@ function SCB_TargetedCommandHandleServerMessage(text)
         return false
     end
 
-    -- One command attempt expects at most one reply of each kind. Ctrl-Come
-    -- therefore consumes both Move and Come before deciding whether the pair
-    -- succeeded or failed.
+    -- Normal attempts retain the proven completion rule: each expected ack kind
+    -- must be seen once. Ctrl-Come therefore still requires both Move and Come
+    -- when the server is producing actor-specific responses.
     if state.ackSeen[kind] then return true end
 
     state.ackSeen[kind] = true
-    state.responseCount = (state.responseCount or 0) + 1
     if actor ~= state.currentName then state.ackFailed = true end
-    if state.responseCount < expectedResponses then return true end
+    if not SCB_TargetedCommandAllAcksSeen(state) then return true end
 
     SCB_ResolveTargetedAttempt(state)
     return true
