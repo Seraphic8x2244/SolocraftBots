@@ -1402,38 +1402,21 @@ local function SCB_EnsureTargetedCommandFrame()
 end
 
 function SCB_QueueSingleTargetCommand(commandKey, forceMove)
-    local commandInfo, commands, expectedAcks = SCB_BuildTargetedCommandAttempt(commandKey, forceMove)
-    local targetName = UnitName and UnitName("target") or nil
-    local frame
+    local commandInfo, commands = SCB_BuildTargetedCommandAttempt(commandKey, forceMove)
+    local i
 
-    if SCB.targetedCommandState then
-        SCB_ShowTargetedBusyError()
-        return false
-    end
     if not commandInfo then return false end
-    if not targetName or not SCB_IsFriendlyBotTarget() then
+    if not SCB_IsFriendlyBotTarget() then
         SCB_ShowInvalidTargetError()
         return false
     end
-    if not SCB_TargetedCommandBudgetAllows(table.getn(commands)) then return false end
 
-    SCB.targetedCommandState = {
-        mode = "single",
-        commands = commands,
-        expectedAcks = expectedAcks,
-        ackSeen = {},
-        currentName = targetName,
-        commandLabel = commandInfo.label,
-        retryCount = 0,
-        phase = "send",
-        phaseElapsed = 0,
-    }
-    frame = SCB_EnsureTargetedCommandFrame()
-
-    -- Human target selection happened before the click, so Single sends
-    -- immediately: there is intentionally no initial 0.10-second settle.
-    SCB_SendCurrentTargetedCommands()
-    if SCB.targetedCommandState then frame:Show() end
+    -- Single is a direct combat control. Once the player has selected a bot,
+    -- every click is intentional: do not create acknowledgement state, block
+    -- repeated clicks, or apply the Group sequencer's 24/sec pacing budget.
+    for i = 1, table.getn(commands or {}) do
+        SCB_SendCommand(commands[i])
+    end
     return true
 end
 
@@ -1538,9 +1521,8 @@ function SCB_DirectCommandOnClick()
         SCB_QueueGroupScopedCommand(this.scbCommandKey, forceMove)
         return
     elseif this.scbRecipientKey == "target" then
-        -- Target and Group share one acknowledgement sequencer. A click while
-        -- another targeted sequence is active is deliberately neither invoked
-        -- nor queued.
+        -- Single is intentionally direct/spammable once a friendly bot is
+        -- targeted. Group alone owns acknowledgement sequencing.
         SCB_QueueSingleTargetCommand(this.scbCommandKey, forceMove)
         return
     end
