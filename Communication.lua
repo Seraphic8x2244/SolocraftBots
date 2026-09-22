@@ -840,11 +840,24 @@ SCB.commandOrder = {
     "pull", "spread", "hug", "object", "aoe", "attackstart", "attackstop",
 }
 
+SCB.commandTargetSemantics = {
+    agnostic = "target-agnostic",
+    friendlyBot = "friendly-bot-recipient",
+    livingEnemy = "living-enemy-context",
+    conditional = "conditional-friendly-player-or-bot",
+}
+
 SCB.commands = {
     play = {
         label = SCB_L("COMMAND_PLAY"),
         icon = "unpause.tga",
         highlightIcon = "unpause_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            all = SCB.commandTargetSemantics.conditional,
+            group = SCB.commandTargetSemantics.friendlyBot,
+            target = SCB.commandTargetSemantics.friendlyBot,
+        },
         routes = {
             all = { "unpause all" },
             target = { "unpause" },
@@ -854,6 +867,11 @@ SCB.commands = {
         label = SCB_L("COMMAND_MOVE"),
         icon = "move.tga",
         highlightIcon = "move_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            group = SCB.commandTargetSemantics.friendlyBot,
+            target = SCB.commandTargetSemantics.friendlyBot,
+        },
         routes = {
             all = { "moveall" },
             target = { "move" },
@@ -870,6 +888,12 @@ SCB.commands = {
         label = SCB_L("COMMAND_COME"),
         icon = "come.tga",
         highlightIcon = "come_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            all = SCB.commandTargetSemantics.conditional,
+            group = SCB.commandTargetSemantics.friendlyBot,
+            target = SCB.commandTargetSemantics.friendlyBot,
+        },
         routes = {
             all = { "cometome" },
             target = { "come" },
@@ -886,6 +910,11 @@ SCB.commands = {
         label = SCB_L("COMMAND_STAY"),
         icon = "stay.tga",
         highlightIcon = "stay_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            group = SCB.commandTargetSemantics.friendlyBot,
+            target = SCB.commandTargetSemantics.friendlyBot,
+        },
         routes = {
             all = { "stayall" },
             target = { "stay" },
@@ -899,6 +928,12 @@ SCB.commands = {
         label = SCB_L("COMMAND_PAUSE"),
         icon = "pause.tga",
         highlightIcon = "pause_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            all = SCB.commandTargetSemantics.conditional,
+            group = SCB.commandTargetSemantics.friendlyBot,
+            target = SCB.commandTargetSemantics.friendlyBot,
+        },
         routes = {
             all = { "pause all" },
             target = { "pause" },
@@ -908,48 +943,56 @@ SCB.commands = {
         label = SCB_L("COMMAND_PULL"),
         icon = "pull.tga",
         highlightIcon = "pull_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
         routes = { tank = { "pull" } },
     },
     spread = {
         label = SCB_L("COMMAND_SPREAD"),
         icon = "spread.tga",
         highlightIcon = "spread_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
         routes = { ranged = { "spread" } },
     },
     hug = {
         label = SCB_L("COMMAND_HUG"),
         icon = "unspread.tga",
         highlightIcon = "unspread_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
         routes = { ranged = { "spreadoff" } },
     },
     spreadtoggle = {
         label = SCB_L("COMMAND_SPREAD"),
         icon = "spread.tga",
         highlightIcon = "spread_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
         routes = { ranged = { "spread" } },
     },
     object = {
         label = SCB_L("COMMAND_OBJECT"),
         icon = "object.tga",
         highlightIcon = "object_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
         routes = { all = { "usegobject" } },
     },
     aoe = {
         label = SCB_L("COMMAND_AOE"),
         icon = "aoe.tga",
         highlightIcon = "aoe_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.livingEnemy,
         routes = { all = { "aoe" } },
     },
     attackstart = {
         label = SCB_L("COMMAND_ATTACK_START"),
         icon = "attackstart.tga",
         highlightIcon = "attackstart_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.livingEnemy,
         routes = { all = { "attackstart" } },
     },
     attackstop = {
         label = SCB_L("COMMAND_ATTACK_STOP"),
         icon = "attackstop.tga",
         highlightIcon = "attackstop_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.livingEnemy,
         routes = { all = { "attackstop" } },
     },
 }
@@ -977,29 +1020,17 @@ local function SCB_IsFriendlyPlayerOrBotTarget()
     return false
 end
 
-local function SCB_IsConditionalAllCommand(commandKey)
-    return commandKey == "come" or commandKey == "pause" or commandKey == "play"
-end
-
-function SCB_RefreshConditionalAllButtons()
-    local layout = SCB.commandLayout
-    local row = layout and layout.rows and layout.rows[1] or nil
-    local blocked = SCB_IsFriendlyPlayerOrBotTarget()
-    local i, button
-
-    if not row then return end
-
-    button = row.recipientButton
-    if button and button.scbCommandKey == "come" then
-        button:SetAlpha(blocked and 0.5 or 1)
+local function SCB_IsLivingEnemyTarget()
+    if not UnitExists or not UnitExists("target") then return false end
+    if UnitCanAttack then
+        if UnitCanAttack("player", "target") ~= 1 then return false end
+    elseif UnitIsFriend and UnitIsFriend("player", "target") == 1 then
+        return false
     end
-
-    for i = 1, table.getn(row.commandButtons or {}) do
-        button = row.commandButtons[i]
-        if button and SCB_IsConditionalAllCommand(button.scbCommandKey) then
-            button:SetAlpha(blocked and 0.5 or 1)
-        end
-    end
+    if UnitIsDeadOrGhost and UnitIsDeadOrGhost("target") then return false end
+    if UnitIsDead and UnitIsDead("target") then return false end
+    if UnitHealth and UnitHealth("target") <= 0 then return false end
+    return true
 end
 
 local function SCB_ShowTargetedCommandError(key)
@@ -1058,16 +1089,46 @@ local function SCB_GetGroupScopedBots(group, roster)
     return bots
 end
 
-function SCB_RefreshGroupCommandRow()
-    local group, roster = SCB_GetTargetLiveGroup()
-    local available = false
-    local alpha, i, button
-    if group and table.getn(SCB_GetGroupScopedBots(group, roster)) > 0 then available = true end
-    alpha = available and 1 or 0.5
-    for i = 1, table.getn(SCB.groupCommandButtons or {}) do
-        button = SCB.groupCommandButtons[i]
-        if button then button:SetAlpha(alpha) end
+local function SCB_GetCommandRoute(commandKey, scope)
+    local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
+    local routeScope = scope
+    if not commandInfo then return nil, nil end
+    if scope == "group" then routeScope = "target" end
+    return commandInfo, commandInfo.routes and commandInfo.routes[routeScope] or nil
+end
+
+local function SCB_GetCommandTargetSemantic(commandKey, scope)
+    local commandInfo = SCB.commands and SCB.commands[commandKey] or nil
+    if not commandInfo then return nil end
+    if commandInfo.targetSemanticByScope and commandInfo.targetSemanticByScope[scope] then
+        return commandInfo.targetSemanticByScope[scope]
     end
+    return commandInfo.targetSemantic or SCB.commandTargetSemantics.agnostic
+end
+
+local function SCB_IsCommandTargetContextValid(commandKey, scope)
+    local semantic = SCB_GetCommandTargetSemantic(commandKey, scope)
+    if semantic == SCB.commandTargetSemantics.friendlyBot then
+        return SCB_IsFriendlyBotTarget()
+    elseif semantic == SCB.commandTargetSemantics.livingEnemy then
+        return SCB_IsLivingEnemyTarget()
+    elseif semantic == SCB.commandTargetSemantics.conditional then
+        return not SCB_IsFriendlyPlayerOrBotTarget()
+    end
+    return semantic == SCB.commandTargetSemantics.agnostic
+end
+
+function SCB_IsCommandRequestAvailable(commandKey, scope)
+    local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
+    local group, roster
+    if not commandInfo or not route or not SCB_IsCommandTargetContextValid(commandKey, scope) then
+        return false
+    end
+    if scope == "group" then
+        group, roster = SCB_GetTargetLiveGroup()
+        return group ~= nil and table.getn(SCB_GetGroupScopedBots(group, roster)) > 0
+    end
+    return true
 end
 
 local SCB_TARGETED_TARGET_SETTLE = 0.10
@@ -1464,16 +1525,76 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     return true
 end
 
-function SCB_RefreshTargetCommandRow()
-    local available = SCB_IsFriendlyBotTarget()
-    local alpha = available and 1 or 0.5
-    local i, button
-    for i = 1, table.getn(SCB.targetCommandButtons or {}) do
-        button = SCB.targetCommandButtons[i]
-        if button then button:SetAlpha(alpha) end
+function SCB_RequestCommand(commandKey, scope, modifiers)
+    local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
+    local moveInfo, moveRoute
+    local forceMove = modifiers and modifiers.forceMove == true
+    local sent = true
+    local i
+
+    if not commandInfo or not route then return false end
+
+    -- Preserve Group's established busy-message precedence. An active Group
+    -- sequence owns this request before current-target validation is considered.
+    if scope == "group" and SCB.targetedCommandState then
+        return SCB_QueueGroupScopedCommand(commandKey, forceMove)
     end
-    SCB_RefreshGroupCommandRow()
-    SCB_RefreshConditionalAllButtons()
+
+    if not SCB_IsCommandTargetContextValid(commandKey, scope) then
+        if scope == "target" or scope == "group" then
+            SCB_ShowInvalidTargetError()
+        end
+        return false
+    end
+
+    if scope == "group" then
+        return SCB_QueueGroupScopedCommand(commandKey, forceMove)
+    elseif scope == "target" then
+        return SCB_QueueSingleTargetCommand(commandKey, forceMove)
+    end
+
+    if forceMove and commandKey == "come" then
+        moveInfo, moveRoute = SCB_GetCommandRoute("move", scope)
+        if moveInfo and moveRoute then
+            for i = 1, table.getn(moveRoute) do
+                if not SCB_SendCommand(moveRoute[i]) then sent = false end
+            end
+        end
+    end
+
+    for i = 1, table.getn(route) do
+        if not SCB_SendCommand(route[i]) then sent = false end
+    end
+    return sent
+end
+
+local function SCB_SetCommandButtonAvailability(button)
+    if not button or not button.scbCommandKey or not button.scbRecipientKey then return end
+    button:SetAlpha(SCB_IsCommandRequestAvailable(button.scbCommandKey, button.scbRecipientKey) and 1 or 0.5)
+end
+
+function SCB_RefreshCommandAvailability()
+    local layout = SCB.commandLayout
+    local i, r, row
+    if not layout then return end
+
+    for r = 1, table.getn(layout.rows or {}) do
+        row = layout.rows[r]
+        SCB_SetCommandButtonAvailability(row and row.recipientButton)
+        for i = 1, table.getn(row and row.commandButtons or {}) do
+            SCB_SetCommandButtonAvailability(row.commandButtons[i])
+        end
+    end
+    for i = 1, table.getn(layout.pairedComeButtons or {}) do
+        SCB_SetCommandButtonAvailability(layout.pairedComeButtons[i] and layout.pairedComeButtons[i].button)
+    end
+    for i = 1, table.getn(layout.standaloneButtons or {}) do
+        SCB_SetCommandButtonAvailability(layout.standaloneButtons[i])
+    end
+end
+
+function SCB_RefreshTargetCommandRow()
+    SCB_RefreshCommandAvailability()
 end
 
 function SCB_RefreshSpreadToggle(button)
@@ -1489,60 +1610,16 @@ function SCB_RefreshSpreadToggle(button)
 end
 
 function SCB_SpreadToggleOnClick()
-    if SCB.rangedSpreadOn then
-        if SCB_SendCommand("spreadoff") then
-            SCB.rangedSpreadOn = false
-        end
-    else
-        if SCB_SendCommand("spread") then
-            SCB.rangedSpreadOn = true
-        end
+    local commandKey = SCB.rangedSpreadOn and "hug" or "spread"
+    if SCB_RequestCommand(commandKey, "ranged") then
+        SCB.rangedSpreadOn = not SCB.rangedSpreadOn
     end
     SCB_RefreshSpreadToggle(this)
 end
 
 function SCB_DirectCommandOnClick()
-    local commandInfo = SCB.commands[this.scbCommandKey]
-    local route
-    local moveRoute
-    local forceMove
-    local i
-
-    if not commandInfo then return end
-    forceMove = this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
-
-    if this.scbRecipientKey == "all"
-        and SCB_IsConditionalAllCommand(this.scbCommandKey)
-        and SCB_IsFriendlyPlayerOrBotTarget() then
-        return
-    end
-
-    if this.scbRecipientKey == "group" then
-        SCB_QueueGroupScopedCommand(this.scbCommandKey, forceMove)
-        return
-    elseif this.scbRecipientKey == "target" then
-        -- Single is intentionally direct/spammable once a friendly bot is
-        -- targeted. Group alone owns acknowledgement sequencing.
-        SCB_QueueSingleTargetCommand(this.scbCommandKey, forceMove)
-        return
-    end
-
-    route = commandInfo.routes[this.scbRecipientKey]
-    if not route then
-        SCB_Print(string.format(SCB_L("COMMAND_NOT_AVAILABLE"), commandInfo.label, this.scbRecipientLabel))
-        return
-    end
-
-    -- Non-targeted controls remain live even while a Target/Group sequence is
-    -- active. This preserves emergency/global controls such as Pause All.
-    if forceMove then
-        moveRoute = SCB.commands.move.routes[this.scbRecipientKey]
-        if moveRoute then
-            for i = 1, table.getn(moveRoute) do SCB_SendCommand(moveRoute[i]) end
-        end
-    end
-
-    for i = 1, table.getn(route) do SCB_SendCommand(route[i]) end
+    local forceMove = this.scbCommandKey == "come" and IsControlKeyDown and IsControlKeyDown()
+    SCB_RequestCommand(this.scbCommandKey, this.scbRecipientKey, { forceMove = forceMove })
 end
 
 -- -------------------------------------------------------------------------

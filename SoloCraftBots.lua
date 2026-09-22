@@ -135,24 +135,30 @@ function SCB_SendCommand(command, options)
     return SCB_SendPartyBotCommand(command, { channel = "GUILD" })
 end
 
-function SCB_QueueDelayedCommand(command, delay)
+function SCB_QueueDelayedCommand(commandKey, delay, scope, modifiers)
     local frame
-    if not command or command == "" then return end
+    if not commandKey or commandKey == "" then return end
 
     frame = SCB.delayedCommandFrame
     if not frame then
         frame = CreateFrame("Frame", "SoloCraftBotsDelayedCommandFrame", UIParent)
         frame:Hide()
         frame:SetScript("OnUpdate", function()
-            local queued
+            local queuedKey, queuedScope, queuedModifiers
             this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
             if this.scbElapsed < (this.scbDelay or 0) then return end
-            queued = this.scbCommand
-            this.scbCommand = nil
+            queuedKey = this.scbCommandKey
+            queuedScope = this.scbCommandScope or "all"
+            queuedModifiers = this.scbCommandModifiers
+            this.scbCommandKey = nil
+            this.scbCommandScope = nil
+            this.scbCommandModifiers = nil
             this.scbDelay = nil
             this.scbElapsed = 0
             this:Hide()
-            if queued then SCB_SendCommand(queued) end
+            if queuedKey and SCB_RequestCommand then
+                SCB_RequestCommand(queuedKey, queuedScope, queuedModifiers)
+            end
         end)
         SCB.delayedCommandFrame = frame
     end
@@ -160,8 +166,10 @@ function SCB_QueueDelayedCommand(command, delay)
     -- Do not restart an already-pending command when a macro is spammed; the
     -- first press still fires after its original delay instead of being pushed
     -- back indefinitely.
-    if frame.scbCommand then return end
-    frame.scbCommand = command
+    if frame.scbCommandKey then return end
+    frame.scbCommandKey = commandKey
+    frame.scbCommandScope = scope or "all"
+    frame.scbCommandModifiers = modifiers
     frame.scbDelay = delay or 0.25
     frame.scbElapsed = 0
     frame:Show()
@@ -1523,12 +1531,12 @@ SLASH_SOLOCRAFTBOTS2 = "/solocraftbots"
 SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     local command = string.lower(string.gsub(msg or "", "^%s*(.-)%s*$", "%1"))
     if command == "attackstart" then
-        SCB_QueueDelayedCommand("attackstart", 0.25)
+        SCB_QueueDelayedCommand("attackstart", 0.25, "all")
         return
     elseif command == "stay" or command == "move" then
-        -- Macro target controls use the same acknowledgement/retry rules as the
-        -- One row, including the one-active-targeted-sequence rule.
-        if SCB_QueueSingleTargetCommand then SCB_QueueSingleTargetCommand(command, false) end
+        -- Macro target controls enter through the same command-request front
+        -- door as the One row, preserving Single's direct/spammable policy.
+        if SCB_RequestCommand then SCB_RequestCommand(command, "target") end
         return
     elseif command == "location" then
         SCB_PrintLocationProbe()
@@ -1569,6 +1577,7 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+eventFrame:RegisterEvent("UNIT_HEALTH")
 eventFrame:RegisterEvent("ZONE_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -1584,6 +1593,12 @@ eventFrame:SetScript("OnEvent", function()
     if event == "PLAYER_TARGET_CHANGED" then
         if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
             SCB_RefreshTargetCommandRow()
+        end
+        return
+    end
+    if event == "UNIT_HEALTH" and arg1 == "target" then
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+            SCB_RefreshCommandAvailability()
         end
         return
     end
@@ -1658,8 +1673,8 @@ eventFrame:SetScript("OnEvent", function()
             SCB_RefreshPresetPlayers()
         end
         SCB_TryFinalizeRaidRoleTracking(observed)
-        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshGroupCommandRow then
-            SCB_RefreshGroupCommandRow()
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+            SCB_RefreshCommandAvailability()
         end
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
