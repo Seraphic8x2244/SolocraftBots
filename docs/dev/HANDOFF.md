@@ -1534,3 +1534,36 @@ Exact next step:
 - build `0.8.77-dev` with only the two regressions above fixed;
 - preserve Single direct/spammable policy and Group acknowledgement/settle/24-sec policy unchanged;
 - runtime-smoke 0.8.77 before proceeding to physical-lifecycle item 2.
+
+
+## 0.8.77-dev narrow command regression fix — 2026-09-22
+
+Runtime commit: `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a`
+
+Implemented:
+- `/scb move` and `/scb stay` remain target-only macros and still enter the shared `SCB_RequestCommand` front door when usable.
+- These two macros pass a silent-invalid-target modifier, restoring the user-verified pre-0.8.76 behavior: no target/non-bot target -> no command and no centre-screen error.
+- Do not convert these macros to broad no-target/global fallback behavior; the historical safety contract is deliberate.
+- Unified command availability now applies real WoW button enabled/disabled state in addition to alpha. Unavailable buttons are `Disable()`d, so their click handler and HIGHLIGHT/gold-border state should not activate; available buttons are `Enable()`d again.
+- No Single/Group timing, target semantics, routes or budgets were changed.
+- Visualiser remains deferred.
+
+Checked:
+- staged off-branch from docs head `e4a30fe15f4898252cc8721f79c3ab6ff4ca72f5`;
+- candidate diff limited to `Communication.lua`, `SoloCraftBots.lua`, and TOC version;
+- Lua block-balance checks passed on both modified Lua owners;
+- non-force promotion only after `dev` head recheck.
+
+Status:
+- implemented and static-checked;
+- not yet user-tested;
+- not stable/released.
+
+Exact next step:
+- no target: `/scb move` and `/scb stay` are silent no-ops;
+- friendly bot target: both still command only that bot;
+- grey/unavailable command buttons are inert and show no gold highlight/border;
+- valid-context buttons re-enable normally;
+- quick Single-spam and Group-sequencing regression smoke.
+
+If clean, continue to physical-lifecycle implementation-order item 2. Do not start the visualiser.

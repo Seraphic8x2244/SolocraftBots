@@ -2,13 +2,14 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.76-dev`
-- Current runtime commit: `96781f32a40b5956051274affdc939913d76c54a` (0.8.76-dev)
-- Branch head before this docs-only update: `96781f32a40b5956051274affdc939913d76c54a` — command-request front door and target-semantics build.
-- Latest status commit before this update: `7e935e440b4651ae93899c95f3b1c4f902845ac4`
-- Goal: runtime-clear the 0.8.76 command-request convergence, then continue implementation-order item 2 by closing physical bot-lifecycle bypasses without starting the visualiser.
+- Version: `0.8.77-dev`
+- Current runtime commit: `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` (0.8.77-dev)
+- Branch head before this docs-only update: `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — narrow command macro/disabled-button regression fix.
+- Latest status commit before this update: `e4a30fe15f4898252cc8721f79c3ab6ff4ca72f5`
+- Goal: runtime-clear the 0.8.77 command regression fix, then continue implementation-order item 2 by closing physical bot-lifecycle bypasses without starting the visualiser.
 
 ## Recent Commits
+- `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — 0.8.77-dev: restore silent target-only command macros and make unavailable command buttons truly disabled.
 - `96781f32a40b5956051274affdc939913d76c54a` — 0.8.76-dev: centralize command requests behind declarative target semantics and one request front door.
 - `2b19431de271906ae99d67b55e779488d8ca14d0` — 0.8.75-dev: make Single controls direct/spammable while leaving Group sequencing/pacing unchanged.
 - `25f3a915e17470346629bbdb7c3904f40114fef0` — 0.8.69-dev: recover from stale human Group locator targets by treating `Target is not a party bot` as a failed targeted attempt.
@@ -31,6 +32,13 @@
 - 0.8.75-dev runtime gate is user-smoke-tested: rapid Single spam appears to work and Group still feels good, with no reported sequencing regression. This clears the gate for further development, but the report did not separately re-confirm every subcase such as Single Ctrl-Come.
 
 ## Implemented / Awaiting Test
+- 0.8.77-dev is a narrow regression fix on top of the 0.8.76 command front door:
+  - `/scb move` and `/scb stay` still enter `SCB_RequestCommand`, but invalid/no-target use is now silent again instead of showing `Command... what?`;
+  - macros remain intentionally target-only and do not fall through to broad/no-target server behavior;
+  - metadata-unavailable command buttons now call WoW `Button:Disable()` as well as greying to 0.5 alpha, preventing click execution and the button HIGHLIGHT/gold-border state while unavailable;
+  - re-enabling is driven by the same unified availability refresh;
+  - Single/Group/All/role semantics and Group timing are unchanged from 0.8.76.
+- 0.8.77 static inspection passed: candidate diff review, Lua block-balance checks on modified owner files, TOC/version consistency and non-force staged promotion. No in-game result exists yet for 0.8.77.
 - 0.8.76-dev introduces the first single-pipeline command convergence step:
   - every command-table entry declares a target semantic: target-agnostic, friendly-bot recipient, living-enemy context, or conditional friendly-target sensitivity;
   - `SCB_RequestCommand(commandKey, scope, modifiers)` is the command-matrix front door for UI buttons and supported command macros;
@@ -208,14 +216,12 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - No other 0.8.76 behavior is promoted to user-tested from this partial report.
 
 ### Next Test
-- Build the narrow 0.8.77-dev regression fix first, then runtime-test the command pipeline:
-  - clean load/no Lua errors;
-  - Single remains unavailable without a friendly bot and remains direct/spammable with one;
-  - Group still sequences the correct live subgroup and preserves busy-message precedence;
-  - All Come/Play/Pause remain blocked with a friendly player/bot target while Move/Stay and role commands retain their prior behaviour;
-  - AoE/Attack Start/Attack Stop are available only with a living hostile target and grey when that target dies;
-  - `/scb stay`, `/scb move`, delayed `/scb attackstart`, Ctrl-Come and Spread toggle still route correctly;
-  - friendly human/self blocking now displays `Only bots can be issued commands`.
+- Runtime-test `0.8.77-dev`:
+  - with no target, `/scb move` and `/scb stay` do nothing silently;
+  - with a friendly bot target, both macros still command only that bot;
+  - grey/unavailable command buttons do not execute and do not show the gold highlight/border when clicked or hovered;
+  - when target context becomes valid, those buttons re-enable and work normally;
+  - quick regression: Single spam still works and Group still sequences normally.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -250,10 +256,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Build `0.8.77-dev` as a narrow command-UI regression fix:
-- restore `/scb move` and `/scb stay` to target-only, silent-no-target behavior while still entering the shared command request model when a valid friendly bot is selected;
-- make metadata-unavailable/grey command buttons truly disabled so they neither execute command logic nor show pressed/gold-highlight feedback;
-- preserve all 0.8.76 Single/Group/All/role target semantics and timing;
-- keep the visualiser deferred.
+Runtime-test `0.8.77-dev` for silent no-target macros and truly inert grey command buttons, plus a quick Single/Group regression smoke.
 
-Then runtime-test 0.8.77 before beginning physical-lifecycle item 2.
+If it passes, begin implementation-order item 2: tracked/cooldown-protected addon manual Add, accepted remote summon through the preset operation coordinator, and preservation of received exact human `slotIndex`. Keep the visualiser deferred.
