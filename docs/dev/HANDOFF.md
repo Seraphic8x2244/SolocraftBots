@@ -1567,3 +1567,42 @@ Exact next step:
 - quick Single-spam and Group-sequencing regression smoke.
 
 If clean, continue to physical-lifecycle implementation-order item 2. Do not start the visualiser.
+
+
+## 0.8.78-dev combat-first command macro policy — 2026-09-22
+
+Runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
+
+User policy decision:
+- command macros are primarily combat controls and must stay responsive;
+- if the player has the wrong target, the resulting scope is considered the player's targeting decision rather than a reason for the addon to suppress the macro.
+
+Implemented:
+- `/scb move` and `/scb stay` now choose scope before entering the shared request front door:
+  - friendly bot target -> `target` scope;
+  - any other target context -> explicit `all` scope.
+- The fallback uses `moveall` / `stayall` through normal command routes, not ambiguous bare `move` / `stay` fallback semantics.
+- UI Single buttons remain target-only.
+- No Single/Group timing, acknowledgement, retry or budget behavior changed.
+- 0.8.77's real disabled-button implementation remains present and still needs runtime confirmation.
+- Visualiser remains deferred.
+
+Checked:
+- staged off docs head `2f10ff0e2f149f9e226cec49e2d421c872154c69`;
+- runtime diff limited to `SoloCraftBots.lua` and TOC version;
+- Lua block balance passed;
+- non-force promotion after `dev` head recheck.
+
+Status:
+- implemented and static-checked;
+- not yet user-tested;
+- not stable/released.
+
+Exact next step:
+- no target -> Move/Stay macros command All;
+- friendly bot target -> Move/Stay macros command only that bot;
+- hostile/player target -> deliberate All behavior;
+- grey command buttons remain inert with no gold highlight/border;
+- quick Single and Group regression smoke.
+
+If clean, continue to physical-lifecycle implementation-order item 2. Do not start the visualiser.

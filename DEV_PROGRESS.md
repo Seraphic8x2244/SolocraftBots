@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.77-dev`
-- Current runtime commit: `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` (0.8.77-dev)
-- Branch head before this docs-only update: `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — narrow command macro/disabled-button regression fix.
-- Latest status commit before this update: `e4a30fe15f4898252cc8721f79c3ab6ff4ca72f5`
-- Goal: runtime-clear the 0.8.77 command regression fix, then continue implementation-order item 2 by closing physical bot-lifecycle bypasses without starting the visualiser.
+- Version: `0.8.78-dev`
+- Current runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` (0.8.78-dev)
+- Branch head before this docs-only update: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — combat-first conditional Move/Stay macro policy.
+- Latest status commit before this update: `2f10ff0e2f149f9e226cec49e2d421c872154c69`
+- Goal: runtime-clear the 0.8.78 macro policy plus 0.8.77 disabled-button fix, then continue implementation-order item 2 without starting the visualiser.
 
 ## Recent Commits
-- `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — 0.8.77-dev: restore silent target-only command macros and make unavailable command buttons truly disabled.
+- `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — 0.8.78-dev: make `/scb move` and `/scb stay` combat-first conditional macros: friendly bot target -> Single, otherwise explicit All.
+- `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — 0.8.77-dev: make unavailable command buttons truly disabled; its target-only silent macro policy was superseded by 0.8.78 before runtime test.
 - `96781f32a40b5956051274affdc939913d76c54a` — 0.8.76-dev: centralize command requests behind declarative target semantics and one request front door.
 - `2b19431de271906ae99d67b55e779488d8ca14d0` — 0.8.75-dev: make Single controls direct/spammable while leaving Group sequencing/pacing unchanged.
 - `25f3a915e17470346629bbdb7c3904f40114fef0` — 0.8.69-dev: recover from stale human Group locator targets by treating `Target is not a party bot` as a failed targeted attempt.
@@ -32,9 +33,15 @@
 - 0.8.75-dev runtime gate is user-smoke-tested: rapid Single spam appears to work and Group still feels good, with no reported sequencing regression. This clears the gate for further development, but the report did not separately re-confirm every subcase such as Single Ctrl-Come.
 
 ## Implemented / Awaiting Test
+- 0.8.78-dev supersedes only the 0.8.77 Move/Stay macro policy:
+  - `/scb move` and `/scb stay` are intentionally combat-first and always responsive;
+  - friendly bot target -> request `target` scope and command that bot only;
+  - any other target context, including no target, hostile target or player target -> request the explicit `all` scope (`moveall` / `stayall`);
+  - both branches still go through `SCB_RequestCommand`; no ambiguous bare-command fallback is used;
+  - the UI Single row remains target-only and unchanged.
+- 0.8.78 static inspection passed: two-file diff only, Lua block-balance clean, TOC/version consistency, staged/non-force promotion. Not yet user-tested.
 - 0.8.77-dev is a narrow regression fix on top of the 0.8.76 command front door:
-  - `/scb move` and `/scb stay` still enter `SCB_RequestCommand`, but invalid/no-target use is now silent again instead of showing `Command... what?`;
-  - macros remain intentionally target-only and do not fall through to broad/no-target server behavior;
+  - its `/scb move` / `/scb stay` silent target-only macro behavior was superseded by the combat-first 0.8.78 policy before runtime test;
   - metadata-unavailable command buttons now call WoW `Button:Disable()` as well as greying to 0.5 alpha, preventing click execution and the button HIGHLIGHT/gold-border state while unavailable;
   - re-enabling is driven by the same unified availability refresh;
   - Single/Group/All/role semantics and Group timing are unchanged from 0.8.76.
@@ -216,11 +223,12 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - No other 0.8.76 behavior is promoted to user-tested from this partial report.
 
 ### Next Test
-- Runtime-test `0.8.77-dev`:
-  - with no target, `/scb move` and `/scb stay` do nothing silently;
-  - with a friendly bot target, both macros still command only that bot;
-  - grey/unavailable command buttons do not execute and do not show the gold highlight/border when clicked or hovered;
-  - when target context becomes valid, those buttons re-enable and work normally;
+- Runtime-test `0.8.78-dev`:
+  - no target -> `/scb move` affects All; `/scb stay` affects All;
+  - friendly bot target -> each macro affects only that bot;
+  - hostile or player target -> each macro deliberately uses the explicit All route;
+  - grey/unavailable command buttons remain inert and show no gold highlight/border;
+  - valid-context buttons re-enable normally;
   - quick regression: Single spam still works and Group still sequences normally.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
@@ -256,6 +264,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.77-dev` for silent no-target macros and truly inert grey command buttons, plus a quick Single/Group regression smoke.
+Runtime-test `0.8.78-dev` for combat-first Move/Stay macros and the still-pending true disabled-button behavior, plus a quick Single/Group regression smoke.
 
 If it passes, begin implementation-order item 2: tracked/cooldown-protected addon manual Add, accepted remote summon through the preset operation coordinator, and preservation of received exact human `slotIndex`. Keep the visualiser deferred.
