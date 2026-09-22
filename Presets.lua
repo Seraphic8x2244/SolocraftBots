@@ -315,23 +315,6 @@ function SCB_GetPresentHumanMap()
     return map
 end
 
-function SCB_ClassColor(classToken)
-    local fallbackClassColors = {
-        WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
-        PALADIN = { r = 0.96, g = 0.55, b = 0.73 },
-        HUNTER = { r = 0.67, g = 0.83, b = 0.45 },
-        ROGUE = { r = 1.00, g = 0.96, b = 0.41 },
-        PRIEST = { r = 1.00, g = 1.00, b = 1.00 },
-        SHAMAN = { r = 0.14, g = 0.35, b = 1.00 },
-        MAGE = { r = 0.41, g = 0.80, b = 0.94 },
-        WARLOCK = { r = 0.58, g = 0.51, b = 0.79 },
-        DRUID = { r = 1.00, g = 0.49, b = 0.04 },
-    }
-    if classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken] then
-        return RAID_CLASS_COLORS[classToken]
-    end
-    return classToken and fallbackClassColors[classToken] or nil
-end
 
 function SCB_PlayerRoleInfo(role)
     local i
@@ -619,8 +602,7 @@ end
 
 function SCB_RefreshPresetSlots()
     local size = SCB_CurrentPresetSize()
-    local present = SCB_GetPresentHumanMap()
-    local i, slot, classInfo, roleInfo, row, playerKey, playerInfo, playerRole, blessingInfo, shamanTotems, totemInfo, totemKey
+    local i, slot, classInfo, roleInfo, row, blessingInfo, shamanTotems, totemInfo, totemKey
 
     for i = 1, 40 do
         row = SCB.presetSlotRows[i]
@@ -691,6 +673,8 @@ function SCB_RefreshPresetSlots()
     if SCB_RefreshPresetCounters then
         SCB_RefreshPresetCounters()
     end
+    if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+
 end
 
 function SCB_FrameContainsCursor(frame)
@@ -716,14 +700,6 @@ function SCB_FrameContainsCursor(frame)
         and y >= frame:GetBottom() and y <= frame:GetTop()
 end
 
-function SCB_AssignPresetPlayer(key, groupIndex)
-    local size = SCB_CurrentPresetSize()
-    local groupCount = math.max(1, math.ceil(size / 5))
-    if size <= 5 or not key or not groupIndex or groupIndex < 1 or groupIndex > groupCount then return end
-    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
-    SCB.presetEditorPlayers[key] = groupIndex
-    SCB_SetPresetDirty(true)
-end
 
 function SCB_SetPresetGroupDragHighlight(groupIndex, alpha)
     local i, frame
@@ -837,42 +813,7 @@ function SCB_PresetPlayerDragStart()
     end
 end
 
-function SCB_FinishPresetPlayerDrag(groupIndex)
-    local key = SCB.draggedPresetPlayer
-    if not key then
-        return false
-    end
 
-    SCB.draggedPresetPlayer = nil
-    SCB.draggedPresetPlayerOriginSlot = nil
-    SCB_HideDragGhost()
-    SCB.draggedPresetPlayerHoverGroup = nil
-    SCB_SetPresetGroupDragHighlight(nil)
-
-    if groupIndex then
-        SCB_AssignPresetPlayer(key, groupIndex)
-    end
-
-    SCB_RefreshPresetSlots()
-    if SCB_RefreshPresetPlayers then
-        SCB_RefreshPresetPlayers()
-    end
-    return true
-end
-
-function SCB_PresetPlayerDragStop()
-    local i, groupCount
-    if not SCB.draggedPresetPlayer or SCB_CurrentPresetSize() <= 5 then return end
-    groupCount = math.ceil(SCB_CurrentPresetSize() / 5)
-    for i = 1, groupCount do
-        if SCB_FrameContainsCursor(SCB.presetGroupFrames[i]) then
-            SCB_FinishPresetPlayerDrag(i)
-            return
-        end
-    end
-    -- No valid drop: restore the player overlay and its player-role artwork.
-    SCB_FinishPresetPlayerDrag(nil)
-end
 
 function SCB_CancelPresetPlayerDrag()
     if not SCB.draggedPresetPlayer then
@@ -896,7 +837,7 @@ function SCB_PresetPlayerOnClick()
     local roster, i, info, classInfo, roleInfo, groupStart, groupEnd, j, groupSlot, size
 
     if SCB.draggedPresetPlayer and this.scbSlotIndex then
-        SCB_FinishPresetPlayerDrag(math.floor((this.scbSlotIndex - 1) / 5) + 1)
+        SCB_FinishPresetPlayerDrag(this.scbSlotIndex)
         return
     end
 
@@ -936,6 +877,8 @@ function SCB_PresetPlayerOnClick()
 
     if arg1 == "RightButton" and SCB_CurrentPresetSize() > 5 and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
         SCB.presetEditorPlayers[this.scbPlayerKey] = nil
+        SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
+        SCB.presetEditorPlayerSlots[this.scbPlayerKey] = nil
         SCB_SetPresetDirty(true)
         if SCB_RefreshPresetPlayers then
             SCB_RefreshPresetPlayers()
@@ -1010,43 +953,6 @@ end
 -- The player overlay, hidden bot controls, blessing allocation and spawn occupancy
 -- must all agree on this map.  Human placement never mutates the bot assignment
 -- stored underneath the covered row.
-function SCB_GetPresetHumanLayout()
-    local size = SCB_CurrentPresetSize()
-    local roster = SCB_GetHumanRoster()
-    local present, assignedPresent, playerRows, groupCounts = {}, {}, {}, {}
-    local i, info, key, groupIndex, slotIndex
-
-    for i = 1, table.getn(roster) do
-        present[roster[i].key] = roster[i]
-    end
-
-    if size <= 5 then
-        local auto = SCB_AutoPartyPlayerSlots(roster)
-        for key, slotIndex in pairs(auto) do
-            if present[key] and slotIndex >= 1 and slotIndex <= size then
-                playerRows[key] = slotIndex
-                assignedPresent[key] = true
-            end
-        end
-    else
-        -- Raid presets assign humans to groups, not fixed slots. Render them in
-        -- stable live-roster order at the front of each group; those exact rows
-        -- are the bot assignments currently covered by humans.
-        for i = 1, table.getn(roster) do
-            info = roster[i]
-            groupIndex = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
-            if groupIndex and groupIndex >= 1 and groupIndex <= math.ceil(size / 5) then
-                groupCounts[groupIndex] = (groupCounts[groupIndex] or 0) + 1
-                if groupCounts[groupIndex] <= 5 then
-                    playerRows[info.key] = ((groupIndex - 1) * 5) + groupCounts[groupIndex]
-                    assignedPresent[info.key] = true
-                end
-            end
-        end
-    end
-
-    return roster, present, playerRows, assignedPresent
-end
 
 SCB_RefreshPresetPlayers = function()
     local size, roster, present, assignedPresent, playerRows
@@ -1124,11 +1030,39 @@ SCB_RefreshPresetPlayers = function()
     if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
 end
 
+local function SCB_CopyExactPresetPlayerSlots(source, size)
+    local copy = {}
+    local key, slot
+    size = tonumber(size) or 0
+    for key, slot in pairs(source or {}) do
+        if type(key) == "string" and type(slot) == "number"
+            and slot >= 1 and slot <= size then
+            copy[key] = slot
+        end
+    end
+    return copy
+end
+
+local function SCB_PresetPlayerSlotGroup(slotIndex)
+    if not slotIndex then return nil end
+    return math.floor((slotIndex - 1) / 5) + 1
+end
+
 function SCB_LoadPreset(groupIndex, presetIndex)
-    local group, preset, size
+    local group, preset, size, key, slotIndex
+    SCB.presetEditorPlayerSlots = {}
     SCB_EnsurePresetDB()
     group = SoloCraftBotsDB.presetGroups[groupIndex]
     if not group then
+        group = SCB_CurrentPresetGroup()
+        preset = SCB_CurrentPreset()
+        size = group and group.size or SCB_CurrentPresetSize()
+        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
+        SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+        for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+            SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
+        end
+        if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
         return
     end
     SoloCraftBotsDB.currentPresetGroup = groupIndex
@@ -1162,10 +1096,18 @@ function SCB_LoadPreset(groupIndex, presetIndex)
     if SCB_RefreshPresetSummonWarning then
         SCB_RefreshPresetSummonWarning()
     end
+
+    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
+    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
+    end
+    if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
 end
 
 function SCB_SaveCurrentPreset()
     local group, preset, size
+    local exact = SCB_CopyExactPresetPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
     SCB_EnsurePresetDB()
     group = SCB_CurrentPresetGroup()
     preset = SCB_CurrentPreset()
@@ -1179,6 +1121,8 @@ function SCB_SaveCurrentPreset()
     preset.playerSlots = nil
     preset.playerRoles = SCB_CopyPlayerRoles(SCB.presetEditorPlayerRoles)
     SCB_SetPresetDirty(false, true)
+    preset.playerSlots = exact
+    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
 end
 
 function SCB_PresetSaveOnClick()
@@ -1636,6 +1580,7 @@ function SCB_AcceptPresetName(dialog)
     local name = editBox and editBox:GetText() or ""
     local group = SCB_CurrentPresetGroup()
     local preset
+    local exact = SCB_CopyExactPresetPlayerSlots(SCB.presetEditorPlayerSlots, SCB_CurrentPresetSize())
     if not name or name == "" then name = SCB.pendingPresetDefaultName or "Preset" end
     if not group then return end
 
@@ -1651,6 +1596,12 @@ function SCB_AcceptPresetName(dialog)
     group.currentPreset = table.getn(group.presets)
     SCB.pendingPresetDefaultName = nil
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group.currentPreset)
+    preset = SCB_CurrentPreset()
+    if preset then
+        preset.playerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
+        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(exact, SCB_CurrentPresetSize())
+        if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
+    end
 end
 
 function SCB_AcceptPresetGroupName(dialog)
@@ -2088,6 +2039,9 @@ function SCB_ArrangePresetPlayers()
                 name, _, currentGroup = GetRaidRosterInfo(i)
                 if name == wantedName then
                     if currentGroup ~= wantedGroup then
+                        if SCB_RecordPresetSubgroupMoveBarrier then
+                            SCB_RecordPresetSubgroupMoveBarrier()
+                        end
                         SetRaidSubgroup(i, wantedGroup)
                     end
                     break
@@ -2149,6 +2103,7 @@ end
 -- player/party1..party4 order. Roles still come only from the preset: roster order
 -- is used solely to bind each bot name to its logical preset assignment.
 function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     local tracker = {
         version = 5,
         mode = size <= 5 and "party" or "raid",
@@ -2195,19 +2150,23 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
 
     -- Keep the existing SavedVariables field name for migration compatibility.
     SoloCraftBotsCharDB.raidRoleTracker = tracker
+    if snapshot then
+        tracker.presetGroupIndex = snapshot.presetGroupIndex
+        tracker.presetIndex = snapshot.presetIndex
+    end
     return tracker
 end
 
-function SCB_GetRaidBotsByGroup()
+function SCB_GetRaidBotsByGroup(observed)
     local result = {}
-    local count = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local i, name, _, subgroup
+    local i, member, subgroup
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     for i = 1, 8 do result[i] = {} end
-    for i = 1, count do
-        name = UnitName and UnitName("raid" .. i) or nil
-        _, _, subgroup = GetRaidRosterInfo(i)
-        if name and subgroup and SCB_IsBotName(name) then
-            table.insert(result[subgroup], { name = name, raidIndex = i })
+    for i = 1, table.getn(observed and observed.members or {}) do
+        member = observed.members[i]
+        subgroup = member and (member.currentGroup or member.subgroup) or nil
+        if member and member.isBot and subgroup then
+            table.insert(result[subgroup], { name = member.name, raidIndex = member.raidIndex })
         end
     end
     return result
@@ -2218,58 +2177,30 @@ end
 -- directly to pfUI.uf.raid.tankrole[name] and shows the raid updater. Mirror that
 -- state change, but set an explicit value rather than toggling so repeated tracker
 -- refreshes can never accidentally turn a tank off.
-function SCB_ApplyTrackedPfUITankRoles(tracker)
-    local roles, i, assignment, player, name, frame
-    if not tracker or not tracker.ready then return end
-    if not pfUI or not pfUI.uf or not pfUI.uf.raid or type(pfUI.uf.raid.tankrole) ~= "table" then return end
 
-    roles = pfUI.uf.raid.tankrole
-    SCB.pfuiAutoTanks = SCB.pfuiAutoTanks or {}
-
-    -- Only undo tank flags that SCB itself previously applied. Never sweep pfUI's
-    -- whole tank table, because the user may have unrelated manual assignments.
-    for name in pairs(SCB.pfuiAutoTanks) do
-        roles[name] = nil
+local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
+    local reconciledNow = false
+    if not tracker or not tracker.ready then return false end
+    if SCB_ReconcileTrackerFromAssumedRoles then
+        reconciledNow = SCB_ReconcileTrackerFromAssumedRoles(tracker, observed) == true
     end
-    SCB.pfuiAutoTanks = {}
-
-    for i = 1, table.getn(tracker.assignments or {}) do
-        assignment = tracker.assignments[i]
-        if assignment and assignment.botName and assignment.role == "tank" then
-            roles[assignment.botName] = true
-            SCB.pfuiAutoTanks[assignment.botName] = true
-        end
+    if initial or reconciledNow then
+        if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker, observed) end
+        if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout(observed) end
     end
-    for i = 1, table.getn(tracker.players or {}) do
-        player = tracker.players[i]
-        if player and player.name and player.role == "tank" then
-            roles[player.name] = true
-            SCB.pfuiAutoTanks[player.name] = true
-        end
-    end
-
-    -- This is the same refresh trigger used by pfUI's own Toggle as Tank path
-    -- while in a raid. Avoid forcing the raid updater visible in a party.
-    if GetNumRaidMembers and GetNumRaidMembers() > 0 and pfUI.uf.raid.Show then
-        pfUI.uf.raid:Show()
-    end
-
-    -- Refresh group/raid unitframes when possible. pfUI_TankIcons hooks
-    -- RefreshUnit, so its icon state updates immediately as well.
-    if pfUI.uf.RefreshUnit and pfUI.uf.frames then
-        for i = 1, table.getn(pfUI.uf.frames) do
-            frame = pfUI.uf.frames[i]
-            if frame and frame.label and (frame.label == "party" or frame.label == "raid") then
-                pfUI.uf:RefreshUnit(frame, "all")
-            end
-        end
-    end
+    return true
 end
 
-function SCB_TryFinalizeRaidRoleTracking()
+function SCB_TryFinalizeRaidRoleTracking(observed)
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
-    if not tracker or tracker.ready or not tracker.assignments then return tracker and tracker.ready end
+    if not tracker or not tracker.assignments then return tracker and tracker.ready end
+    if tracker.ready then
+        if not tracker.scbRoleIdentityReconciled then
+            SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), false)
+        end
+        return true
+    end
     if not tracker.allowFinalize then return false end
 
     expectedByGroup = {}
@@ -2280,28 +2211,20 @@ function SCB_TryFinalizeRaidRoleTracking()
     end
 
     if tracker.mode == "party" or (tracker.size or 0) <= 5 then
-        -- A party has no subgroup API, but player/party1..party4 is still the
-        -- authoritative client roster order. Filter humans and ordinal-map the
-        -- remaining bot names onto the preset's active bot assignments.
         if GetNumRaidMembers and GetNumRaidMembers() > 0 then return false end
         members = SCB_CollectGroupMembers()
         if table.getn(members) ~= (tracker.size or 0) then
             tracker.partyFullSeenAt = nil
             return false
         end
-
         actual = {}
-        for i = 1, table.getn(members) do
-            if members[i].isBot then table.insert(actual, { name = members[i].name }) end
-        end
+        for i = 1, table.getn(members) do if members[i].isBot then table.insert(actual, { name = members[i].name }) end end
         expected = expectedByGroup[1]
         if table.getn(actual) ~= table.getn(expected) then return false end
-        for ordinal = 1, table.getn(expected) do
-            expected[ordinal].botName = actual[ordinal].name
-        end
+        for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
     else
         if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
-        botsByGroup = SCB_GetRaidBotsByGroup()
+        botsByGroup = SCB_GetRaidBotsByGroup(observed)
         for g = 1, math.ceil((tracker.size or 0) / 5) do
             expected = expectedByGroup[g]
             actual = botsByGroup[g] or {}
@@ -2310,21 +2233,20 @@ function SCB_TryFinalizeRaidRoleTracking()
         for g = 1, math.ceil((tracker.size or 0) / 5) do
             expected = expectedByGroup[g]
             actual = botsByGroup[g] or {}
-            for ordinal = 1, table.getn(expected) do
-                expected[ordinal].botName = actual[ordinal].name
-            end
+            for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
         end
     end
 
     tracker.ready = true
     tracker.completedAt = GetTime and GetTime() or 0
     SCB_ApplyTrackedPfUITankRoles(tracker)
-    if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker) end
-    if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY"))) end
+    if SCB.developerDebugEnabled and SCB_DebugLog then
+        SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY")))
+    end
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
+    SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), true)
     return true
 end
-
 function SCB_GetTrackedHumanCounts(tracker)
     local counts, names, members, i, member, player
     counts = {}
@@ -2351,7 +2273,8 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if not tracker or not tracker.ready or not tracker.assignments then return missing end
 
-    members = SCB_CollectGroupMembers()
+    local liveRoster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    members = liveRoster and liveRoster.members or SCB_CollectGroupMembers()
     currentNames = {}
     for i = 1, table.getn(members) do
         if members[i].name ~= ignoredBotName then currentNames[members[i].name] = true end
@@ -2421,14 +2344,14 @@ function SCB_GetMissingRaidAssignments(ignoredBotName, delayedSlotIndex)
     return missing
 end
 
-function SCB_RefreshReplaceDeadButton()
+function SCB_RefreshReplaceDeadButton(observed, syncFirst)
     local button = SCB.replaceDeadButton
     local missing, dead, unavailableMissing, unavailableDead
     local missingCount, deadCount, unavailableCount
     if not button then return end
 
     if SCB_GetActiveMaintenanceRecords then
-        missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
+        missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords(observed, syncFirst)
     else
         missing, dead, unavailableMissing, unavailableDead = {}, {}, {}, {}
     end
@@ -2463,15 +2386,37 @@ function SCB_RefreshReplaceDeadButton()
     SCB_RefreshVisibleTooltip(button)
 end
 
-function SCB_RefreshRefillButton()
-    SCB_RefreshReplaceDeadButton()
+function SCB_RefreshRefillButton(observed, syncFirst)
+    SCB_RefreshReplaceDeadButton(observed, syncFirst)
+end
+
+function SCB_QueueRefillButtonRefresh(delay)
+    local frame
+    if not SCB.replaceDeadButton then return end
+    frame = SCB.refillButtonRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsRefillButtonRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.15) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshRefillButton(SCB.liveRoster, false)
+        end)
+        SCB.refillButtonRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.15
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 function SCB_StartRefillAssignments(assignments)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     local remaining = {}
     local i
     if not assignments or table.getn(assignments) == 0 then return false end
-    if table.getn(SCB.presetSpawnQueue) > 0
+    if SCB_PresetSpawnQueueCount() > 0
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
         or (SCB.refillState and SCB.refillState.active) then
@@ -2479,6 +2424,7 @@ function SCB_StartRefillAssignments(assignments)
     end
     for i = 1, table.getn(assignments) do table.insert(remaining, assignments[i]) end
     SCB.refillState = { active = true, phase = "nextgroup", cooldown = 0, fixedAssignments = remaining }
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return true
 end
 
@@ -2494,30 +2440,23 @@ end
 
 function SCB_GetNewRefillBots(beforeNames)
     local result = {}
-    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local count, i, name, _, subgroup
-    if raidCount > 0 then
-        for i = 1, raidCount do
-            name = UnitName and UnitName("raid" .. i) or nil
-            _, _, subgroup = GetRaidRosterInfo(i)
-            if name and SCB_IsBotName(name) and not beforeNames[name] then
-                table.insert(result, { name = name, raidIndex = i, subgroup = subgroup })
-            end
-        end
-    else
-        count = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-        for i = 1, count do
-            name = UnitName and UnitName("party" .. i) or nil
-            if name and SCB_IsBotName(name) and not beforeNames[name] then
-                table.insert(result, { name = name, subgroup = 1 })
-            end
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local i, member
+    for i = 1, table.getn(roster and roster.members or {}) do
+        member = roster.members[i]
+        if member and member.isBot and member.name and not beforeNames[member.name] then
+            table.insert(result, {
+                name = member.name,
+                raidIndex = member.raidIndex,
+                subgroup = member.currentGroup or member.subgroup or 1,
+            })
         end
     end
     return result
 end
 
 function SCB_ReplaceDeadNamesGone(names)
-    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
     local name
     if not roster then return false end
     for name in pairs(names or {}) do if roster.byName[name] then return false end end
@@ -2531,156 +2470,7 @@ local function SCB_ReplacementEarliestAt(record, now)
     return earliest
 end
 
-function SCB_MaintenanceReplaceOnClick()
-    local missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
-    local members = SCB_CollectGroupMembers()
-    local botCount, otherHumans = 0, 0
-    local survivorName, survivorRecord
-    local assignments, removedNames = {}, {}
-    local i, member, slot, record, now, earliestAt
 
-    if table.getn(SCB.presetSpawnQueue) > 0
-        or (SCB.presetGroupWaitRemaining or 0) > 0
-        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
-        or (SCB.refillState and SCB.refillState.active)
-        or (SCB.replaceDeadState and SCB.replaceDeadState.active)
-        or (SCB.presetRebuildState and SCB.presetRebuildState.active) then
-        SCB_Print(SCB_L("REPLACE_DEAD_BUSY")); return
-    end
-
-    if table.getn(missing) == 0 and table.getn(dead) == 0 then
-        if table.getn(unavailableMissing) + table.getn(unavailableDead) > 0 then
-            SCB_Print(string.format(SCB_L("REPLACE_UNIDENTIFIED"), table.getn(unavailableMissing) + table.getn(unavailableDead)))
-        else
-            SCB_Print(SCB_L("REPLACE_DEAD_NONE"))
-        end
-        return
-    end
-    if table.getn(dead) > 0 and not UninviteByName then SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE")); return end
-
-    for i = 1, table.getn(members) do
-        member = members[i]
-        if member.isBot then botCount = botCount + 1 elseif not member.isSelf then otherHumans = otherHumans + 1 end
-    end
-
-    -- If every currently-existing bot is dead and must be removed, preserve the
-    -- normal instance-safety survivor until another replacement is established.
-    if otherHumans == 0 and table.getn(dead) == botCount and botCount > 0 and SCB_SurvivorSafetyRequired() then
-        survivorName = SCB_FindGroupOneSurvivor(members)
-        for i = 1, table.getn(dead) do
-            slot = dead[i]
-            if slot.currentName == survivorName then
-                survivorRecord = SCB_BuildActiveReplacementRecord(slot)
-                break
-            end
-        end
-    end
-
-    now = GetTime and GetTime() or 0
-    earliestAt = now
-
-    -- Already-missing slots are part of the same operation. Their one-second
-    -- floor starts when roster disappearance was observed, because SoloCraft can
-    -- keep the world unit alive after it has already left the group roster.
-    for i = 1, table.getn(missing) do
-        record = SCB_BuildActiveReplacementRecord(missing[i])
-        if record then
-            table.insert(assignments, record)
-            if SCB_ReplacementEarliestAt(record, now) > earliestAt then
-                earliestAt = SCB_ReplacementEarliestAt(record, now)
-            end
-        end
-    end
-
-    for i = 1, table.getn(dead) do
-        slot = dead[i]
-        record = SCB_BuildActiveReplacementRecord(slot)
-        if record and (not survivorRecord or record.activeSlotID ~= survivorRecord.activeSlotID) then
-            table.insert(assignments, record)
-            if record.sourceName then
-                removedNames[record.sourceName] = true
-                UninviteByName(record.sourceName)
-            end
-            if now + 1.0 > earliestAt then earliestAt = now + 1.0 end
-        end
-    end
-
-    if table.getn(assignments) == 0 and survivorRecord then
-        SCB_Print(SCB_L("REPLACE_DEAD_LAST_UNSAFE")); return
-    end
-
-    SCB.replaceDeadState = {
-        active = true,
-        phase = "waitremoved",
-        assignments = assignments,
-        removedNames = removedNames,
-        earliestAt = earliestAt,
-        survivorAssignment = survivorRecord,
-        survivorName = survivorName,
-    }
-    SCB_RefreshReplaceDeadButton()
-end
-
-function SCB_MaintenanceReplaceOnUpdate()
-    local state = SCB.replaceDeadState
-    local now = GetTime and GetTime() or 0
-    local ok, errorText
-    if not state or not state.active then return end
-
-    if state.phase == "waitremoved" then
-        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
-        ok, errorText = SCB_StartRefillAssignments(state.assignments)
-        if not ok then
-            if errorText then SCB_Print(errorText) end
-            state.active = false
-            SCB_RefreshReplaceDeadButton()
-            return
-        end
-        state.phase = "waitrefill"
-        return
-    end
-
-    if state.phase == "waitrefill" then
-        if SCB.refillState and SCB.refillState.active then return end
-        if state.survivorAssignment and state.survivorName then
-            if SCB_CountGroupBots() <= 1 then
-                SCB_Print(SCB_L("REPLACE_DEAD_LAST_UNSAFE"))
-                state.active = false
-                SCB_RefreshReplaceDeadButton()
-                return
-            end
-            if SCB_GroupHasName(state.survivorName) then UninviteByName(state.survivorName) end
-            state.removedNames = { [state.survivorName] = true }
-            state.earliestAt = now + 1.0
-            state.phase = "waitsurvivorremoved"
-            return
-        end
-        state.active = false
-        if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-        SCB_RefreshReplaceDeadButton()
-        return
-    end
-
-    if state.phase == "waitsurvivorremoved" then
-        if now < (state.earliestAt or 0) or not SCB_ReplaceDeadNamesGone(state.removedNames) then return end
-        ok, errorText = SCB_StartRefillAssignments({ state.survivorAssignment })
-        if not ok then
-            if errorText then SCB_Print(errorText) end
-            state.active = false
-            SCB_RefreshReplaceDeadButton()
-            return
-        end
-        state.phase = "waitsurvivorrefill"
-        return
-    end
-
-    if state.phase == "waitsurvivorrefill" then
-        if SCB.refillState and SCB.refillState.active then return end
-        state.active = false
-        if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-        SCB_RefreshReplaceDeadButton()
-    end
-end
 
 function SCB_RefillOnUpdate(elapsed)
     local state = SCB.refillState
@@ -2741,7 +2531,7 @@ function SCB_RefillOnUpdate(elapsed)
         for i = table.getn(groupMissing), 1, -1 do
             assignment = groupMissing[i]
             SCB_SendSpawnCommand(assignment.command)
-            if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REQUESTED"), assignment.slotIndex, assignment.group)) end
+            if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REQUESTED"), assignment.slotIndex, assignment.group)) end
         end
         return
     end
@@ -2837,9 +2627,15 @@ function SCB_RefillOnUpdate(elapsed)
 
     if state.phase == "removeanchor" then
         if SCB_PresetGroupHasCombat() then return end
-        if state.anchorName and SCB_GroupHasName(state.anchorName) and UninviteByName then
-            if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REMOVE_ANCHOR"), state.anchorName)) end
-            UninviteByName(state.anchorName)
+        if state.anchorName and SCB_GroupHasName(state.anchorName) then
+            if not SCB_KickBots or not SCB_KickBots("all", {
+                name = state.anchorName,
+                manageSafety = false,
+                silent = true,
+            }) then
+                return
+            end
+            if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), string.format(SCB_L("DEBUG_REFILL_REMOVE_ANCHOR"), state.anchorName)) end
         end
         state.anchorProbeRemaining = 1.0
         state.phase = "waitanchorgone"
@@ -2870,7 +2666,7 @@ function SCB_RefillOnUpdate(elapsed)
         state.phase = "waitdelayed"
         state.fullSeenAt = nil
         SCB_SendSpawnCommand(state.delayedAssignment.command)
-        if SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), SCB_L("DEBUG_REFILL_DELAYED_G1S5")) end
+        if SCB.developerDebugEnabled and SCB_DebugLog then SCB_DebugLog(SCB_L("DEBUG_KIND_REFILL"), SCB_L("DEBUG_REFILL_DELAYED_G1S5")) end
         return
     end
 
@@ -2908,191 +2704,6 @@ function SCB_RefillOnUpdate(elapsed)
     end
 end
 
-function SCB_PresetSpawnQueueOnUpdate()
-    local nextItem, bootstrapName
-    local elapsed = arg1 or 0
-
-    SCB_PresetRebuildOnUpdate()
-    SCB_MaintenanceReplaceOnUpdate()
-    SCB_RefillOnUpdate(elapsed)
-
-    -- A logical preset group is a single same-frame burst. The only timed
-    -- spacing in the normal preset scheduler is the tested, exact 1.0 second
-    -- boundary between logical five-slot groups.
-    if SCB.presetGroupWaitRemaining and SCB.presetGroupWaitRemaining > 0 then
-        SCB.presetGroupWaitRemaining = SCB.presetGroupWaitRemaining - elapsed
-        if SCB.presetGroupWaitRemaining > 0 then return end
-        SCB.presetGroupWaitRemaining = 0
-        -- Reaching the end of the normal 1.0-second group boundary without a
-        -- server combat rejection confirms that any retried burst made it past
-        -- the race window. A later logical group gets a fresh retry ladder.
-        if SCB.presetCombatRetryResetPending then
-            SCB.presetCombatRetryFailures = 0
-            SCB.presetCombatRetryResetPending = nil
-        end
-    end
-
-    if SCB.presetCombatRetryWaitRemaining and SCB.presetCombatRetryWaitRemaining > 0 then
-        SCB.presetCombatRetryWaitRemaining = SCB.presetCombatRetryWaitRemaining - elapsed
-        if SCB.presetCombatRetryWaitRemaining > 0 then return end
-        SCB.presetCombatRetryWaitRemaining = 0
-    end
-
-    while table.getn(SCB.presetSpawnQueue) > 0 do
-        nextItem = SCB.presetSpawnQueue[1]
-
-        if nextItem == SCB.PRESET_WAIT_GROUP then
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetGroupWaitRemaining = 1.0
-            if (SCB.presetCombatRetryFailures or 0) > 0 then
-                SCB.presetCombatRetryResetPending = true
-            end
-            SCB.presetSpawnElapsed = 0
-            return
-        elseif nextItem == SCB.PRESET_ARRANGE_PLAYERS then
-            -- Once the raid exists, put each live human into the logical preset
-            -- subgroup they were assigned to before any real bot burst is sent.
-            if SCB_ArrangePresetPlayers() then
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
-        elseif nextItem == SCB.PRESET_TRACK_ROSTER then
-            if SoloCraftBotsCharDB.raidRoleTracker then SoloCraftBotsCharDB.raidRoleTracker.allowFinalize = true end
-            if SCB_TryFinalizeRaidRoleTracking() then
-                SCB.presetCombatRetryFailures = 0
-                SCB.presetCombatRetryResetPending = nil
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
-        elseif nextItem == SCB.PRESET_CHECK_COMBAT then
-            -- Gate each logical summon burst on the live combat state of every
-            -- group member and pet. Keep the marker at the head of the queue
-            -- while blocked; once clear, consume it and release the entire
-            -- logical group in the same frame exactly as before.
-            SCB.presetCombatPollRemaining = (SCB.presetCombatPollRemaining or 0) - elapsed
-            if SCB.presetCombatPollRemaining > 0 then return end
-            if SCB_PresetGroupHasCombat() then
-                SCB.presetCombatPollRemaining = 0.50
-                return
-            end
-            SCB.presetCombatPollRemaining = nil
-            SCB.presetLastBurstCommands = {}
-            SCB.presetLastBurstRequeued = nil
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetSpawnElapsed = 0
-        elseif nextItem == SCB_PRESET_CONVERT_NOW then
-            if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
-                ConvertToRaid()
-                SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
-                SCB.presetSpawnElapsed = 0
-                return
-            else
-                return
-            end
-        elseif nextItem == SCB_PRESET_WAIT_BOOTSTRAP then
-            bootstrapName = SCB_FindFirstGroupBotName()
-            if bootstrapName then
-                SCB.presetCombatRetryFailures = 0
-                SCB.presetCombatRetryResetPending = nil
-                SCB.presetBootstrapBotName = bootstrapName
-                SCB.presetSurvivorBotName = bootstrapName
-                if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                    SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
-                elseif ConvertToRaid then
-                    ConvertToRaid()
-                    SCB.presetSpawnQueue[1] = SCB_PRESET_WAIT_RAID
-                end
-                SCB.presetSpawnElapsed = 0
-            end
-            return
-        elseif nextItem == SCB_PRESET_WAIT_RAID then
-            if GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
-        elseif nextItem == SCB.PRESET_WAIT_REPLACEMENT then
-            -- Legacy barrier retained for compatibility with an in-flight queue
-            -- created by an older build. New queues use WAIT_FINAL_ROSTER.
-            if SCB_CountGroupBots() >= 2 then
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
-        elseif nextItem == SCB.PRESET_WAIT_FINAL_ROSTER then
-            -- For the new Group 1 hand-off, keep the temporary survivor until
-            -- every other requested preset bot is actually visible in roster.
-            -- The survivor itself occupies the held bot's place, so the target
-            -- bot count equals the preset's final required bot count.
-            if SCB_CountGroupBots() >= (SCB.presetExpectedBotCountBeforeHandoff or 0) then
-                SCB.presetCombatRetryFailures = 0
-                SCB.presetCombatRetryResetPending = nil
-                table.remove(SCB.presetSpawnQueue, 1)
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
-        elseif nextItem == SCB.PRESET_REMOVE_SURVIVOR then
-            if SCB.presetSurvivorBotName and UninviteByName then
-                if SCB_DebugLog then
-                    SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_KICK"), SCB.presetSurvivorBotName))
-                end
-                UninviteByName(SCB.presetSurvivorBotName)
-            end
-            SCB.presetSurvivorProbeRemaining = 1.0
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetSpawnElapsed = 0
-            return
-        elseif nextItem == SCB.PRESET_WAIT_SURVIVOR_GONE then
-            -- Leaving the raid roster is not enough: SoloCraft can keep the
-            -- kicked bot physically alive in the instance for another server
-            -- tick or two. Poll the exact bot name once per second and do not
-            -- send the held Group 1 replacement until the world unit is gone.
-            SCB.presetSurvivorProbeRemaining = (SCB.presetSurvivorProbeRemaining or 0) - elapsed
-            if SCB.presetSurvivorProbeRemaining > 0 then
-                return
-            end
-
-            if SCB_ProbeSurvivorWorldPresence(SCB.presetSurvivorBotName) then
-                if SCB_DebugLog then
-                    SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_PRESENT"), SCB.presetSurvivorBotName))
-                end
-                SCB.presetSurvivorProbeRemaining = 1.0
-                return
-            end
-
-            if SCB_DebugLog then
-                SCB_DebugLog(SCB_L("DEBUG_KIND_SURVIVOR"), string.format(SCB_L("DEBUG_SURVIVOR_GONE"), SCB.presetSurvivorBotName or "?"))
-            end
-            SCB.presetSurvivorProbeRemaining = nil
-            SCB_ClearKickAllAnchor(SCB.presetSurvivorBotName)
-            SCB.presetSurvivorBotName = nil
-            SCB.presetBootstrapBotName = nil
-            SCB.presetExpectedBotCountBeforeHandoff = nil
-            table.remove(SCB.presetSpawnQueue, 1)
-            SCB.presetSpawnElapsed = 0
-        else
-            -- Normal preset spawn commands are intentionally consumed without
-            -- a per-command throttle. This makes each logical group a true
-            -- same-frame burst; SCB.PRESET_WAIT_GROUP supplies the 1.0s gap.
-            SCB.presetLastBurstCommands = SCB.presetLastBurstCommands or {}
-            table.insert(SCB.presetLastBurstCommands, nextItem)
-            SCB_SendSpawnCommand(nextItem)
-            table.remove(SCB.presetSpawnQueue, 1)
-        end
-    end
-
-    SCB.presetSpawnElapsed = 0
-end
 
 
 function SCB_QueuePresetSpawn(commands)
@@ -3101,6 +2712,7 @@ function SCB_QueuePresetSpawn(commands)
     for i = 1, table.getn(commands) do
         table.insert(SCB.presetSpawnQueue, commands[i])
     end
+    if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
 end
 
 
@@ -3145,9 +2757,8 @@ SCB_RefreshPresetSummonWarning = function()
 end
 
 function SCB_GetSnapshotOccupiedSlots(snapshot)
-    local occupied = {}
-    local groupCounts = {}
-    local i, player, groupIndex
+    local occupied, groupNext = {}, {}
+    local i, player, groupIndex, slotIndex, groupStart, groupEnd
     if not snapshot or not snapshot.players then return occupied end
 
     if (snapshot.size or 0) <= 5 then
@@ -3155,13 +2766,34 @@ function SCB_GetSnapshotOccupiedSlots(snapshot)
             player = snapshot.players[i]
             if player.slotIndex then occupied[player.slotIndex] = true end
         end
-    else
-        for i = 1, table.getn(snapshot.players) do
-            player = snapshot.players[i]
+        return occupied
+    end
+
+    -- Exact logical human slots win. Compatibility snapshots that provide only
+    -- a subgroup retain the old group-front occupancy behavior.
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        slotIndex = player and player.slotIndex or nil
+        if slotIndex and slotIndex >= 1 and slotIndex <= snapshot.size then
+            occupied[slotIndex] = true
+        end
+    end
+
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        if player and not player.slotIndex then
             groupIndex = player.group
-            groupCounts[groupIndex] = (groupCounts[groupIndex] or 0) + 1
-            if groupCounts[groupIndex] <= 5 then
-                occupied[((groupIndex - 1) * 5) + groupCounts[groupIndex]] = true
+            if groupIndex then
+                groupStart = ((groupIndex - 1) * 5) + 1
+                groupEnd = math.min(groupStart + 4, snapshot.size)
+                slotIndex = groupNext[groupIndex] or groupStart
+                while slotIndex <= groupEnd and occupied[slotIndex] do
+                    slotIndex = slotIndex + 1
+                end
+                if slotIndex <= groupEnd then
+                    occupied[slotIndex] = true
+                    groupNext[groupIndex] = slotIndex + 1
+                end
             end
         end
     end
@@ -3189,9 +2821,9 @@ end
 
 function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
     local validSizes = { [5] = true, [10] = true, [15] = true, [20] = true, [40] = true }
-    local seenPlayers, groupCounts, seenPartySlots = {}, {}, {}
+    local seenPlayers, groupCounts, seenPartySlots, seenSlots = {}, {}, {}, {}
     local currentNames, roster = {}, nil
-    local i, slot, player, role, expected, actual, name
+    local i, slot, player, role, expected, actual, name, slotIndex, expectedGroup
 
     if type(snapshot) ~= "table" or not validSizes[snapshot.size] then
         return false, SCB_L("ERR_SNAPSHOT_SIZE")
@@ -3255,85 +2887,31 @@ function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
             end
         end
     end
+    if snapshot.size > 5 then
+        for i = 1, table.getn(snapshot.players or {}) do
+            player = snapshot.players[i]
+            slotIndex = player and player.slotIndex or nil
+            if slotIndex ~= nil then
+                if type(slotIndex) ~= "number"
+                    or slotIndex < 1 or slotIndex > snapshot.size
+                    or seenSlots[slotIndex] then
+                    return false, SCB_L("ERR_SNAPSHOT_PLAYERS")
+                end
+                expectedGroup = math.floor((slotIndex - 1) / 5) + 1
+                if expectedGroup ~= player.group then
+                    return false, SCB_L("ERR_SNAPSHOT_RAID_GROUP")
+                end
+                seenSlots[slotIndex] = true
+            end
+        end
+    end
     return true
 end
 
-function SCB_BuildPresetExecutionSnapshot()
-    local group = SCB_CurrentPresetGroup()
-    local preset = SCB_CurrentPreset()
-    local size = SCB_CurrentPresetSize()
-    local slots, roster, partySlots, players, groupCounts = {}, {}, {}, {}, {}
-    local i, info, assignedGroup, role, extra, fallbackRole, fallbackExtra
-    local snapshot, valid, errorText
-
-    if not group or not preset then
-        return nil, SCB_L("ERR_SELECT_PRESET")
-    end
-
-    slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
-    for i = 1, size do
-        if not SCB_IsValidSpawnAssignment(slots[i].class, slots[i].role, slots[i].extra) then
-            return nil, SCB_L("ERR_PRESET_BOT")
-        end
-    end
-
-    roster = SCB_GetHumanRoster()
-    if size <= 5 then partySlots = SCB_AutoPartyPlayerSlots(roster) end
-
-    for i = 1, table.getn(roster) do
-        info = roster[i]
-        if size > 5 then
-            assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
-            if not assignedGroup then
-                return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), info.name)
-            end
-            if assignedGroup < 1 or assignedGroup > math.ceil(size / 5) then
-                return nil, SCB_L("ERR_PRESET_PLAYER_GROUP")
-            end
-            groupCounts[assignedGroup] = (groupCounts[assignedGroup] or 0) + 1
-            if groupCounts[assignedGroup] > 5 then
-                return nil, string.format(SCB_L("ERR_PRESET_GROUP_FULL"), assignedGroup)
-            end
-        else
-            assignedGroup = 1
-            if not partySlots[info.key] then
-                return nil, SCB_L("ERR_PARTY_LAYOUT")
-            end
-        end
-
-        if info.key == "$self" then
-            fallbackRole, fallbackExtra = SCB_GetCharacterDefaultRoleSelection()
-        else
-            fallbackRole = SCB_DefaultPlayerRole(info)
-            fallbackExtra = nil
-        end
-        role, extra = SCB_GetPlayerRoleSelection(SCB.presetEditorPlayerRoles and SCB.presetEditorPlayerRoles[info.key] or nil, fallbackRole, fallbackExtra)
-        table.insert(players, {
-            name = info.name,
-            group = assignedGroup,
-            slotIndex = size <= 5 and partySlots[info.key] or nil,
-            role = role,
-            extra = extra,
-        })
-    end
-
-    snapshot = {
-        protocol = 1,
-        groupID = group.id,
-        groupName = group.name or SCB_L("PRESET_GROUP_PLACEHOLDER"),
-        size = size,
-        presetName = preset.name or SCB_L("PRESET_PLACEHOLDER"),
-        slots = slots,
-        players = players,
-        roleCounts = SCB_CalculatePresetRoleCounts(),
-    }
-    valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
-    if not valid then return nil, errorText end
-    return snapshot
-end
 
 function SCB_HasBotSpawnOperation()
-    return (SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0)
+    if SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() then return true end
+    return (SCB_PresetSpawnQueueCount and SCB_PresetSpawnQueueCount() > 0)
         or (SCB.presetGroupWaitRemaining or 0) > 0
         or (SCB.presetCombatRetryWaitRemaining or 0) > 0
         or (SCB.refillState and SCB.refillState.active)
@@ -3342,12 +2920,12 @@ function SCB_HasBotSpawnOperation()
         or (SCB.activeRosterTransition and SCB.activeRosterTransition.kind == "preset")
 end
 
-function SCB_AbortBotSpawnOperations()
+function SCB_AbortBotSpawnOperationsCore()
     -- Explicit recovery path for server-side rejection or a user-forced retry.
     -- Never leave a consumed spawn burst parked behind a roster barrier that can
     -- no longer succeed. Any bots that really did spawn are observed/adopted
     -- normally after the unfinished preset tracker is discarded.
-    SCB.presetSpawnQueue = {}
+    SCB_ResetPresetSpawnQueue()
     SCB.presetSpawnElapsed = 0
     SCB.presetGroupWaitRemaining = 0
     SCB.presetCombatRetryWaitRemaining = 0
@@ -3372,197 +2950,9 @@ function SCB_AbortBotSpawnOperations()
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
 end
 
-function SCB_StartPresetSummonSnapshot(snapshot)
-    local valid, errorText = SCB_ValidatePresetExecutionSnapshot(snapshot, true)
-    local group, size, slots, commands, occupied, startBotState, survivorName
-    local groupCommands, groupCount, g, i, slot, heldG1Command, hasLater, expectedBotCount
-    local kickAllAnchorName, useKickAllAnchor, player
 
-    if not valid then return false, errorText end
-    if table.getn(SCB.presetSpawnQueue) > 0 or (SCB.presetGroupWaitRemaining or 0) > 0 or (SCB.presetCombatRetryWaitRemaining or 0) > 0 then
-        return false, SCB_L("ERR_SUMMON_BUSY")
-    end
 
-    group = { id = snapshot.groupID, name = snapshot.groupName, size = snapshot.size }
-    size = snapshot.size
-    slots = SCB_CopySlots(snapshot.slots)
-    commands = {}
-    occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
-    groupCommands = {}
-    groupCount = math.ceil(size / 5)
 
-    SCB.presetCombatRetryWaitRemaining = 0
-    SCB.presetCombatRetryFailures = 0
-    SCB.presetCombatRetryResetPending = nil
-    SCB.presetLastBurstCommands = nil
-    SCB.presetLastBurstRequeued = nil
-
-    -- Empty gate. The only permitted existing bot is the deliberate safety
-    -- survivor: exactly one bot while the player is the only human.
-    startBotState, survivorName = SCB_GetPresetStartBotState()
-    if startBotState == "blocked" then
-        return false, SCB_L("ERR_SUMMON_GROUP_NOT_EMPTY")
-    end
-    SCB.presetSurvivorBotName = survivorName
-    kickAllAnchorName = SCB_GetKickAllAnchorForFreshBuild()
-    useKickAllAnchor = startBotState == "survivor" and kickAllAnchorName and survivorName == kickAllAnchorName
-
-    SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
-    if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
-
-    for g = 1, groupCount do groupCommands[g] = {} end
-    for i = 1, size do
-        if not occupied[i] then
-            slot = slots[i]
-            g = math.floor((i - 1) / 5) + 1
-            table.insert(groupCommands[g], SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra))
-        end
-    end
-
-    if size > 5 then
-        if startBotState == "survivor" then
-            if not (GetNumRaidMembers and GetNumRaidMembers() > 0) then
-                table.insert(commands, SCB_PRESET_CONVERT_NOW)
-            end
-        elseif GetNumRaidMembers and GetNumRaidMembers() > 0 then
-            -- Already a raid.
-        elseif ((GetNumPartyMembers and GetNumPartyMembers()) or 0) > 0 then
-            table.insert(commands, SCB_PRESET_CONVERT_NOW)
-        else
-            SCB.presetBootstrapBotName = nil
-            SCB.presetSurvivorBotName = nil
-            table.insert(commands, SCB.PRESET_CHECK_COMBAT)
-            table.insert(commands, SCB_BuildSpawnCommand("warrior", "tank", nil))
-            table.insert(commands, SCB_PRESET_WAIT_BOOTSTRAP)
-            startBotState = "survivor"
-        end
-    end
-
-    if size > 5 then
-        SCB.presetHumanGroups = {}
-        for i = 1, table.getn(snapshot.players or {}) do
-            player = snapshot.players[i]
-            if player.group and player.group >= 1 and player.group <= groupCount then
-                SCB.presetHumanGroups[player.name] = player.group
-            end
-        end
-        table.insert(commands, SCB.PRESET_ARRANGE_PLAYERS)
-    else
-        SCB.presetHumanGroups = nil
-    end
-
-    expectedBotCount = 0
-    for g = 1, groupCount do expectedBotCount = expectedBotCount + table.getn(groupCommands[g]) end
-
-    if startBotState == "survivor" then
-        if table.getn(groupCommands[1]) == 0 then
-            return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
-        end
-        if useKickAllAnchor then
-            heldG1Command = groupCommands[1][table.getn(groupCommands[1])]
-            table.remove(groupCommands[1], table.getn(groupCommands[1]))
-        else
-            heldG1Command = groupCommands[1][1]
-            table.remove(groupCommands[1], 1)
-        end
-        SCB.presetExpectedBotCountBeforeHandoff = expectedBotCount
-    else
-        SCB.presetExpectedBotCountBeforeHandoff = nil
-    end
-
-    for g = 1, groupCount do
-        if table.getn(groupCommands[g]) > 0 then table.insert(commands, SCB.PRESET_CHECK_COMBAT) end
-        for i = table.getn(groupCommands[g]), 1, -1 do table.insert(commands, groupCommands[g][i]) end
-
-        hasLater = false
-        if g < groupCount then
-            local gg
-            for gg = g + 1, groupCount do
-                if table.getn(groupCommands[gg]) > 0 then hasLater = true break end
-            end
-        end
-        if hasLater then table.insert(commands, SCB.PRESET_WAIT_GROUP) end
-    end
-
-    if heldG1Command then
-        table.insert(commands, SCB.PRESET_WAIT_FINAL_ROSTER)
-        table.insert(commands, SCB.PRESET_REMOVE_SURVIVOR)
-        table.insert(commands, SCB.PRESET_WAIT_SURVIVOR_GONE)
-        table.insert(commands, SCB.PRESET_CHECK_COMBAT)
-        table.insert(commands, heldG1Command)
-    end
-
-    table.insert(commands, SCB.PRESET_TRACK_ROSTER)
-    SCB_QueuePresetSpawn(commands)
-    return true
-end
-
-function SCB_StartPresetRebuild(snapshot)
-    if table.getn(SCB.presetSpawnQueue) > 0
-        or (SCB.presetGroupWaitRemaining or 0) > 0
-        or (SCB.presetCombatRetryWaitRemaining or 0) > 0
-        or (SCB.refillState and SCB.refillState.active)
-        or (SCB.replaceDeadState and SCB.replaceDeadState.active)
-        or (SCB.presetRebuildState and SCB.presetRebuildState.active) then
-        return false, SCB_L("ERR_SUMMON_BUSY")
-    end
-
-    if SCB_CountGroupBots() == 0 then
-        if SCB_BeginActiveRosterPresetTransition then SCB_BeginActiveRosterPresetTransition(snapshot.size) end
-        local ok, errorText = SCB_StartPresetSummonSnapshot(snapshot)
-        if not ok and SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
-        return ok, errorText
-    end
-
-    SCB.presetRebuildState = { active = true, snapshot = snapshot, readySeenAt = nil }
-    SCB_KickBots(false)
-    if SCB_BeginActiveRosterPresetTransition then SCB_BeginActiveRosterPresetTransition(snapshot.size) end
-    return true
-end
-
-function SCB_PresetRebuildOnUpdate()
-    local state = SCB.presetRebuildState
-    local now = GetTime and GetTime() or 0
-    local anchorName, ready, ok, errorText
-    if not state or not state.active then return end
-    anchorName = SCB_GetKickAllAnchorForFreshBuild()
-    ready = SCB_CountGroupBots() == 0 or anchorName ~= nil
-    if not ready then state.readySeenAt=nil; return end
-    if not state.readySeenAt then state.readySeenAt=now; return end
-    if now - state.readySeenAt < 1.0 then return end
-    state.active=false
-    ok, errorText = SCB_StartPresetSummonSnapshot(state.snapshot)
-    if not ok then
-        if errorText then SCB_Print(errorText) end
-        if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
-    end
-    SCB.presetRebuildState=nil
-end
-
-function SCB_PresetSummonOnClick()
-    local snapshot, errorText
-    local ok
-
-    -- Ctrl-click is an explicit user override for stale internal spawn state.
-    -- It cancels SCB's current operation only; the retry still passes every
-    -- normal roster, survivor, raid-ID, location and combat safety check.
-    if IsControlKeyDown and IsControlKeyDown() and SCB_HasBotSpawnOperation() then
-        SCB_AbortBotSpawnOperations()
-    end
-
-    snapshot, errorText = SCB_BuildPresetExecutionSnapshot()
-    if not snapshot then
-        SCB_Print(errorText)
-        return
-    end
-
-    -- Preserve the old normalization side effect for the visible local editor.
-    SCB.presetEditorSlots = SCB_CopySlots(snapshot.slots)
-    SCB_RefreshPresetPlayers()
-
-    ok, errorText = SCB_StartPresetRebuild(snapshot)
-    if not ok and errorText then SCB_Print(errorText) end
-end
 
 
 function SCB_StopPresetTutorial(markSeen)
@@ -3691,6 +3081,7 @@ function SCB_SetPresetPanelShown(show)
         SCB_RefreshPresetPlayers()
         SCB_RefreshPresetSummonWarning()
         SCB.presetPanel:Show()
+        if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
         SCB_SetPresetToggleDirection(true)
         if SCB_MaybeStartPresetTutorial then SCB_MaybeStartPresetTutorial() end
     else
@@ -4370,8 +3761,248 @@ function SCB_CreatePresetUI(frame)
     SCB_EnsurePresetDB()
     local group = SCB_CurrentPresetGroup()
     SCB_LoadPreset(SoloCraftBotsDB.currentPresetGroup, group and group.currentPreset or nil)
-    SCB_TryFinalizeRaidRoleTracking()
+    SCB_TryFinalizeRaidRoleTracking(SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     SCB_RefreshRefillButton()
+    if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+
 end
 
+-- -------------------------------------------------------------------------
+-- Location state and preset-group auto-swap (absorbed from Location.lua in 0.8.34).
+-- Scoped to preserve the former file's local namespace.
+-- -------------------------------------------------------------------------
 
+do
+-- SoloCraft Bots - canonical location state and optional PresetGroup auto-swap.
+-- Location resolution is always active; the auto-swap consumer is optional.
+
+SoloCraftBots = SoloCraftBots or {}
+local SCB = SoloCraftBots
+
+-- Runtime client zone strings. User-facing preset labels remain localized.
+-- Keep this correction in the canonical location owner rather than a later patch file.
+SCB.INSTANCE_ZONE_BY_GROUP = SCB.INSTANCE_ZONE_BY_GROUP or {}
+SCB.INSTANCE_ZONE_BY_GROUP.aq40 = "Ahn'Qiraj"
+
+SCB.INSTANCE_GROUP_BY_ZONE = {}
+do
+    local groupID, zoneName
+    for groupID, zoneName in pairs(SCB.INSTANCE_ZONE_BY_GROUP or {}) do
+        SCB.INSTANCE_GROUP_BY_ZONE[zoneName] = groupID
+    end
+end
+
+local function LocationText(func)
+    local value
+    if not func then return "" end
+    value = func()
+    if not value then return "" end
+    return tostring(value)
+end
+
+local function ProbeValue(value, available)
+    if not available then return SCB_L("LOCATION_UNAVAILABLE") end
+    if not value or value == "" then return SCB_L("LOCATION_EMPTY") end
+    return tostring(value)
+end
+
+function SCB_GetLocationGroupName(groupID)
+    if groupID == "5man" then return SCB_L("GROUP_WORLD") end
+    if groupID == "10man" then return SCB_L("GROUP_DUNGEON") end
+    if groupID == "ubrs" then return SCB_L("GROUP_BRS") end
+    if groupID == "zg" then return SCB_L("GROUP_ZG") end
+    if groupID == "aq20" then return SCB_L("GROUP_AQ20") end
+    if groupID == "mc" then return SCB_L("GROUP_MC") end
+    if groupID == "onyxia" then return SCB_L("GROUP_ONYXIA") end
+    if groupID == "bwl" then return SCB_L("GROUP_BWL") end
+    if groupID == "aq40" then return SCB_L("GROUP_AQ40") end
+    if groupID == "naxx" then return SCB_L("GROUP_NAXX") end
+    return groupID and tostring(groupID) or SCB_L("UNKNOWN")
+end
+
+function SCB_GetLocationContext()
+    local context = {}
+    local resolvedZone
+
+    context.inInstanceAvailable = IsInInstance and true or false
+    context.inInstance = IsInInstance and (IsInInstance() and true or false) or false
+    context.realZone = LocationText(GetRealZoneText)
+    context.zone = LocationText(GetZoneText)
+    context.subZone = LocationText(GetSubZoneText)
+    context.minimapZone = LocationText(GetMinimapZoneText)
+
+    resolvedZone = context.realZone ~= "" and context.realZone or context.zone
+    context.resolvedZone = resolvedZone
+
+    if context.inInstance then
+        context.locationType = "instance"
+        context.groupID = SCB.INSTANCE_GROUP_BY_ZONE[resolvedZone] or "10man"
+    else
+        context.locationType = "world"
+        context.groupID = "5man"
+    end
+
+    context.groupName = SCB_GetLocationGroupName(context.groupID)
+    return context
+end
+
+-- Location capacity answers only how large a maintained group may be here.
+-- It never manufactures expected bots: the Active Roster contains only bot
+-- occupants the player actually had. Dungeons and Blackrock Spire deliberately
+-- expose smaller challenge tiers; raid locations keep their normal raid cap.
+SCB.LOCATION_CAPACITY_TIERS_WORLD = SCB.LOCATION_CAPACITY_TIERS_WORLD or { 5 }
+SCB.LOCATION_CAPACITY_TIERS_10 = SCB.LOCATION_CAPACITY_TIERS_10 or { 5, 10 }
+SCB.LOCATION_CAPACITY_TIERS_15 = SCB.LOCATION_CAPACITY_TIERS_15 or { 5, 10, 15 }
+SCB.LOCATION_CAPACITY_TIERS_20 = SCB.LOCATION_CAPACITY_TIERS_20 or { 20 }
+SCB.LOCATION_CAPACITY_TIERS_40 = SCB.LOCATION_CAPACITY_TIERS_40 or { 40 }
+
+function SCB_GetLocationCapacityTiers(context)
+    context = context or SCB_GetLocationContext()
+    if not context.inInstance then return SCB.LOCATION_CAPACITY_TIERS_WORLD end
+    if context.groupID == "10man" then return SCB.LOCATION_CAPACITY_TIERS_10 end
+    if context.groupID == "ubrs" then return SCB.LOCATION_CAPACITY_TIERS_15 end
+    if context.groupID == "zg" or context.groupID == "aq20" then return SCB.LOCATION_CAPACITY_TIERS_20 end
+    if context.groupID == "mc" or context.groupID == "onyxia" or context.groupID == "bwl"
+        or context.groupID == "aq40" or context.groupID == "naxx" then
+        return SCB.LOCATION_CAPACITY_TIERS_40
+    end
+    return SCB.LOCATION_CAPACITY_TIERS_10
+end
+
+function SCB_GetLocationMaxCapacity(context)
+    local tiers = SCB_GetLocationCapacityTiers(context)
+    return tiers[table.getn(tiers)] or 5
+end
+
+-- previousCap makes normal observation sticky upward. explicitSize is the one
+-- deliberate shrink path: pressing Summon with a smaller preset is the user's
+-- authoritative statement that the maintained roster should become smaller.
+function SCB_ResolveLocationExpectedCap(context, currentCount, previousCap, explicitSize)
+    local tiers, resolved, i
+    context = context or SCB_GetLocationContext()
+    currentCount = tonumber(currentCount) or 0
+
+    if explicitSize and tonumber(explicitSize) and tonumber(explicitSize) > 0 then
+        return tonumber(explicitSize)
+    end
+
+    tiers = SCB_GetLocationCapacityTiers(context)
+    resolved = tiers[table.getn(tiers)] or 5
+
+    if not context.inInstance or context.groupID == "10man" or context.groupID == "ubrs" then
+        for i = 1, table.getn(tiers) do
+            if currentCount <= tiers[i] then
+                resolved = tiers[i]
+                break
+            end
+        end
+    end
+
+    if previousCap and tonumber(previousCap) and tonumber(previousCap) > resolved then
+        resolved = tonumber(previousCap)
+    end
+    if currentCount > resolved then resolved = currentCount end
+    return resolved
+end
+
+function SCB_GetLocationSignature(context)
+    context = context or SCB_GetLocationContext()
+
+    if not context.inInstanceAvailable then return "?" end
+    if not context.inInstance then return "world" end
+    return "instance\031" .. (context.resolvedZone or "")
+end
+
+function SCB_FindDefaultPresetGroupIndex(groupID)
+    local i, group
+    SCB_EnsurePresetDB()
+    for i = 1, table.getn(SoloCraftBotsDB.presetGroups or {}) do
+        group = SoloCraftBotsDB.presetGroups[i]
+        if group and group.isDefault and group.id == groupID then return i end
+    end
+    return nil
+end
+
+function SCB_ApplyLocationPresetGroup(context)
+    local groupIndex, group
+    context = context or SCB_GetLocationContext()
+    groupIndex = SCB_FindDefaultPresetGroupIndex(context.groupID)
+
+    if not groupIndex or SoloCraftBotsDB.currentPresetGroup == groupIndex then
+        return false
+    end
+
+    if SCB.presetDirty then
+        SCB_Print(SCB_L("AUTO_SWAP_SKIPPED_UNSAVED"))
+        return false
+    end
+
+    group = SoloCraftBotsDB.presetGroups[groupIndex]
+    SCB_LoadPreset(groupIndex, group and group.currentPreset or nil)
+    return true
+end
+
+function SCB_ApplyCurrentLocationPresetGroup()
+    SCB_EnsureOptionsDB()
+    if not SoloCraftBotsDB.options.autoSwapPresetGroup then return false end
+    return SCB_ApplyLocationPresetGroup(SCB_GetLocationContext())
+end
+
+function SCB_HandleLocationRefresh()
+    local context = SCB_GetLocationContext()
+    local signature = SCB_GetLocationSignature(context)
+
+    SCB.locationContext = context
+    if signature == SCB.lastLocationSignature then return end
+    SCB.lastLocationSignature = signature
+
+    SCB_EnsureOptionsDB()
+    if SoloCraftBotsDB.options.autoSwapPresetGroup then
+        SCB_ApplyLocationPresetGroup(context)
+    end
+end
+
+function SCB_QueueLocationRefresh(delay)
+    local frame
+
+    if not SCB.locationRefreshFrame then
+        frame = CreateFrame("Frame", "SoloCraftBotsLocationRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.20) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_HandleLocationRefresh()
+        end)
+        SCB.locationRefreshFrame = frame
+    end
+
+    frame = SCB.locationRefreshFrame
+    frame.scbDelay = delay or 0.20
+    frame.scbElapsed = 0
+    frame:Show()
+end
+
+function SCB_PrintLocationProbe()
+    local context = SCB_GetLocationContext()
+    local inInstance
+
+    if not context.inInstanceAvailable then
+        inInstance = SCB_L("LOCATION_UNAVAILABLE")
+    elseif context.inInstance then
+        inInstance = SCB_L("YES")
+    else
+        inInstance = SCB_L("NO")
+    end
+
+    SCB_Print(SCB_L("LOCATION_PROBE"))
+    SCB_Print(string.format(SCB_L("LOCATION_IN_INSTANCE"), inInstance))
+    SCB_Print(string.format(SCB_L("LOCATION_REAL_ZONE"), ProbeValue(context.realZone, GetRealZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_ZONE"), ProbeValue(context.zone, GetZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_SUB_ZONE"), ProbeValue(context.subZone, GetSubZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_MINIMAP_ZONE"), ProbeValue(context.minimapZone, GetMinimapZoneText ~= nil)))
+    SCB_Print(string.format(SCB_L("LOCATION_RESOLVED_TYPE"), SCB_L(context.locationType == "instance" and "LOCATION_TYPE_INSTANCE" or "LOCATION_TYPE_WORLD")))
+    SCB_Print(string.format(SCB_L("LOCATION_RESOLVED_GROUP"), context.groupName, context.groupID))
+end
+end

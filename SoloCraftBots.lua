@@ -33,6 +33,7 @@ SCB.draggedPresetPlayerOriginSlot = nil
 SCB.pendingBotAdds = 0
 SCB.pendingBotAddsExpires = 0
 SCB.presetSpawnQueue = {}
+SCB.presetSpawnQueueHead = 1
 SCB.presetSpawnElapsed = 0
 SCB.presetSpawnInterval = 0.10
 SCB.presetGroupWaitRemaining = 0
@@ -44,6 +45,65 @@ SCB.activeRosterReconcilePending = true
 SCB.lastRoster = nil
 SCB.refillState = nil
 
+-- Preset summon queue: keep consumed entries in-place for the duration of an
+-- operation and advance a logical head instead of shifting the whole array.
+function SCB_ResetPresetSpawnQueue(queue)
+    SCB.presetSpawnQueue = queue or {}
+    SCB.presetSpawnQueueHead = 1
+end
+
+function SCB_PresetSpawnQueueCount()
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    local count = table.getn(queue) - head + 1
+    if count < 0 then return 0 end
+    return count
+end
+
+function SCB_PresetSpawnQueuePeek(offset)
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    if SCB_PresetSpawnQueueCount() <= 0 then return nil end
+    return queue[head + (offset or 0)]
+end
+
+function SCB_PresetSpawnQueuePop()
+    local item
+    if SCB_PresetSpawnQueueCount() <= 0 then return nil end
+    item = SCB.presetSpawnQueue[SCB.presetSpawnQueueHead or 1]
+    SCB.presetSpawnQueueHead = (SCB.presetSpawnQueueHead or 1) + 1
+    return item
+end
+
+function SCB_PresetSpawnQueueReplaceHead(item)
+    if SCB_PresetSpawnQueueCount() <= 0 then return false end
+    SCB.presetSpawnQueue[SCB.presetSpawnQueueHead or 1] = item
+    return true
+end
+
+function SCB_PresetSpawnQueuePrepend(items)
+    local count = table.getn(items or {})
+    local queue = SCB.presetSpawnQueue or {}
+    local head = SCB.presetSpawnQueueHead or 1
+    local newHead = head - count
+    local i, rebuilt
+
+    if count <= 0 then return end
+    if newHead >= 1 then
+        for i = 1, count do queue[newHead + i - 1] = items[i] end
+        SCB.presetSpawnQueueHead = newHead
+        return
+    end
+
+    -- Defensive fallback for callers that prepend before any queue items have
+    -- been consumed. Normal combat retry rewinds into the consumed prefix.
+    rebuilt = {}
+    for i = 1, count do table.insert(rebuilt, items[i]) end
+    for i = head, table.getn(queue) do table.insert(rebuilt, queue[i]) end
+    SCB.presetSpawnQueue = rebuilt
+    SCB.presetSpawnQueueHead = 1
+end
+
 BINDING_HEADER_SOLOCRAFTBOTS = SCB_L("BINDING_HEADER")
 BINDING_NAME_SOLOCRAFTBOTS_TOGGLE = SCB_L("BINDING_TOGGLE")
 
@@ -54,33 +114,51 @@ function SCB_Print(text)
     end
 end
 
-function SCB_SendCommand(command)
-    if not command or command == "" then
-        return
+function SCB_SendPartyBotCommand(command, options)
+    local channel
+    if not command or command == "" or not SendChatMessage then return false end
+
+    options = options or {}
+    channel = options.channel or "GUILD"
+    if options.registerSpawnIntent and SCB_RegisterSpawnIntent then
+        SCB_RegisterSpawnIntent()
     end
-    -- Control commands use party chat so they can still be issued while dead.
-    -- Bot spawning is intentionally handled separately and always uses SAY.
-    SendChatMessage(".partybot " .. command, "PARTY")
+
+    SendChatMessage(".partybot " .. command, channel)
+    return true
 end
 
-function SCB_QueueDelayedCommand(command, delay)
+function SCB_SendCommand(command, options)
+    -- Target/Group exclusivity is owned by the targeted-command entry points,
+    -- not by the generic sender. Global/role/emergency controls must remain live
+    -- while a targeted acknowledgement sequence is in progress.
+    return SCB_SendPartyBotCommand(command, { channel = "GUILD" })
+end
+
+function SCB_QueueDelayedCommand(commandKey, delay, scope, modifiers)
     local frame
-    if not command or command == "" then return end
+    if not commandKey or commandKey == "" then return end
 
     frame = SCB.delayedCommandFrame
     if not frame then
         frame = CreateFrame("Frame", "SoloCraftBotsDelayedCommandFrame", UIParent)
         frame:Hide()
         frame:SetScript("OnUpdate", function()
-            local queued
+            local queuedKey, queuedScope, queuedModifiers
             this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
             if this.scbElapsed < (this.scbDelay or 0) then return end
-            queued = this.scbCommand
-            this.scbCommand = nil
+            queuedKey = this.scbCommandKey
+            queuedScope = this.scbCommandScope or "all"
+            queuedModifiers = this.scbCommandModifiers
+            this.scbCommandKey = nil
+            this.scbCommandScope = nil
+            this.scbCommandModifiers = nil
             this.scbDelay = nil
             this.scbElapsed = 0
             this:Hide()
-            if queued then SCB_SendCommand(queued) end
+            if queuedKey and SCB_RequestCommand then
+                SCB_RequestCommand(queuedKey, queuedScope, queuedModifiers)
+            end
         end)
         SCB.delayedCommandFrame = frame
     end
@@ -88,8 +166,10 @@ function SCB_QueueDelayedCommand(command, delay)
     -- Do not restart an already-pending command when a macro is spammed; the
     -- first press still fires after its original delay instead of being pushed
     -- back indefinitely.
-    if frame.scbCommand then return end
-    frame.scbCommand = command
+    if frame.scbCommandKey then return end
+    frame.scbCommandKey = commandKey
+    frame.scbCommandScope = scope or "all"
+    frame.scbCommandModifiers = modifiers
     frame.scbDelay = delay or 0.25
     frame.scbElapsed = 0
     frame:Show()
@@ -170,6 +250,9 @@ function SCB_SetArtButtonTexture(button, texturePath, highlightTexturePath)
     if not button or not button.icon then
         return
     end
+    if button.scbNormalTexture == texturePath and button.scbHighlightTexture == highlightTexturePath then
+        return
+    end
     button.scbNormalTexture = texturePath
     button.scbHighlightTexture = highlightTexturePath
     button.icon:SetTexture(texturePath)
@@ -189,6 +272,8 @@ function SCB_SetArtButtonAvailable(button, available)
     if not button or not button.icon then
         return
     end
+    available = available and true or false
+    if button.scbAvailable == available then return end
     button.scbAvailable = available
     if available then
         button.icon:SetVertexColor(1, 1, 1, 1)
@@ -727,13 +812,6 @@ function SCB_IsValidSpawnAssignment(classKey, role, extra)
     return false
 end
 
-function SCB_SendSpawnCommand(command)
-    if not command or command == "" then
-        return
-    end
-    SCB_RegisterSpawnIntent()
-    SendChatMessage(".partybot " .. command, "SAY")
-end
 
 function SCB_RefreshMainPaladinBlessingButton()
     local button = SCB.mainPaladinBlessingButton
@@ -773,27 +851,17 @@ function SCB_MainPaladinBlessingOnClick()
     SCB_RefreshMainPaladinBlessingButton()
 end
 
-function SCB_SpawnOnClick()
-    local extra
-    if not this.scbClass or not this.scbRole then
-        return
-    end
-    extra = this.scbExtra
-    if this.scbClass == "paladin" then
-        extra = SCB.mainPaladinBlessing or "BoK"
-    end
-    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    SCB_SendSpawnCommand(SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra))
-end
 
 function SCB_DistanceOnClick()
     SCB_EnsureSessionDB()
     if SoloCraftBotsDB.session.state.distance == "far" then
-        SCB_SendCommand("distance off")
-        SoloCraftBotsDB.session.state.distance = "near"
+        if SCB_SendCommand("distance off") then
+            SoloCraftBotsDB.session.state.distance = "near"
+        end
     else
-        SCB_SendCommand("distance on")
-        SoloCraftBotsDB.session.state.distance = "far"
+        if SCB_SendCommand("distance on") then
+            SoloCraftBotsDB.session.state.distance = "far"
+        end
     end
     SCB_RefreshDistanceButtons()
 end
@@ -867,6 +935,7 @@ end
 
 function SCB_MainFrameOnShow()
     SCB_SetEscapeProxyShown(true)
+    if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
 end
 
 function SCB_MainFrameOnHide()
@@ -1114,8 +1183,10 @@ function SCB_CreateCommandUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "commands", SCB_L("SECTION_COMMANDS"), 310)
     local buttonSize = 36
     SCB.targetCommandButtons = {}
+    SCB.groupCommandButtons = {}
     local rows = {
         { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
+        { recipient = "group", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
         { recipient = "melee", indent = 1, commands = { "move", "stay" } },
@@ -1148,12 +1219,17 @@ function SCB_CreateCommandUI(frame)
         button.scbRecipientLabel = recipient.label
         comeRecipientLabel = row.recipient == "target" and SCB_L("RECIPIENT_TARGET") or recipient.label
         button.scbTooltip = string.format(SCB_L("TIP_COME_RECIPIENT"), comeRecipientLabel, comeRecipientLabel)
+        if row.recipient == "group" then
+            button.scbTooltip = button.scbTooltip .. "\n" .. SCB_L("TIP_GROUP_SCOPE")
+        end
         button:SetScript("OnClick", SCB_DirectCommandOnClick)
         button:SetScript("OnEnter", SCB_TooltipOnEnter)
         button:SetScript("OnLeave", SCB_TooltipOnLeave)
         layoutRow.recipientButton = button
         if row.recipient == "target" then
             table.insert(SCB.targetCommandButtons, button)
+        elseif row.recipient == "group" then
+            table.insert(SCB.groupCommandButtons, button)
         end
 
         for i = 1, table.getn(row.commands) do
@@ -1169,6 +1245,9 @@ function SCB_CreateCommandUI(frame)
             button.scbRecipientKey = row.recipient
             button.scbRecipientLabel = recipient.label
             button.scbTooltip = string.format(SCB_L("COMMAND_TOOLTIP"), recipient.label, commandInfo.label)
+            if row.recipient == "group" then
+                button.scbTooltip = button.scbTooltip .. "\n" .. SCB_L("TIP_GROUP_SCOPE")
+            end
             if commandKey == "spreadtoggle" then
                 SCB.spreadToggleButton = button
                 SCB_RefreshSpreadToggle(button)
@@ -1181,15 +1260,17 @@ function SCB_CreateCommandUI(frame)
             table.insert(layoutRow.commandButtons, button)
             if row.recipient == "target" then
                 table.insert(SCB.targetCommandButtons, button)
+            elseif row.recipient == "group" then
+                table.insert(SCB.groupCommandButtons, button)
             end
         end
         table.insert(layoutRows, layoutRow)
     end
 
     local pairDefs = {
-        { key = "tankmelee", upperRow = 3, lowerRow = 4, tooltipKey = "TIP_COME_TANK_MELEE" },
-        { key = "meleeranged", upperRow = 4, lowerRow = 5, tooltipKey = "TIP_COME_MELEE_RANGED" },
-        { key = "rangedhealer", upperRow = 5, lowerRow = 6, tooltipKey = "TIP_COME_RANGED_HEALER" },
+        { key = "tankmelee", upperRow = 4, lowerRow = 5, tooltipKey = "TIP_COME_TANK_MELEE" },
+        { key = "meleeranged", upperRow = 5, lowerRow = 6, tooltipKey = "TIP_COME_MELEE_RANGED" },
+        { key = "rangedhealer", upperRow = 6, lowerRow = 7, tooltipKey = "TIP_COME_RANGED_HEALER" },
     }
     for i = 1, table.getn(pairDefs) do
         local pair = pairDefs[i]
@@ -1272,7 +1353,7 @@ function SCB_CreateRaidmarkUI(frame)
     local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
-    clearMarks:SetScript("OnClick", function() SendChatMessage(".partybot clearmarks", "PARTY") end)
+    clearMarks:SetScript("OnClick", function() SCB_SendCommand("clearmarks") end)
     clearMarks:SetScript("OnEnter", SCB_TooltipOnEnter)
     clearMarks:SetScript("OnLeave", SCB_TooltipOnLeave)
 
@@ -1418,6 +1499,11 @@ function SCB_CreateUI()
 
     SCB.presetSpawnQueueFrame = CreateFrame("Frame", "SoloCraftBotsPresetSpawnQueueFrame", UIParent)
     SCB.presetSpawnQueueFrame:SetScript("OnUpdate", SCB_PresetSpawnQueueOnUpdate)
+    SCB.presetSpawnQueueFrame:Hide()
+
+    function SCB_WakePresetSpawnScheduler()
+        if SCB.presetSpawnQueueFrame then SCB.presetSpawnQueueFrame:Show() end
+    end
 
     SCB_RestorePosition()
     SCB_RefreshDistanceButtons()
@@ -1445,7 +1531,19 @@ SLASH_SOLOCRAFTBOTS2 = "/solocraftbots"
 SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     local command = string.lower(string.gsub(msg or "", "^%s*(.-)%s*$", "%1"))
     if command == "attackstart" then
-        SCB_QueueDelayedCommand("attackstart", 0.25)
+        SCB_QueueDelayedCommand("attackstart", 0.25, "all")
+        return
+    elseif command == "stay" or command == "move" then
+        -- Combat macros are intentionally conditional: a friendly bot target
+        -- means Single; any other target context uses the explicit All route.
+        -- Keep both paths inside the shared command-request front door.
+        if SCB_RequestCommand then
+            if SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget() then
+                SCB_RequestCommand(command, "target")
+            else
+                SCB_RequestCommand(command, "all")
+            end
+        end
         return
     elseif command == "location" then
         SCB_PrintLocationProbe()
@@ -1471,10 +1569,22 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
 end
 
 local eventFrame = CreateFrame("Frame", "SoloCraftBotsEventFrame", UIParent)
+SCB.eventFrame = eventFrame
+
+function SCB_UpdateDebugEventRegistration(enabled)
+    local debugEvents = { "UNIT_FLAGS", "UNIT_COMBAT", "CHAT_MSG_PARTY", "CHAT_MSG_RAID", "CHAT_MSG_SAY" }
+    local i
+    enabled = enabled == true
+    for i = 1, table.getn(debugEvents) do
+        if enabled then eventFrame:RegisterEvent(debugEvents[i]) else eventFrame:UnregisterEvent(debugEvents[i]) end
+    end
+end
+
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+eventFrame:RegisterEvent("UNIT_HEALTH")
 eventFrame:RegisterEvent("ZONE_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -1484,16 +1594,19 @@ eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
-eventFrame:RegisterEvent("UNIT_FLAGS")
-eventFrame:RegisterEvent("UNIT_COMBAT")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-eventFrame:RegisterEvent("CHAT_MSG_PARTY")
-eventFrame:RegisterEvent("CHAT_MSG_RAID")
-eventFrame:RegisterEvent("CHAT_MSG_SAY")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
     if event == "PLAYER_TARGET_CHANGED" then
-        if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
+            SCB_RefreshTargetCommandRow()
+        end
+        return
+    end
+    if event == "UNIT_HEALTH" and arg1 == "target" then
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+            SCB_RefreshCommandAvailability()
+        end
         return
     end
     if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
@@ -1561,18 +1674,23 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "PARTY_LEADER_CHANGED" then
         SCB_ApplyAutoPromotePlayers()
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
-        SCB_HandleRosterChange()
-        if SCB.presetPanel then
+        local observed = SCB_HandleRosterChange()
+        if SCB.presetPanel and SCB.presetPanel:IsShown()
+            and (not observed or not observed.delta or observed.delta.humanChanged) then
             SCB_RefreshPresetPlayers()
         end
-        SCB_TryFinalizeRaidRoleTracking()
-        SCB_RefreshRefillButton()
+        SCB_TryFinalizeRaidRoleTracking(observed)
+        if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+            SCB_RefreshCommandAvailability()
+        end
         SCB_DebugRosterChanged()
     elseif event == "UNIT_FLAGS" then
         SCB_DebugUnitFlags(arg1)
     elseif event == "UNIT_COMBAT" then
         SCB_DebugUnitCombat(arg1, arg2, arg3, arg4, arg5)
     elseif event == "CHAT_MSG_SYSTEM" then
+        if arg1 and SCB_HandleAssumedRoleSystemMessage then SCB_HandleAssumedRoleSystemMessage(arg1) end
+        if arg1 and SCB_HandleSpawnServerRejection then SCB_HandleSpawnServerRejection(arg1) end
         if arg1 == "Cannot add more bots. Instance is full."
             and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation()
             and SCB_AbortBotSpawnOperations then
@@ -1582,7 +1700,7 @@ eventFrame:SetScript("OnEvent", function()
             SCB_AbortBotSpawnOperations()
         end
         if arg1 and string.find(arg1, "Cannot add bots while any party member is in combat", 1, true)
-            and SCB.presetSpawnQueue and table.getn(SCB.presetSpawnQueue) > 0
+            and SCB_PresetSpawnQueueCount and SCB_PresetSpawnQueueCount() > 0
             and SCB.presetLastBurstCommands and table.getn(SCB.presetLastBurstCommands) > 0
             and not SCB.presetLastBurstRequeued then
             -- The server is authoritative when the local UnitAffectingCombat
@@ -1603,9 +1721,7 @@ eventFrame:SetScript("OnEvent", function()
                 for ri = 1, table.getn(SCB.presetLastBurstCommands) do
                     table.insert(retry, SCB.presetLastBurstCommands[ri])
                 end
-                for ri = table.getn(retry), 1, -1 do
-                    table.insert(SCB.presetSpawnQueue, 1, retry[ri])
-                end
+                SCB_PresetSpawnQueuePrepend(retry)
 
                 -- Replace any normal inter-group wait already running for the
                 -- failed burst with the bounded server-error backoff. The combat
@@ -1617,7 +1733,7 @@ eventFrame:SetScript("OnEvent", function()
             else
                 -- Fifth rejected attempt: stop rather than looping forever or
                 -- letting a later logical group corrupt the intended raid comp.
-                SCB.presetSpawnQueue = {}
+                SCB_ResetPresetSpawnQueue()
                 SCB.presetGroupWaitRemaining = 0
                 SCB.presetCombatRetryWaitRemaining = 0
                 SCB.presetCombatPollRemaining = nil
