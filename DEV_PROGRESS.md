@@ -3,9 +3,10 @@
 ## Current
 - Branch: `dev`
 - Version: `0.8.75-dev`
-- Current runtime commit: `2b19431de271906ae99d67b55e779488d8ca14d0`
+- Current runtime commit: `2b19431de271906ae99d67b55e779488d8ca14d0` (0.8.75-dev)
+- Branch head before this docs-only handoff: `2684875d60915472474911b5ef53bf9d228044bb` — icon artwork generation guide.
 - Latest status commit before this update: `3cbd18d653e30bb083e3610df7405bf0d02d0c4e`
-- Goal: finish reliable Group-command targeting, then align 5-player roster/editor/maintenance behaviour with the same logical-slot model already used for raid presets.
+- Goal: finish the 0.8.75 Single/Group runtime gate, then converge commands, bot lifecycle, logical slots and maintenance onto explicit reusable pipelines so new features and the future visualiser consume shared state instead of adding parallel paths.
 
 ## Recent Commits
 - `25f3a915e17470346629bbdb7c3904f40114fef0` — 0.8.69-dev: recover from stale human Group locator targets by treating `Target is not a party bot` as a failed targeted attempt.
@@ -73,6 +74,88 @@
   Actor-specific movement failures also identify the selected name. These messages are filtered only at ChatFrame display, so they can be consumed internally as acknowledgements while remaining hidden.
 - 0.8.68-dev targeted control behavior is user-tested as highly responsive/reliable overall; the human-locator stale-target hang was the one reproduced blocker. 0.8.69-dev contains the focused fix and is not yet user-verified.
 
+## 2026-09-22 Full Addon Pipeline Audit / Agreed Direction
+
+The current consolidation is substantially aligned with the intended architecture, but several live bypasses/compatibility paths remain. The target is **not** one giant state machine. Each domain gets one obvious request/ownership path, and a future read-only activity/status surface exposes state to presentation consumers such as the visualiser.
+
+### Physical bot lifecycle
+- `Spawn.lua` / `SCB.botOperation` remains the authoritative owner for physical bot-roster mutation and waits on the consequences of those mutations.
+- Preset summon/rebuild and Replace Missing/Dead already use this coordinator and should remain the proven base.
+- Addon manual Add buttons should become a lightweight one-assignment `manual-add` operation:
+  - class/role/extra are prepared as one explicit spawn intent;
+  - the joining bot is identity-bound through the same assumed-spawn/burst machinery;
+  - manual Add is unavailable while a preset/rebuild/maintenance/manual-add physical operation owns the roster;
+  - after a manual Add is sent, enforce at least a 1.0-second button cooldown **and** do not permit the next addon manual Add until the expected bot has been observed/bound or the existing short spawn timeout has expired. The cooldown is therefore a floor, not the only identity-safety barrier.
+- A user manually typing a raw `.partybot add ...` command while SCB is in the middle of a physical operation is outside the supported coordinator contract; do not add fragile interception for arbitrary user chat commands.
+- Remote/requested preset summon currently bypasses the top-level operation coordinator by calling `SCB_StartPresetSummonSnapshot()` directly. Fix this so accepting a remote summon enters the same preset-operation request path as the local Summon button.
+- Preset communications carry **composition intent**, not execution identity. The requester does not need the generated bot names. The client that actually performs the summon owns bot-name -> logical-assignment binding as joins arrive.
+- When a received preset is saved, preserve transmitted exact human `slotIndex` data as preset `playerSlots`; current save-received code keeps group/role but discards the exact slot.
+
+### One logical-slot model at every preset size
+- Five-player and raid presets should share the same editor semantics: a human identity owns an exact logical slot and suppresses the underlying bot intent while present.
+- `size <= 5` is a **topology policy**, not a separate editor/identity model:
+  - remain a party;
+  - never convert to raid;
+  - do not attempt subgroup manipulation;
+  - preserve deterministic remaining-bot summon/order semantics;
+  - retain the proven five-player bootstrap rule: one temporary occupant may reserve exactly one final required bot assignment when continuity requires it.
+- `size > 5` uses raid topology. Bot subgroup/order placement remains intentionally controlled and deterministic. Human logical slots remain suppression/composition intent only.
+- Do not infer a human logical slot from Blizzard party/raid row position. Conversely, do not use a human's logical slot as an instruction to force that human into a particular Blizzard row.
+- The current `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` path still actively moves humans between raid subgroups from logical preset assignments. This conflicts with the newer model and should be removed/reworked during the unified logical-slot migration.
+- Blizzard raid information remains authoritative for **actual current physical placement**. Bot identity/order is established from explicit summon/burst identity while ignoring human row order; Blizzard observation then tells SCB where every live member actually is.
+
+### Preset live-layout mismatch presentation
+Keep saved logical composition stable. Do **not** silently rewrite the preset to match Blizzard's transient layout.
+
+Use the Preset UI as a temporary live-status projection when physical layout differs:
+- If subgroup membership/composition is still correct but Blizzard has changed within-group row ordering, the whole affected preset group should **slowly pulse its background yellow**. Tooltip wording: **"Group composition correct; Blizzard client reordered members."**
+- If a bot or player has been moved to a different raid subgroup outside SCB (for example through the Blizzard Raid tab), use the same slow yellow group-background pulse. Tooltip wording: **"Group rearranged in Blizzard Raid tab."**
+- The pulse is informational, not an error and not an automatic correction request. It disappears when observed live layout again matches the logical/runtime expectation.
+- Human row-order scrambling is expected and must not damage logical ownership. Bot logical order remains derived from the controlled summon identity/order, with actual subgroup location observed separately.
+- Implementation should distinguish ordinary within-group Blizzard row reordering from actual subgroup-membership changes. Do not claim an exact saved physical row for a human.
+
+### Reusable maintenance intent
+- Roster/Active Roster should decide **which logical assignments** require action; Spawn should execute physical mutation.
+- Refactor maintenance entry so selection produces a reusable maintenance intent rather than the Replace button owning a unique execution pipeline.
+- Existing Replace Missing/Dead becomes one selector of logical assignments.
+- Planned **Resummon Group N** becomes another selector: choose the active bot assignments belonging to that logical group, then feed them through the same paced removal -> observe absent -> capacity settle when required -> spawn burst -> identity bind -> subgroup placement -> Active Roster bind lifecycle.
+- A future single-bot resummon can use the same mechanism. Do not add another scheduler.
+
+### Declarative command pipeline
+- Introduce one conceptual command request entry point. Buttons/macros should request `commandKey + scope + modifiers`; they should not independently implement target safety or sequencing rules.
+- Separate **command target semantics** from **scope execution policy**.
+- Command target semantics should be declarative metadata, with categories such as:
+  - target-agnostic;
+  - friendly-bot recipient;
+  - living-enemy context;
+  - conditional/target-sensitive server command;
+  - other explicit context requirements only when server evidence justifies them.
+- Scope/execution policy then decides mechanics:
+  - Single: requires the appropriate friendly bot target, remains immediate/fire-and-forget/spammable, no Group acknowledgement lock and no Group 24/sec pacing;
+  - Group: friendly bot is only the group locator, then the pipeline owns recipient targeting, 0.10-second settle after actual addon retargets, actor acknowledgement checks and the existing 24 commands/sec budget;
+  - All/role/pair scopes: immediate when their command metadata says current target context is safe;
+  - enemy-context actions such as Attack/AoE validate the hostile/living context but do not treat the enemy as a bot recipient.
+- UI availability/greying should ask the command pipeline whether a command/scope combination is currently valid. The UI may display the result but must not own the underlying semantic rule.
+- Preserve all runtime-proven command behaviour while moving ownership; do not make Single and Group identical merely to share an entry point.
+
+### Dumb visualiser / shared activity surface
+- The future gnomish LCD/pixel visualiser should contain no command, spawn, maintenance, roster or communications decision logic.
+- Components should publish/update a small neutral read-only activity/status surface. The visualiser consumes that surface.
+- Keep independent status channels where useful (for example Command, Bot Operation, Communication, Roster/Layout) so allowed concurrent activity remains representable instead of forcing unrelated domains into one giant state machine.
+- Example Command state: action/scope/phase/current recipient/progress.
+- Example Bot Operation state: operation kind/phase/progress/wait reason.
+- The same surface can later feed developer diagnostics without coupling debug/UI code into the execution pipelines.
+- Build the visualiser only after the pipeline/state surface is stable; it should be mostly presentation.
+
+### Agreed implementation sequence after the 0.8.75 runtime gate
+1. Define the declarative command target metadata and one command-request front door while preserving current Single/Group/All/role behaviour.
+2. Close physical-lifecycle bypasses: tracked/cooldown-protected addon manual Add; remote accepted summons through the preset operation coordinator; preserve received human exact slots.
+3. Perform the unified logical-slot migration for five-player + raid presets, remove logical-human -> physical-row/subgroup coupling, and add the yellow live-layout mismatch pulse/tooltips.
+4. Separate maintenance assignment selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
+5. Delete proven-dead legacy refill/compatibility runtime only after call-site audit and runtime gates show the authoritative paths cover the behaviour.
+6. Add the neutral read-only activity/status surface.
+7. Return to the visualiser as a dumb consumer of that surface.
+
 ## Current Issues
 - The 5-player preset UI still derives human rows from current party order rather than exposing raid-style explicit logical slot assignment.
 - Blizzard party/raid row placement must remain live observation only once explicit 5-player slot ownership is enabled.
@@ -115,26 +198,38 @@
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
-- Resummon a single group within an active preset without rebuilding the entire preset.
-- Audit every All-row command against actual server behaviour. The addon currently routes All through explicit all-style PartyBot commands, but verify that having a selected target cannot make any of them target-scoped. If any All command becomes target-sensitive while a target exists, disable/grey that All control while a target is selected rather than allowing ambiguous behaviour.
-- Expose human-over-bot drag/drop for 5-player presets: exact human identity -> exact logical slot -> suppress underlying bot intent while that human is present.
-- Stop deriving 5-player logical human ownership from Blizzard party-row order once explicit assignment exists.
+- Complete the 0.8.75 Single/Group runtime gate first.
+- Build the declarative command target-semantics/request front door described in the 2026-09-22 audit without changing proven behaviour.
+- Track addon manual Add as a one-assignment physical operation with explicit identity, minimum 1.0-second cooldown and join/timeout completion; disable addon manual Add during other physical bot operations.
+- Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
+- Preserve received preset exact human `slotIndex` data when saving communicated presets.
+- Convert 5-player presets to the same exact logical human-slot editor/model as raid presets and remove human physical placement from logical identity.
+- Remove/rework `PRESET_ARRANGE_PLAYERS` so logical human assignments no longer cause physical human subgroup arrangement.
+- Add the slow yellow whole-group live-layout mismatch pulse and the two agreed tooltip states for Blizzard row reorder vs Raid-tab subgroup rearrangement.
 - Preserve deterministic bot logical order while treating human physical placement as observational.
+- Refactor maintenance selection into reusable logical-assignment intents, then implement Resummon Group through the existing bot-operation maintenance execution path.
+- Audit every All-row command against actual server behaviour and encode target sensitivity in command metadata rather than button-local conditionals.
 - Reuse existing tracker/preset slot data and proven refill semantics; avoid duplicating raid logic in a party-only path.
+- Delete proven-dead legacy refill/compatibility runtime only after call-site audit and runtime proof.
+- Add a neutral read-only activity/status surface only after command/bot-operation ownership is stable; the visualiser consumes it later.
 - Post-replacement human-return policy is resolved: the user must manually free a group slot before the human can return; no automatic addon action is required.
 
 ## Ideas / Backlog
 - Do a full pass over button artwork/colour states so available, disabled, active and selected states are visually consistent across the addon.
 - Audit every centre-screen error/warning message for wording, severity, consistency and whether it belongs in centre-screen UI versus chat.
-- Future visualiser concept: a gnomish LCD/pixel-display panel showing what the command machine is doing. The shared Single/Group pipeline should make queued state/status/icon output possible later; keep the visualiser as a consumer of pipeline state/events rather than coupling UI logic into the sequencer.
+- Future visualiser concept: a gnomish LCD/pixel-display panel. Keep it deliberately dumb: Command, Bot Operation, Communications and Roster/Layout publish to a neutral activity/status surface; the visualiser only turns that state into text/icons/animation and never inspects scheduler internals directly.
 - Consider whether Group row availability/UI refresh should also force a fresh snapshot, or whether fresh-on-command is sufficient after runtime testing.
 - After the logical-slot work is stable, simplify or retire overlapping legacy refill paths only with migration/runtime proof.
 
 ## Deferred
 - Do not add a delay between Ctrl-click Move and Come unless runtime evidence specifically shows the same-frame pair failing.
-- Do not perform unrelated scheduler, identity or maintenance refactors while working on logical human-slot maintenance.
-- Do not treat Blizzard row/order as logical preset identity.
+- Do not intercept or attempt to make arbitrary user-typed raw `.partybot add ...` commands safe during an SCB-owned physical operation; addon buttons are the supported tracked manual-add path.
+- Do not collapse Command, Bot Operation, Communications and Roster into one giant state machine merely for the visualiser.
+- Do not treat Blizzard row/order as logical preset identity or silently rewrite saved presets to match transient Blizzard layout.
+- Do not auto-kick or auto-free a slot when a previously absent human returns after their logical slot has already been replaced.
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
 Runtime-test 0.8.75-dev Single controls under real combat spam. Confirm there is no Single acknowledgement lock or 24/sec throttle with a friendly bot targeted, while Group sequencing remains unchanged.
+
+If that passes, the **next code change** is the first pipeline-convergence step: introduce declarative command target semantics plus one command-request front door while preserving the current Single immediate/spammable policy, Group acknowledgement/settle/24-sec policy, and existing All/role behaviour. Do not start the visualiser yet.
