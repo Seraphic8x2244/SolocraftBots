@@ -1687,3 +1687,53 @@ Not in this slice:
 - visualiser.
 
 Status: design is agreed; implementation not yet started at this docs point.
+
+
+## 0.8.79-dev tracked manual Add — 2026-09-22
+
+Branch: `dev`  
+Runtime commit: `46ac48b01f9b701abe0b9151124a1e225a44a262`  
+Base/docs scope commit: `a2204856c960054e7376d431cba2a6b1780a4e40`  
+Stable main remains: `0.8.78` / `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`
+
+Implemented item 2.1 only:
+- addon manual Add now enters `SCB_RequestManualAdd(class, role, extra)` instead of directly calling the spawn sender;
+- the validated command is parsed back into canonical class/role/extra so generated/defaulted payload details exactly match the identity record;
+- a lightweight `manual-add` `SCB.botOperation` owns the request;
+- `SCB_BeginAssumedSpawnBurst` registers one explicit identity before `SCB_SendSpawnCommand` sends the SAY transport;
+- the existing generic pending-add registration remains the timeout owner (5 seconds);
+- controls remain locked for a minimum 1.0 seconds after send and until the expected explicit identity is observed/bound, or until timeout;
+- successful arrivals are recorded into session known-bot state and synchronized into Active Roster before completion; the requested assumed role/extra is retained so the manual slot is maintainable immediately;
+- a bounded roster-poll fallback can complete the same lifecycle if a Vanilla roster event is missed;
+- timeout/abort removes only this burst's still-pending assumed identity;
+- all manual Add role buttons use real Enable/Disable state while any bot operation is active;
+- shared paced Kick queue start/end also refreshes Add availability, preventing manual Add during an active large removal queue;
+- raw user-typed `.partybot add ...` remains outside this tracked contract.
+
+Static checks:
+- first staged candidate `5c6a16570dc89b12c0acb82f2e9cd8fee9f2e61f` was rejected before promotion after review found generated-extra identity and fallback-adoption gaps;
+- corrected candidate `46ac48b01f9b701abe0b9151124a1e225a44a262` was compared against `a2204856...`;
+- runtime diff is limited to `SoloCraftBots.lua`, `Roster.lua`, `Spawn.lua`, `Communication.lua`, and TOC version;
+- lexical Lua block-balance passed on every modified Lua file;
+- call-site/order audit confirms manual UI no longer raw-sends and assumed identity is registered before send;
+- TOC is `0.8.79-dev`;
+- `dev` head was rechecked immediately before non-force promotion.
+
+Status:
+- implemented and static-checked;
+- not user-tested yet;
+- item 2.2 remote accepted summon coordination not started;
+- item 2.3 received exact human `slotIndex` preservation not started;
+- visualiser deferred.
+
+Exact next test:
+- one Add disables all role Add buttons immediately;
+- spam clicks do not create a second request;
+- expected bot join + 1.0-second floor releases Add;
+- several sequential Adds retain requested identity;
+- failed Add releases through server abort or the existing ~5-second timeout and does not poison the next identity;
+- preset/maintenance/active large kick ownership keeps Add unavailable;
+- existing Add feedback remains one line per accepted request;
+- quick preset + maintenance regression smoke.
+
+If clean, continue to item 2.2 only.

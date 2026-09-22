@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.78-dev`
-- Current runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` (0.8.78-dev)
-- Branch head before this docs-only update: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — combat-first conditional Move/Stay macro policy.
-- Latest status commit before this update: `fa75bd2baa1f6cdd6a31e353695d59985ed7cbc2`
+- Version: `0.8.79-dev`
+- Current runtime commit: `46ac48b01f9b701abe0b9151124a1e225a44a262` (0.8.79-dev)
+- Branch head before this docs-only update: `46ac48b01f9b701abe0b9151124a1e225a44a262` — tracked/cooldown-protected manual Add lifecycle.
+- Latest status commit before this update: `a2204856c960054e7376d431cba2a6b1780a4e40`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: implement item 2.1 only: tracked/cooldown-protected addon manual Add through the physical bot-operation owner. Remote summon and received-slot work remain later slices; visualiser remains deferred.
+- Goal: runtime-clear item 2.1 manual Add before moving to item 2.2 remote accepted summon coordination. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
+- `46ac48b01f9b701abe0b9151124a1e225a44a262` — 0.8.79-dev: route addon manual Add through a tracked one-assignment `manual-add` bot operation with explicit identity, join/timeout ownership and a 1.0-second minimum floor.
 - `87e61360ec36c2d9543b2e1bc8606b948b10d6bd` (`main`) — promote tested 0.8.78-dev runtime to stable 0.8.78; release tree differs only by stable TOC metadata and removal of top-level dev status files.
 - `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — 0.8.78-dev: make `/scb move` and `/scb stay` combat-first conditional macros: friendly bot target -> Single, otherwise explicit All.
 - `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — 0.8.77-dev: make unavailable command buttons truly disabled; its target-only silent macro policy was superseded by 0.8.78 before runtime test.
@@ -36,6 +37,17 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
+- 0.8.79-dev implements architecture item 2.1, tracked addon manual Add:
+  - one click validates/canonicalizes exactly one class/role/extra assignment and begins a `manual-add` `SCB.botOperation`;
+  - one explicit assumed-spawn burst is registered before `SCB_SendSpawnCommand`, so join-message/roster-delta identity binding is shared with preset and maintenance spawning;
+  - generated command extras are recorded from the actual validated payload, including defaulted Shaman totems/Paladin blessing behavior;
+  - all addon manual Add role buttons are truly disabled while a bot operation owns the roster, and while the shared paced kick queue is active;
+  - after send, Add remains locked until both the 1.0-second minimum floor has elapsed and the expected named bot is observed/bound; if no bot resolves, the existing 5-second pending-add timeout releases the operation;
+  - successful fallback-polled arrivals are explicitly recorded in session state and synchronized into Active Roster, including the requested assumed role/extra, before the lock is released;
+  - timeout/abort removes only that manual burst's still-unbound assumed identity so it cannot steal the next bot;
+  - existing SAY spawn transport, immediate Add request feedback, auto-loot adoption and raw user-typed PartyBot behavior are preserved.
+- 0.8.79 static inspection passed: base->candidate diff review, Lua block-balance checks on all modified Lua files, command/order audit proving assumed identity registration precedes send, direct-manual-send call-site audit, TOC/version consistency, and non-force promotion after a final `dev` head recheck.
+- An earlier staged candidate `5c6a16570dc89b12c0acb82f2e9cd8fee9f2e61f` was rejected before promotion because it did not canonicalize generated extras and did not explicitly adopt a fallback-polled arrival; corrected candidate `46ac48b...` is the promoted runtime.
 - 0.8.78-dev supersedes only the 0.8.77 Move/Stay macro policy:
   - `/scb move` and `/scb stay` are intentionally combat-first and always responsive;
   - friendly bot target -> request `target` scope and command that bot only;
@@ -238,11 +250,18 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- No additional command regression test is required before starting implementation-order item 2.
+- Runtime-test `0.8.79-dev` manual Add:
+  - click one role Add button: all manual Add role buttons immediately grey/disable;
+  - rapid-click other Add buttons while locked: no extra bot request is sent;
+  - when the expected bot joins, Add stays locked until at least 1.0 second after send, then re-enables;
+  - add several bots one-by-one and confirm class/role/special assignment remains correct;
+  - force/reproduce one failed Add if convenient: controls unlock by the server-abort path or the existing ~5-second timeout, and the next successful Add binds correctly;
+  - while Preset Summon / Replace Missing-Dead / a visibly paced large Kick queue is active, manual Add remains unavailable;
+  - existing one-line Add feedback still prints once per accepted request.
+- Quick regression only: preset summon and Replace Missing/Dead still start/finish normally.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
-- Track addon manual Add as a one-assignment physical operation with explicit identity, minimum 1.0-second cooldown and join/timeout completion; disable addon manual Add during other physical bot operations.
 - Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
 - Preserve received preset exact human `slotIndex` data when saving communicated presets.
 - Convert 5-player presets to the same exact logical human-slot editor/model as raid presets and remove human physical placement from logical identity.
@@ -272,12 +291,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Implement item 2.1 only on `dev`:
-- one validated manual Add assignment creates a `manual-add` `SCB.botOperation`;
-- register one explicit assumed-spawn burst identity before sending the validated `add`;
-- disable all addon manual Add role buttons while any physical bot operation owns the roster;
-- after send, keep manual Add locked for at least 1.0 second and until the expected bot is observed/bound, or until the existing short pending-add timeout expires;
-- reuse the existing SAY spawn transport and Active Roster adoption path;
-- do not intercept raw user-typed `.partybot add ...`.
+Runtime-test `0.8.79-dev` manual Add lifecycle. Do not begin item 2.2 until this slice is user-cleared.
 
-Preserve user-verified 0.8.78 command behavior unchanged. Do not start item 2.2/2.3 or the visualiser in this slice.
+If it passes, proceed to item 2.2: route accepted remote preset summons through the same preset-operation coordinator as local Summon. Item 2.3 (preserve received exact human `slotIndex`) follows separately. Keep the visualiser deferred.
