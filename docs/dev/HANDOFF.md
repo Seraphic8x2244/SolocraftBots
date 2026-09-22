@@ -1606,3 +1606,32 @@ Exact next step:
 - quick Single and Group regression smoke.
 
 If clean, continue to physical-lifecycle implementation-order item 2. Do not start the visualiser.
+
+
+## 0.8.78-dev runtime pass — 2026-09-22
+
+Branch: `dev`  
+Runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
+
+User-tested:
+- combat-first `/scb move` and `/scb stay` behavior is working:
+  - no target -> All;
+  - friendly bot target -> that bot only;
+  - wrong/non-bot target -> deliberate All route;
+- grey/unavailable command buttons are truly inert and do not show the gold highlight/border;
+- buttons re-enable when target context becomes valid;
+- Single spam remains good;
+- Group sequencing remains good.
+
+Status:
+- 0.8.78 command-pipeline behavior is now user-tested for the requested regression matrix;
+- no further command fix is currently pending;
+- visualiser remains deferred.
+
+Exact next step:
+Begin implementation-order item 2:
+1. tracked manual Add with explicit identity plus a minimum 1.0-second cooldown and join/timeout ownership;
+2. accepted remote summon routed through the same preset-operation coordinator as local Summon;
+3. received preset saving preserves exact human `slotIndex`.
+
+Preserve 0.8.78 command behavior unchanged while doing that work.

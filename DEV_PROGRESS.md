@@ -6,7 +6,7 @@
 - Current runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` (0.8.78-dev)
 - Branch head before this docs-only update: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — combat-first conditional Move/Stay macro policy.
 - Latest status commit before this update: `2f10ff0e2f149f9e226cec49e2d421c872154c69`
-- Goal: runtime-clear the 0.8.78 macro policy plus 0.8.77 disabled-button fix, then continue implementation-order item 2 without starting the visualiser.
+- Goal: begin implementation-order item 2 by closing physical bot-lifecycle bypasses; keep the visualiser deferred.
 
 ## Recent Commits
 - `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — 0.8.78-dev: make `/scb move` and `/scb stay` combat-first conditional macros: friendly bot target -> Single, otherwise explicit All.
@@ -30,7 +30,8 @@
 - The preset execution tracker already stores every logical bot assignment plus exact tracked human `slotIndex`; the loss was in the tracker -> Active Roster handoff, not in preset storage.
 - Active Roster slot consumers consistently gate bot expectations on `slot.expected`.
 - 0.8.72-dev targeted-command smoke test is user-verified: bot-target Group controls, Ctrl-Come, busy-sequence messages, human/self blocking and no-target blocking all work as expected.
-- 0.8.75-dev runtime gate is user-smoke-tested: rapid Single spam appears to work and Group still feels good, with no reported sequencing regression. This clears the gate for further development, but the report did not separately re-confirm every subcase such as Single Ctrl-Come.
+- 0.8.75-dev runtime gate is user-smoke-tested: rapid Single spam appears to work and Group still feels good, with no reported sequencing regression. This cleared the gate for the command-pipeline convergence.
+- 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
 - 0.8.78-dev supersedes only the 0.8.77 Move/Stay macro policy:
@@ -222,18 +223,23 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - command buttons that are visually grey/unavailable still execute their click/highlight path and show the gold border. Grey command buttons should be truly inert, including no click action and no pressed/highlight feedback.
 - No other 0.8.76 behavior is promoted to user-tested from this partial report.
 
+### Last Test
+- Version/commit: `0.8.78-dev` / `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
+- User report on 2026-09-22: all requested 0.8.78 checks are working correctly.
+- Verified in this pass:
+  - no-target Move/Stay macros use All;
+  - friendly-bot-target Move/Stay macros affect only that bot;
+  - wrong/non-bot target uses the deliberate All route;
+  - grey/unavailable command buttons are inert and do not show the gold highlight/border;
+  - valid-context buttons re-enable;
+  - Single spam remains good;
+  - Group sequencing remains good.
+
 ### Next Test
-- Runtime-test `0.8.78-dev`:
-  - no target -> `/scb move` affects All; `/scb stay` affects All;
-  - friendly bot target -> each macro affects only that bot;
-  - hostile or player target -> each macro deliberately uses the explicit All route;
-  - grey/unavailable command buttons remain inert and show no gold highlight/border;
-  - valid-context buttons re-enable normally;
-  - quick regression: Single spam still works and Group still sequences normally.
+- No additional command regression test is required before starting implementation-order item 2.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
-- Runtime-clear 0.8.76 command-request convergence before starting another substantial ownership change.
 - Track addon manual Add as a one-assignment physical operation with explicit identity, minimum 1.0-second cooldown and join/timeout completion; disable addon manual Add during other physical bot operations.
 - Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
 - Preserve received preset exact human `slotIndex` data when saving communicated presets.
@@ -264,6 +270,9 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.78-dev` for combat-first Move/Stay macros and the still-pending true disabled-button behavior, plus a quick Single/Group regression smoke.
+Begin implementation-order item 2 from the 2026-09-22 architecture handoff:
+1. tracked/cooldown-protected addon manual Add through the physical bot-operation owner;
+2. accepted remote preset summon through the preset-operation coordinator;
+3. preserve received exact human `slotIndex`.
 
-If it passes, begin implementation-order item 2: tracked/cooldown-protected addon manual Add, accepted remote summon through the preset operation coordinator, and preservation of received exact human `slotIndex`. Keep the visualiser deferred.
+Preserve the now user-verified 0.8.78 command behavior unchanged. Keep the visualiser deferred.
