@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.79-dev`
-- Current runtime commit: `46ac48b01f9b701abe0b9151124a1e225a44a262` (0.8.79-dev)
-- Branch head before this docs-only update: `46ac48b01f9b701abe0b9151124a1e225a44a262` — tracked/cooldown-protected manual Add lifecycle.
-- Latest status commit before this update: `a2204856c960054e7376d431cba2a6b1780a4e40`
+- Version: `0.8.80-dev`
+- Current runtime commit: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` (0.8.80-dev)
+- Branch head before this docs-only update: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — taxi-flight operational safety gate on top of tracked manual Add.
+- Latest status commit before this update: `0f861ca102014320cc6ed70aa8ffe5e8000d3107`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 - Goal: add the newly identified taxi-flight safety prerequisite, then runtime-clear item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
+- `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — 0.8.80-dev: disable bot-affecting UI/execution while `UnitOnTaxi("player")` is true and handle the exact flying spawn rejection.
 - `46ac48b01f9b701abe0b9151124a1e225a44a262` — 0.8.79-dev: route addon manual Add through a tracked one-assignment `manual-add` bot operation with explicit identity, join/timeout ownership and a 1.0-second minimum floor.
 - `87e61360ec36c2d9543b2e1bc8606b948b10d6bd` (`main`) — promote tested 0.8.78-dev runtime to stable 0.8.78; release tree differs only by stable TOC metadata and removal of top-level dev status files.
 - `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — 0.8.78-dev: make `/scb move` and `/scb stay` combat-first conditional macros: friendly bot target -> Single, otherwise explicit All.
@@ -37,6 +38,17 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
+- 0.8.80-dev adds the taxi-flight safety prerequisite on top of 0.8.79:
+  - `UnitOnTaxi("player")` is the authoritative local taxi signal;
+  - Commands, Assignments, and Summon sections are covered by high-level mouse blockers/dimmers while taxiing, so their nested operational controls cannot click through;
+  - Preset editing remains usable; only Preset Summon is separately blocked/dimmed;
+  - window close/toggle and non-bot editor/configuration interaction remain usable;
+  - taxi state refreshes on main-frame show, world entry, and `PLAYER_CONTROL_LOST`/`PLAYER_CONTROL_GAINED`, with a short deferred refresh for transition timing;
+  - entering taxi during an active physical bot spawn operation aborts that operation cleanly;
+  - `SCB_SendSpawnCommand` has a hard taxi guard, so addon spawn traffic cannot escape through a stale UI or alternate addon path;
+  - manual Add availability/request also hard-check taxi state;
+  - the exact server line `Cannot add bots while flying.` is recognized as a fallback rejection, aborting owned spawn runtime and showing `Cannot summon bots while flying.`.
+- 0.8.80 static inspection passed: scoped diff review, Lua block-balance checks on all modified Lua files, blocker/entry-point review, TOC/version consistency, and non-force promotion after final `dev` head recheck. Not user-tested yet.
 - 0.8.79-dev implements architecture item 2.1, tracked addon manual Add:
   - one click validates/canonicalizes exactly one class/role/extra assignment and begins a `manual-add` `SCB.botOperation`;
   - one explicit assumed-spawn burst is registered before `SCB_SendSpawnCommand`, so join-message/roster-delta identity binding is shared with preset and maintenance spawning;
@@ -250,15 +262,19 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Runtime-test `0.8.79-dev` manual Add:
-  - click one role Add button: all manual Add role buttons immediately grey/disable;
-  - rapid-click other Add buttons while locked: no extra bot request is sent;
-  - when the expected bot joins, Add stays locked until at least 1.0 second after send, then re-enables;
-  - add several bots one-by-one and confirm class/role/special assignment remains correct;
-  - force/reproduce one failed Add if convenient: controls unlock by the server-abort path or the existing ~5-second timeout, and the next successful Add binds correctly;
-  - while Preset Summon / Replace Missing-Dead / a visibly paced large Kick queue is active, manual Add remains unavailable;
-  - existing one-line Add feedback still prints once per accepted request.
-- Quick regression only: preset summon and Replace Missing/Dead still start/finish normally.
+- Runtime-test `0.8.80-dev` taxi safety:
+  - board a gryphon/bat/wyvern: Commands, Assignments and Summon sections visibly dim and are completely inert;
+  - preset editor remains usable, but Preset Summon itself is inert;
+  - close/toggle still works;
+  - after landing, all blocked controls restore normally;
+  - if practical, start a manual Add then immediately board a taxi and confirm the operation does not remain stuck.
+- Then run the pending manual Add lifecycle test:
+  - one Add disables all role Add buttons immediately;
+  - spam clicks do not create a second request;
+  - expected bot join + 1.0-second floor releases Add;
+  - several sequential Adds retain requested class/role/special assignment;
+  - failed Add releases via rejection or ~5-second timeout and does not poison the next identity.
+- Quick regression: Preset Summon and Replace Missing/Dead still start/finish normally after landing.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -291,11 +307,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Before the 0.8.79 manual-Add runtime test, add taxi-flight safety using Vanilla `UnitOnTaxi("player")`:
-- while taxiing, bot-affecting controls on the main SCB panel are visibly inert;
-- basic window chrome remains usable;
-- preset editing/configuration remains usable, but preset execution that would mutate bots must not run;
-- preserve the 0.8.79 manual Add lifecycle unchanged once taxi state clears;
-- recognize the server's exact `Cannot add bots while flying.` response as a fallback cleanup path.
+Runtime-test `0.8.80-dev` taxi gating plus the still-unverified 0.8.79 manual Add lifecycle.
 
-Then runtime-test the taxi gate and 0.8.79 manual Add together. Do not begin item 2.2 yet.
+Do not begin item 2.2 until both pass. If clean, proceed to item 2.2 remote accepted summon coordination; item 2.3 received exact human `slotIndex` follows separately. Keep the visualiser deferred.

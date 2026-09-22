@@ -1758,3 +1758,49 @@ Agreed behavior:
 - retain exact server rejection handling as a fallback so any in-flight spawn operation cleans up safely if local taxi detection misses a transition.
 
 Status: scoped/documented; runtime implementation not yet completed.
+
+
+## 0.8.80-dev taxi-flight safety gate — 2026-09-22
+
+Branch: `dev`  
+Runtime commit: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9`  
+Scope/docs base: `0f861ca102014320cc6ed70aa8ffe5e8000d3107`  
+Stable main remains: `0.8.78` / `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`
+
+Implemented:
+- taxi detection uses Vanilla `UnitOnTaxi("player")`;
+- Commands, Assignments and Summon sections get whole-section high-frame-level mouse blockers with a dark disabled overlay while taxiing;
+- this deliberately blocks section actions as a unit rather than trying to maintain a second per-button enable matrix;
+- Preset editor remains interactive, but Preset Summon has its own taxi blocker;
+- window chrome remains usable;
+- taxi state refreshes on main-frame show, world entry, control-lost/control-gained, plus a 0.10-second deferred refresh to catch transition ordering;
+- a transition into taxi aborts an already-active bot spawn operation;
+- `SCB_SendSpawnCommand` refuses all addon spawn payloads while taxiing, covering manual Add, preset bursts, maintenance and other addon-owned spawn callers;
+- manual Add availability/request additionally hard-check taxi state;
+- exact server fallback `Cannot add bots while flying.` is now recognized by spawn rejection handling and produces `Cannot summon bots while flying.`.
+
+Preserved:
+- preset Save/edit/send/request remain usable on taxi;
+- 0.8.79 manual Add identity/cooldown implementation is otherwise unchanged;
+- raw user-typed PartyBot commands remain outside the addon-owned safety contract;
+- item 2.2 and 2.3 not started;
+- visualiser deferred.
+
+Static checks:
+- runtime diff limited to `SoloCraftBots.lua`, `Spawn.lua`, `Communication.lua`, `Locale/enGB.lua`, and TOC;
+- Lua block-balance passed on every modified Lua file;
+- reviewed blocker frame levels/coverage and shared spawn hard gate;
+- TOC version `0.8.80-dev`;
+- final `dev` head matched the staged base before non-force promotion.
+
+Status:
+- implemented/static-checked;
+- not user-tested;
+- 0.8.79 manual Add also remains not user-tested.
+
+Exact next test:
+1. taxi: three main operational sections dim/inert; preset editor works; Preset Summon does not; controls restore after landing;
+2. manual Add: lock/spam/join+1s/sequential identity/failed-timeout behavior;
+3. quick post-landing Preset Summon + Replace Missing/Dead regression.
+
+Only after that passes, continue to item 2.2.
