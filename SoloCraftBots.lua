@@ -1534,10 +1534,15 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
         SCB_QueueDelayedCommand("attackstart", 0.25, "all")
         return
     elseif command == "stay" or command == "move" then
-        -- Macro target controls enter through the same command-request front
-        -- door as the One row, preserving Single's direct/spammable policy.
+        -- Combat macros are intentionally conditional: a friendly bot target
+        -- means Single; any other target context uses the explicit All route.
+        -- Keep both paths inside the shared command-request front door.
         if SCB_RequestCommand then
-            SCB_RequestCommand(command, "target", { silentInvalidTarget = true })
+            if SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget() then
+                SCB_RequestCommand(command, "target")
+            else
+                SCB_RequestCommand(command, "all")
+            end
         end
         return
     elseif command == "location" then
