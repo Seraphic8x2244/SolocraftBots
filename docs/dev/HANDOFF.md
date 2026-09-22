@@ -1635,3 +1635,30 @@ Begin implementation-order item 2:
 3. received preset saving preserves exact human `slotIndex`.
 
 Preserve 0.8.78 command behavior unchanged while doing that work.
+
+
+## Stable 0.8.78 promotion — 2026-09-22
+
+Stable branch: `main`  
+Promotion commit: `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`  
+Source tested dev docs head: `5d54f2326d9accf5593c84efd42c203d1fdd7515`  
+Runtime source commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
+
+Promotion details:
+- user explicitly requested the current tested dev build be promoted because it is substantially more stable than the old main release;
+- old `main` had two main-only 0.7.x commits, so promotion was not force-pushed;
+- promotion commit preserves both current `main` and tested `dev` histories as parents;
+- release tree uses the tested dev runtime/assets unchanged;
+- release-only differences from tested dev:
+  - TOC title `SoloCraft Bots` instead of `SoloCraft Bots [dev]`;
+  - TOC version `0.8.78` instead of `0.8.78-dev`;
+  - top-level `DEV_GUIDE.md` and `DEV_PROGRESS.md` excluded;
+- no `Debug.lua` existed in the dev release tree/TOC;
+- `main` was updated non-force.
+
+Status:
+- stable/released: `0.8.78`;
+- active development remains on `dev` at `0.8.78-dev` until the next runtime change bumps it;
+- exact next development step remains implementation-order item 2.1: tracked/cooldown-protected addon manual Add through the physical-operation owner;
+- remote summon coordination and received exact human `slotIndex` remain later parts of item 2;
+- visualiser remains deferred.

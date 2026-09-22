@@ -5,10 +5,12 @@
 - Version: `0.8.78-dev`
 - Current runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` (0.8.78-dev)
 - Branch head before this docs-only update: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — combat-first conditional Move/Stay macro policy.
-- Latest status commit before this update: `2f10ff0e2f149f9e226cec49e2d421c872154c69`
+- Latest status commit before this update: `5d54f2326d9accf5593c84efd42c203d1fdd7515`
+- Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 - Goal: begin implementation-order item 2 by closing physical bot-lifecycle bypasses; keep the visualiser deferred.
 
 ## Recent Commits
+- `87e61360ec36c2d9543b2e1bc8606b948b10d6bd` (`main`) — promote tested 0.8.78-dev runtime to stable 0.8.78; release tree differs only by stable TOC metadata and removal of top-level dev status files.
 - `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — 0.8.78-dev: make `/scb move` and `/scb stay` combat-first conditional macros: friendly bot target -> Single, otherwise explicit All.
 - `0090afc78c801a5ac3a7f61ce3d07b0d75bf6b1a` — 0.8.77-dev: make unavailable command buttons truly disabled; its target-only silent macro policy was superseded by 0.8.78 before runtime test.
 - `96781f32a40b5956051274affdc939913d76c54a` — 0.8.76-dev: centralize command requests behind declarative target semantics and one request front door.
