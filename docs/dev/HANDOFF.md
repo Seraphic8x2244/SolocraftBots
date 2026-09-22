@@ -1464,3 +1464,49 @@ Keep states distinct:
 - released.
 
 Current exact next step remains the 0.8.75 runtime test. If it passes, begin implementation-order item 1 above. Do not start the visualiser first.
+
+
+## 0.8.76-dev command request convergence — 2026-09-22
+
+Runtime commit: `96781f32a40b5956051274affdc939913d76c54a`
+
+### Runtime gate entering this build
+- 0.8.75-dev / `2b19431de271906ae99d67b55e779488d8ca14d0` received a user smoke pass: rapid Single spam appears to work and Group still feels good.
+- This is sufficient to clear the documented 0.8.75 progression gate, but only the reported smoke is user-tested; do not silently mark unreported subcases as separately verified.
+
+### Implemented in 0.8.76
+- Added declarative command target semantics to the command table:
+  - target-agnostic;
+  - friendly-bot recipient;
+  - living-enemy context;
+  - conditional friendly-player/bot target sensitivity.
+- Added `SCB_RequestCommand(commandKey, scope, modifiers)` as the single command-matrix request front door.
+- Command UI buttons and supported macros now call the request front door rather than owning their own target/scope rules.
+- Single policy is intentionally unchanged: friendly bot required, immediate/fire-and-forget, spammable, no Group acknowledgement lock and no Group 24/sec pacing.
+- Group policy is intentionally unchanged: friendly bot locator, fresh live-roster resolution at start, addon recipient targeting, 0.10-second settle after real target changes, actor acknowledgement/retry, original-target restoration and rolling 24 commands/sec budget.
+- Group busy feedback still takes precedence over current-target validation.
+- Existing All Come/Play/Pause friendly-player/bot blocking moved from button-local logic into metadata-driven request validation.
+- Role and paired-role command routes remain target-agnostic.
+- The already verified living-enemy requirement for AoE, Attack Start and Attack Stop is now enforced and exposed through the same availability query. Target-health changes refresh these button states.
+- Spread toggle and `/scb stay`, `/scb move`, delayed `/scb attackstart` use the request front door.
+- Friendly human/self blocked-command wording changed from `Humans cannot be commanded...` to `Only bots can be issued commands`.
+- Visualiser work remains deferred.
+
+### Checked / not user-tested
+- Candidate was staged off-branch, reviewed against `7e935e440b4651ae93899c95f3b1c4f902845ac4`, and promoted to `dev` non-force only after the head was rechecked.
+- Static checks passed for the modified runtime owners: Lua block balance, stale removed-helper references, command call-site ownership, route-preservation diff review and TOC/version consistency.
+- One pre-promotion candidate was rejected because review found two regressions: roster updates still referenced the removed Group-only refresher, and the new front door initially evaluated target validity before Group busy-state precedence. Neither rejected form was promoted.
+- 0.8.76 has **not** been tested in game yet.
+
+### Exact next step
+Runtime-test `0.8.76-dev`:
+- clean load/no Lua errors;
+- Single direct/spam behaviour;
+- Group sequencing plus busy-message precedence;
+- conditional All gating;
+- role/paired-role behaviour unchanged;
+- living-enemy AoE/Attack availability including target death;
+- `/scb stay`, `/scb move`, delayed `/scb attackstart`, Ctrl-Come and Spread toggle;
+- new `Only bots can be issued commands` wording.
+
+If that passes, continue with implementation-order item 2 from the single-pipeline architecture handoff. Do not start the visualiser.

@@ -2,13 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.75-dev`
-- Current runtime commit: `2b19431de271906ae99d67b55e779488d8ca14d0` (0.8.75-dev)
-- Branch head before this docs-only handoff: `2684875d60915472474911b5ef53bf9d228044bb` — icon artwork generation guide.
-- Latest status commit before this update: `3cbd18d653e30bb083e3610df7405bf0d02d0c4e`
-- Goal: finish the 0.8.75 Single/Group runtime gate, then converge commands, bot lifecycle, logical slots and maintenance onto explicit reusable pipelines so new features and the future visualiser consume shared state instead of adding parallel paths.
+- Version: `0.8.76-dev`
+- Current runtime commit: `96781f32a40b5956051274affdc939913d76c54a` (0.8.76-dev)
+- Branch head before this docs-only update: `96781f32a40b5956051274affdc939913d76c54a` — command-request front door and target-semantics build.
+- Latest status commit before this update: `7e935e440b4651ae93899c95f3b1c4f902845ac4`
+- Goal: runtime-clear the 0.8.76 command-request convergence, then continue implementation-order item 2 by closing physical bot-lifecycle bypasses without starting the visualiser.
 
 ## Recent Commits
+- `96781f32a40b5956051274affdc939913d76c54a` — 0.8.76-dev: centralize command requests behind declarative target semantics and one request front door.
+- `2b19431de271906ae99d67b55e779488d8ca14d0` — 0.8.75-dev: make Single controls direct/spammable while leaving Group sequencing/pacing unchanged.
 - `25f3a915e17470346629bbdb7c3904f40114fef0` — 0.8.69-dev: recover from stale human Group locator targets by treating `Target is not a party bot` as a failed targeted attempt.
 - `b02d67e7a35104a8fed4c5543ad4a26c0c1fe10a` — 0.8.68-dev: share one acknowledgement sequencer between Single and Group targeted controls; narrow exclusivity so global controls remain live.
 - `8daa9aaca9567bc183c9e00ac4b88507e1cce33e` — 0.8.67-dev: remove speculative Group ack timeout/retarget retries; wrong acknowledgements immediately resend to the already-selected intended bot.
@@ -26,8 +28,21 @@
 - The preset execution tracker already stores every logical bot assignment plus exact tracked human `slotIndex`; the loss was in the tracker -> Active Roster handoff, not in preset storage.
 - Active Roster slot consumers consistently gate bot expectations on `slot.expected`.
 - 0.8.72-dev targeted-command smoke test is user-verified: bot-target Group controls, Ctrl-Come, busy-sequence messages, human/self blocking and no-target blocking all work as expected.
+- 0.8.75-dev runtime gate is user-smoke-tested: rapid Single spam appears to work and Group still feels good, with no reported sequencing regression. This clears the gate for further development, but the report did not separately re-confirm every subcase such as Single Ctrl-Come.
 
 ## Implemented / Awaiting Test
+- 0.8.76-dev introduces the first single-pipeline command convergence step:
+  - every command-table entry declares a target semantic: target-agnostic, friendly-bot recipient, living-enemy context, or conditional friendly-target sensitivity;
+  - `SCB_RequestCommand(commandKey, scope, modifiers)` is the command-matrix front door for UI buttons and supported command macros;
+  - Single still sends immediately/fire-and-forget with no acknowledgement lock or Group 24/sec budget;
+  - Group still owns actor-acknowledged sequencing, addon retargeting, 0.10-second settle after actual target changes, busy-message precedence, retries and the rolling 24/sec budget;
+  - All Come/Play/Pause keep their existing friendly-player/bot target block, now from metadata rather than button-local conditionals;
+  - role and paired-role commands remain target-agnostic;
+  - AoE, Attack Start and Attack Stop now validate the already user-verified living-enemy requirement and grey/update from the same availability query;
+  - roster changes and target-health changes refresh the unified command availability surface;
+  - Spread toggle and `/scb stay`, `/scb move`, `/scb attackstart` now enter through the same request front door;
+  - the blocked friendly-target wording is now `Only bots can be issued commands`.
+- Static inspection for 0.8.76 passed: base->candidate diff review, Lua block-balance check on modified owner files, command call-site audit, stale-refresher audit, and non-force staged promotion. No in-game result exists yet for 0.8.76.
 - 0.8.62-dev introduced uniform Group timing:
   `target -> 0.15s settle -> command(s) -> 0.15s hold -> next target`.
 - 0.8.63-dev keeps Group-row UI refresh cached, but an actual Group command forces one fresh live-roster snapshot before subgroup/recipient resolution.
@@ -62,8 +77,7 @@
 - 0.8.72-dev adds localized centre-screen blocked-start feedback: active Group -> `Already commanding a group, please wait...`; active Single -> `Already commanding a bot, please wait...`; friendly human/self target -> `Humans cannot be commanded...`; no target/other invalid target -> `Command... what?`. Busy-state feedback takes precedence over target validation.
 - 0.8.73-dev introduced friendly-player/bot gating for conditional All controls, but also changed the existing All Play/Pause server routes; that route change caused a regression and was not part of the requested UI gating.
 - 0.8.74-dev restores the pre-existing All Play/Pause routes and keeps only the requested gating: All Come/Play/Pause are greyed and blocked when a friendly player or bot is targeted, and remain available for no target, hostile targets and friendly NPC targets.
-- 0.8.75-dev changes Single controls to direct fire-and-forget sends: friendly-bot target remains the only availability guard; repeated clicks are never ack-locked and Single sends bypass the targeted 24 commands/sec budget. Group keeps acknowledgement sequencing and its pacing budget unchanged.
-- Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). This does not prove server behavior while a target is selected; runtime verification is still required before any All-row greying is added.
+- Static All-route audit confirms the addon uses distinct explicit commands (`cometome`, `unpause all`, `moveall`, `stayall`, `pause all`, plus standalone All routes). Current target-sensitivity rules are now represented by 0.8.76 command metadata and need the 0.8.76 runtime smoke.
 - The acknowledgement tap runs before the existing ChatFrame display filter, so hidden bot messages remain available to Group verification without being shown.
 - Existing bot-chat filter patterns provide actor-identifying response text for every Group-row target command:
   - Come: `Name* is coming to your position.`
@@ -173,33 +187,33 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Current 0.8.65-dev feedback: when the fourth bot appears to miss a Group movement command, unfiltered bot movement output shows the third bot receives that movement command a second time. The chat/control command is therefore reaching the server, but server-side target state is still bot 3 when the fourth recipient's command is processed.
 
 ### Last Test
-- Version/commit: `0.8.72-dev` / `15586faeade26e4c0ec16698c25cb80239c45208`
-- Targeted-command behavior remains thoroughly user-verified and working as expected.
-- Server command semantics were directly verified from server chat responses:
+- Version/commit: `0.8.75-dev` / `2b19431de271906ae99d67b55e779488d8ca14d0`
+- User smoke on 2026-09-22: rapid Single spam appears to work and Group still feels good. No sequencing regression was reported.
+- Treat the 0.8.75 gate as passed for progression, but do not upgrade unreported subcases to separately user-tested; Single Ctrl-Come was not explicitly re-reported in this pass.
+- Previously verified server command semantics remain the basis for 0.8.76 metadata:
   - `moveall` works globally with a player target or no target.
   - `stayall` works globally with a player target or no target.
   - `cometome` (and undocumented `come`) is conditional: valid bot target -> that one bot; no valid bot target -> all bots.
   - `pause all` is not a valid server command. The server command is bare `pause`, whose previously verified semantics are valid bot target -> one bot; no valid bot target -> all bots.
   - `unpause all` is not a valid server command. The server command is bare `unpause`, whose previously verified semantics are valid bot target -> one bot; no valid bot target -> all bots.
-  - `aoe` requires a living enemy target.
+  - `aoe`, `attackstart` and `attackstop` require a living enemy target.
   - `usegobject` is global for bots in the group but requires both player and bots to be near the object; it cannot remotely operate an object.
-  - `attackstart` requires a living enemy target.
-  - `attackstop` requires a living enemy target.
   - All tested role commands are target-agnostic.
   - Server advertises `comehealer` and `spreadon`, but the existing aliases `comeheal` and `spread` are confirmed working.
 
 ### Next Test
-- Runtime-test 0.8.75-dev Single controls in combat:
-  - no friendly bot target -> Single row remains unavailable/blocked;
-  - friendly bot target -> repeated Single clicks send immediately without an "Already commanding a bot" lock;
-  - rapid Single spam is not limited by the targeted 24/sec budget;
-  - Ctrl-Come Single still sends Move + Come on every click.
-- Reconfirm Group still waits for actor acknowledgements and retains its existing 24/sec pacing.
+- Runtime-test `0.8.76-dev` as one command-pipeline regression smoke:
+  - clean load/no Lua errors;
+  - Single remains unavailable without a friendly bot and remains direct/spammable with one;
+  - Group still sequences the correct live subgroup and preserves busy-message precedence;
+  - All Come/Play/Pause remain blocked with a friendly player/bot target while Move/Stay and role commands retain their prior behaviour;
+  - AoE/Attack Start/Attack Stop are available only with a living hostile target and grey when that target dies;
+  - `/scb stay`, `/scb move`, delayed `/scb attackstart`, Ctrl-Come and Spread toggle still route correctly;
+  - friendly human/self blocking now displays `Only bots can be issued commands`.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
-- Complete the 0.8.75 Single/Group runtime gate first.
-- Build the declarative command target-semantics/request front door described in the 2026-09-22 audit without changing proven behaviour.
+- Runtime-clear 0.8.76 command-request convergence before starting another substantial ownership change.
 - Track addon manual Add as a one-assignment physical operation with explicit identity, minimum 1.0-second cooldown and join/timeout completion; disable addon manual Add during other physical bot operations.
 - Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
 - Preserve received preset exact human `slotIndex` data when saving communicated presets.
@@ -230,6 +244,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test 0.8.75-dev Single controls under real combat spam. Confirm there is no Single acknowledgement lock or 24/sec throttle with a friendly bot targeted, while Group sequencing remains unchanged.
+Runtime-test `0.8.76-dev` against the command regression list above. Keep 0.8.76 classified as implemented/static-checked until that in-game pass is reported.
 
-If that passes, the **next code change** is the first pipeline-convergence step: introduce declarative command target semantics plus one command-request front door while preserving the current Single immediate/spammable policy, Group acknowledgement/settle/24-sec policy, and existing All/role behaviour. Do not start the visualiser yet.
+If it passes, begin implementation-order item 2: tracked/cooldown-protected addon manual Add, accepted remote summon through the preset operation coordinator, and preservation of received exact human `slotIndex`. Keep the visualiser deferred.
