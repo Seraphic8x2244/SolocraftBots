@@ -5,9 +5,9 @@
 - Version: `0.8.78-dev`
 - Current runtime commit: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` (0.8.78-dev)
 - Branch head before this docs-only update: `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9` — combat-first conditional Move/Stay macro policy.
-- Latest status commit before this update: `5d54f2326d9accf5593c84efd42c203d1fdd7515`
+- Latest status commit before this update: `fa75bd2baa1f6cdd6a31e353695d59985ed7cbc2`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: begin implementation-order item 2 by closing physical bot-lifecycle bypasses; keep the visualiser deferred.
+- Goal: implement item 2.1 only: tracked/cooldown-protected addon manual Add through the physical bot-operation owner. Remote summon and received-slot work remain later slices; visualiser remains deferred.
 
 ## Recent Commits
 - `87e61360ec36c2d9543b2e1bc8606b948b10d6bd` (`main`) — promote tested 0.8.78-dev runtime to stable 0.8.78; release tree differs only by stable TOC metadata and removal of top-level dev status files.
@@ -272,9 +272,12 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Begin implementation-order item 2 from the 2026-09-22 architecture handoff:
-1. tracked/cooldown-protected addon manual Add through the physical bot-operation owner;
-2. accepted remote preset summon through the preset-operation coordinator;
-3. preserve received exact human `slotIndex`.
+Implement item 2.1 only on `dev`:
+- one validated manual Add assignment creates a `manual-add` `SCB.botOperation`;
+- register one explicit assumed-spawn burst identity before sending the validated `add`;
+- disable all addon manual Add role buttons while any physical bot operation owns the roster;
+- after send, keep manual Add locked for at least 1.0 second and until the expected bot is observed/bound, or until the existing short pending-add timeout expires;
+- reuse the existing SAY spawn transport and Active Roster adoption path;
+- do not intercept raw user-typed `.partybot add ...`.
 
-Preserve the now user-verified 0.8.78 command behavior unchanged. Keep the visualiser deferred.
+Preserve user-verified 0.8.78 command behavior unchanged. Do not start item 2.2/2.3 or the visualiser in this slice.

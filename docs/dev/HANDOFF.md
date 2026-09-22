@@ -1662,3 +1662,28 @@ Status:
 - exact next development step remains implementation-order item 2.1: tracked/cooldown-protected addon manual Add through the physical-operation owner;
 - remote summon coordination and received exact human `slotIndex` remain later parts of item 2;
 - visualiser remains deferred.
+
+
+## Item 2.1 implementation start — tracked manual Add — 2026-09-22
+
+Branch: `dev`  
+Version entering slice: `0.8.78-dev`  
+Dev head entering slice: `fa75bd2baa1f6cdd6a31e353695d59985ed7cbc2`  
+Stable main: `0.8.78` / `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`
+
+Exact scope for this slice:
+- addon manual Add only;
+- preserve existing role/class/blessing/totem selection behavior;
+- create one lightweight `manual-add` physical operation per click;
+- create one assumed-spawn burst for the selected assignment before the validated add command is sent;
+- reuse `SCB_SendSpawnCommand` so SAY transport and the existing 5-second pending-add timeout remain authoritative;
+- completion requires both the 1.0-second minimum floor and the expected bot being observed/bound; timeout may release the operation if no bot arrives;
+- all addon manual Add role buttons are unavailable while any physical bot operation is active;
+- raw user-typed PartyBot add commands remain outside the supported tracked contract.
+
+Not in this slice:
+- accepted remote preset summon coordinator migration;
+- received exact human `slotIndex` preservation;
+- visualiser.
+
+Status: design is agreed; implementation not yet started at this docs point.
