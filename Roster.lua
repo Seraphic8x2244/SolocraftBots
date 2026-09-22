@@ -1043,6 +1043,19 @@ function SCB_IsT3RaidLocation()
     return context and context.inInstance and SCB_T3_RAID_GROUPS[context.groupID] == true
 end
 function SCB_ClearPendingAssumedSpawns() SCB.pendingAssumedSpawns = {} end
+function SCB_RemovePendingAssumedSpawnBurst(burstID)
+    local pending, kept, i, intent
+    if not burstID then return end
+    pending = SCB.pendingAssumedSpawns or {}
+    kept = {}
+    for i = 1, table.getn(pending) do
+        intent = pending[i]
+        if intent and intent.burstID ~= burstID then
+            table.insert(kept, intent)
+        end
+    end
+    SCB.pendingAssumedSpawns = kept
+end
 function SCB_GetResolvedLiveRole(member) if not member then return nil end; return member.confirmedRole or member.assumedRole end
 
 local function SCB_BindAssumedSpawnName(name, intent)

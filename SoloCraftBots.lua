@@ -20,6 +20,7 @@ SCB.version = (GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")
 SCB.prefix = SCB_L("CHAT_PREFIX")
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
 SCB.commandButtons = {}
+SCB.manualAddButtons = {}
 SCB.presetSlotButtons = {}
 SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
@@ -281,6 +282,29 @@ function SCB_SetArtButtonAvailable(button, available)
     else
         button.icon:SetVertexColor(0.45, 0.45, 0.45, 1)
         button:SetAlpha(1)
+    end
+end
+
+function SCB_RefreshManualAddButtons()
+    local available = true
+    local i, button
+
+    if SCB_IsManualAddAvailable then
+        available = SCB_IsManualAddAvailable()
+    elseif SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
+        available = false
+    end
+
+    for i = 1, table.getn(SCB.manualAddButtons or {}) do
+        button = SCB.manualAddButtons[i]
+        if button then
+            SCB_SetArtButtonAvailable(button, available)
+            if available then
+                button:Enable()
+            else
+                button:Disable()
+            end
+        end
     end
 end
 
@@ -994,6 +1018,7 @@ end
 
 function SCB_CreateSummonUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "summon", SCB_L("SECTION_SUMMON"), 196)
+    SCB.manualAddButtons = {}
 
     -- One state button: silver binoculars = Spawn Near (distance off, default),
     -- gold binoculars = Spawn Far (distance on).
@@ -1075,8 +1100,10 @@ function SCB_CreateSummonUI(frame)
             roleButton:SetScript("OnClick", SCB_SpawnOnClick)
             roleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
             roleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+            table.insert(SCB.manualAddButtons, roleButton)
         end
     end
+    SCB_RefreshManualAddButtons()
 end
 
 function SCB_LayoutCommandUI()

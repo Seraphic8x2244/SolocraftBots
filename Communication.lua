@@ -1839,6 +1839,7 @@ local function SCB_FinishKickQueue()
     SCB.kickQueueState = nil
     SCB_kickQueueFrame:SetScript("OnUpdate", nil)
     SCB_kickQueueFrame:Hide()
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 
     if state and not state.silent and not state.safetyApplied and (state.issued or 0) > 0 then
         if state.mode == "dead" then
@@ -1901,6 +1902,7 @@ local function SCB_StartKickQueue(names, mode, safetyApplied, silent)
         safetyApplied = safetyApplied and true or false,
         silent = silent and true or false,
     }
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 
     -- Every multi-bot removal uses the same proven client/server-safe pacing.
     SCB_RunKickQueueBatch()
@@ -2142,16 +2144,16 @@ end
 -- validated command is sent. Preset summons intentionally do not print one line
 -- per bot; their single preset summary below is the only normal chat feedback.
 function SCB_SpawnOnClick()
-    local extra, command, finalExtra
+    local extra, command, finalExtra, ok
     if not this.scbClass or not this.scbRole then return end
 
     extra = this.scbExtra
     if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
-    command = SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra)
-    finalExtra = SCB_GetFinalSpawnExtra(command)
 
-    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    if SCB_SendSpawnCommand(command) then
+    if not SCB_RequestManualAdd then return end
+    ok, command = SCB_RequestManualAdd(this.scbClass, this.scbRole, extra)
+    if ok then
+        finalExtra = SCB_GetFinalSpawnExtra(command)
         SCB_PrintAddedRequest(this.scbClass, this.scbRole, finalExtra)
     end
 end

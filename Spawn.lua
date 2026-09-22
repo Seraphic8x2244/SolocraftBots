@@ -1443,6 +1443,14 @@ function SCB_GetActiveBotOperation()
     return nil
 end
 
+function SCB_IsManualAddAvailable()
+    if SCB_GetActiveBotOperation() then return false end
+    if SCB_HasLegacyPhysicalBotRuntime() then return false end
+    if SCB_IsKickQueueActive and SCB_IsKickQueueActive() then return false end
+    if SCB_PendingBotAddsStillActive() then return false end
+    return true
+end
+
 function SCB_GetBotOperationSafety(create)
     return SCB_GetPresetSafety(create)
 end
@@ -1474,6 +1482,7 @@ function SCB_BeginBotOperation(kind, intent)
         updatedAt = SCB_OperationNow(),
     }
     SCB.botOperation = operation
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
     if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return operation
 end
@@ -1519,6 +1528,7 @@ function SCB_EndBotOperation(status, reason)
         reason = reason,
     }
     SCB.botOperation = nil
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
     return operation
 end
 
@@ -1528,6 +1538,17 @@ end
 
 function SCB_AbortBotSpawnOperations(preserveOperation)
     local operation = SCB_GetActiveBotOperation()
+
+    if operation and operation.kind == "manual-add" then
+        if operation.manualAdd and operation.manualAdd.burstID
+            and SCB_RemovePendingAssumedSpawnBurst then
+            SCB_RemovePendingAssumedSpawnBurst(operation.manualAdd.burstID)
+        end
+        SCB.pendingBotAdds = 0
+        SCB.pendingBotAddsExpires = 0
+        SCB_EndBotOperation("aborted", "manual add aborted")
+        return
+    end
 
     if operation and operation.kind == "maintenance" then
         SCB_ResetSpawnRuntimeState()
@@ -1556,6 +1577,164 @@ function SCB_AbortBotSpawnOperations(preserveOperation)
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     if not preserveOperation then SCB_AbortBotOperation("spawn runtime aborted") end
     return result
+end
+
+SCB.MANUAL_ADD_MIN_COOLDOWN = 1.0
+
+local function SCB_FindManualAddArrival(state)
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local name, intent, member
+    if not state or not state.burstID or not roster then return nil end
+
+    for name, intent in pairs(SCB.assumedRolesByName or {}) do
+        if intent and intent.burstID == state.burstID then
+            member = roster.byName and roster.byName[name] or nil
+            if member and member.isBot then return name end
+        end
+    end
+    return nil
+end
+
+local function SCB_RecordManualAddArrival(state)
+    local roster, member, intent, slot
+    if not state or not state.botName or state.adopted then return end
+
+    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    member = roster and roster.byName and roster.byName[state.botName] or nil
+    if not member or not member.isBot then return end
+
+    if SCB_EnsureSessionDB then
+        SCB_EnsureSessionDB()
+        SoloCraftBotsDB.session.knownBots[state.botName] = true
+    end
+
+    if SCB_SyncActiveRosterFromObserved then
+        SCB_SyncActiveRosterFromObserved(roster)
+    end
+
+    -- Preserve the exact requested identity in an adopted manual slot. Combat
+    -- confirmation may later refine role/extra, but a fresh manual bot must be
+    -- maintainable immediately even when no confirmation evidence exists yet.
+    intent = SCB.assumedRolesByName and SCB.assumedRolesByName[state.botName] or nil
+    if SCB_GetActiveSlotByName then slot = SCB_GetActiveSlotByName(state.botName) end
+    if slot and intent then
+        slot.class = slot.class or intent.class
+        slot.assumedRole = intent.role
+        slot.role = slot.confirmedRole or intent.role
+        slot.extra = intent.extra
+        slot.updatedAt = SCB_OperationNow()
+    end
+
+    if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
+    if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
+    state.adopted = true
+end
+
+local function SCB_FinishManualAddOperation(status, reason)
+    local operation = SCB_GetActiveBotOperation()
+    local state = operation and operation.kind == "manual-add" and operation.manualAdd or nil
+
+    if not operation or operation.kind ~= "manual-add" then return end
+    if state and state.burstID and SCB_RemovePendingAssumedSpawnBurst then
+        SCB_RemovePendingAssumedSpawnBurst(state.burstID)
+    end
+
+    -- A manual-add operation owns exactly one registered pending add. Once its
+    -- named arrival or timeout resolves, do not leave the generic pending-add
+    -- fallback blocking the next manual request.
+    SCB.pendingBotAdds = 0
+    SCB.pendingBotAddsExpires = 0
+    SCB_EndBotOperation(status or "complete", reason)
+end
+
+function SCB_RequestManualAdd(classKey, role, extra)
+    local command, operation, plan, state, now
+    local parsedClass, parsedRole, parsedExtra
+
+    command = SCB_BuildSpawnCommand and SCB_BuildSpawnCommand(classKey, role, extra) or nil
+    if not command or not SCB_IsValidatedSpawnCommand(command) then return false end
+    parsedClass, parsedRole, parsedExtra = SCB_ParseSpawnCommand(command)
+    if not parsedClass or not parsedRole then return false end
+    classKey, role, extra = parsedClass, parsedRole, parsedExtra
+    if not SCB_IsManualAddAvailable() then return false end
+
+    operation = SCB_BeginBotOperation("manual-add", {
+        kind = "manual-add",
+        class = classKey,
+        role = role,
+        extra = extra,
+        command = command,
+    })
+    if not operation then return false end
+
+    plan = {
+        kind = "manual-add",
+        assignments = {
+            {
+                command = command,
+                class = classKey,
+                role = role,
+                extra = extra,
+            },
+        },
+    }
+    if not SCB_BeginAssumedSpawnBurst or not SCB_BeginAssumedSpawnBurst(plan) then
+        SCB_EndBotOperation("failed", "manual add identity burst could not start")
+        return false
+    end
+
+    now = SCB_OperationNow()
+    state = {
+        burstID = plan.burstID,
+        sentAt = now,
+        floorUntil = now + (SCB.MANUAL_ADD_MIN_COOLDOWN or 1.0),
+        timeoutAt = nil,
+        botName = nil,
+    }
+    operation.manualAdd = state
+    SCB_SetBotOperationPhase("manual-add-send")
+
+    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
+    if not SCB_SendSpawnCommand(command) then
+        SCB_FinishManualAddOperation("failed", "manual add payload rejected")
+        return false
+    end
+
+    state.timeoutAt = tonumber(SCB.pendingBotAddsExpires) or (now + 5.0)
+    SCB_SetBotOperationPhase("manual-add-wait")
+    return true, command
+end
+
+function SCB_ManualAddOnUpdate()
+    local operation = SCB_GetActiveBotOperation()
+    local state = operation and operation.kind == "manual-add" and operation.manualAdd or nil
+    local now, botName
+
+    if not operation or operation.kind ~= "manual-add" then return end
+    if not state then
+        SCB_FinishManualAddOperation("failed", "manual add state missing")
+        return
+    end
+
+    now = SCB_OperationNow()
+    if not state.botName then
+        botName = SCB_FindManualAddArrival(state)
+        if botName then
+            state.botName = botName
+            state.observedAt = now
+            SCB_RecordManualAddArrival(state)
+            SCB_SetBotOperationPhase("manual-add-bound")
+        end
+    end
+
+    if state.botName and now >= (state.floorUntil or now) then
+        SCB_FinishManualAddOperation("complete", nil)
+        return
+    end
+
+    if state.timeoutAt and now >= state.timeoutAt then
+        SCB_FinishManualAddOperation("timeout", "manual add join timeout")
+    end
 end
 
 function SCB_ResetSessionState()
@@ -1956,6 +2135,7 @@ end
 function SCB_PresetSpawnQueueOnUpdate()
     local elapsed = arg1 or 0
     if SCB_PollOperationRosterFallback then SCB_PollOperationRosterFallback(elapsed, 0.25) end
+    if SCB_ManualAddOnUpdate then SCB_ManualAddOnUpdate() end
     SCB_0823PollBootstrapRemoval()
     SCB_SyncPresetOperationPhase()
     local result = SCB_PresetSpawnQueueOnUpdateCore()
