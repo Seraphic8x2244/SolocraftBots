@@ -1737,3 +1737,24 @@ Exact next test:
 - quick preset + maintenance regression smoke.
 
 If clean, continue to item 2.2 only.
+
+
+## Taxi-flight safety prerequisite — 2026-09-22
+
+Branch: `dev`  
+Version entering slice: `0.8.79-dev`  
+Dev head entering slice: `399c73c148d79704c2e4cb1d15cbb3c40fbfbbfc`
+
+New runtime fact from user:
+- server emits exactly: `Cannot add bots while flying.`
+- bots despawn while the player is on a taxi flight path.
+
+Agreed behavior:
+- detect taxi flight with Vanilla `UnitOnTaxi("player")`;
+- while taxiing, bot-affecting controls on the main SCB panel are inert/visibly unavailable;
+- close/toggle/basic window chrome stays usable;
+- preset editing remains available so the user can prepare compositions;
+- preset execution/summoning must remain blocked while taxiing;
+- retain exact server rejection handling as a fallback so any in-flight spawn operation cleans up safely if local taxi detection misses a transition.
+
+Status: scoped/documented; runtime implementation not yet completed.

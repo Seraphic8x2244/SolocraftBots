@@ -7,7 +7,7 @@
 - Branch head before this docs-only update: `46ac48b01f9b701abe0b9151124a1e225a44a262` — tracked/cooldown-protected manual Add lifecycle.
 - Latest status commit before this update: `a2204856c960054e7376d431cba2a6b1780a4e40`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: runtime-clear item 2.1 manual Add before moving to item 2.2 remote accepted summon coordination. Received-slot work remains item 2.3; visualiser remains deferred.
+- Goal: add the newly identified taxi-flight safety prerequisite, then runtime-clear item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
 - `46ac48b01f9b701abe0b9151124a1e225a44a262` — 0.8.79-dev: route addon manual Add through a tracked one-assignment `manual-add` bot operation with explicit identity, join/timeout ownership and a 1.0-second minimum floor.
@@ -291,6 +291,11 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.79-dev` manual Add lifecycle. Do not begin item 2.2 until this slice is user-cleared.
+Before the 0.8.79 manual-Add runtime test, add taxi-flight safety using Vanilla `UnitOnTaxi("player")`:
+- while taxiing, bot-affecting controls on the main SCB panel are visibly inert;
+- basic window chrome remains usable;
+- preset editing/configuration remains usable, but preset execution that would mutate bots must not run;
+- preserve the 0.8.79 manual Add lifecycle unchanged once taxi state clears;
+- recognize the server's exact `Cannot add bots while flying.` response as a fallback cleanup path.
 
-If it passes, proceed to item 2.2: route accepted remote preset summons through the same preset-operation coordinator as local Summon. Item 2.3 (preserve received exact human `slotIndex`) follows separately. Keep the visualiser deferred.
+Then runtime-test the taxi gate and 0.8.79 manual Add together. Do not begin item 2.2 yet.
