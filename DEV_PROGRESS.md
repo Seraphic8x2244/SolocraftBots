@@ -201,8 +201,14 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - All tested role commands are target-agnostic.
   - Server advertises `comehealer` and `spreadon`, but the existing aliases `comeheal` and `spread` are confirmed working.
 
+### 0.8.76 Runtime Findings
+- Partial user test on 2026-09-22 found two regressions:
+  - `/scb move` and `/scb stay` now show the invalid-target error with no target. Pre-0.8.76 macro behavior was intentionally target-only and silent when no friendly bot was selected; do not make these macros fall through to broad server behavior.
+  - command buttons that are visually grey/unavailable still execute their click/highlight path and show the gold border. Grey command buttons should be truly inert, including no click action and no pressed/highlight feedback.
+- No other 0.8.76 behavior is promoted to user-tested from this partial report.
+
 ### Next Test
-- Runtime-test `0.8.76-dev` as one command-pipeline regression smoke:
+- Build the narrow 0.8.77-dev regression fix first, then runtime-test the command pipeline:
   - clean load/no Lua errors;
   - Single remains unavailable without a friendly bot and remains direct/spammable with one;
   - Group still sequences the correct live subgroup and preserves busy-message precedence;
@@ -244,6 +250,10 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.76-dev` against the command regression list above. Keep 0.8.76 classified as implemented/static-checked until that in-game pass is reported.
+Build `0.8.77-dev` as a narrow command-UI regression fix:
+- restore `/scb move` and `/scb stay` to target-only, silent-no-target behavior while still entering the shared command request model when a valid friendly bot is selected;
+- make metadata-unavailable/grey command buttons truly disabled so they neither execute command logic nor show pressed/gold-highlight feedback;
+- preserve all 0.8.76 Single/Group/All/role target semantics and timing;
+- keep the visualiser deferred.
 
-If it passes, begin implementation-order item 2: tracked/cooldown-protected addon manual Add, accepted remote summon through the preset operation coordinator, and preservation of received exact human `slotIndex`. Keep the visualiser deferred.
+Then runtime-test 0.8.77 before beginning physical-lifecycle item 2.

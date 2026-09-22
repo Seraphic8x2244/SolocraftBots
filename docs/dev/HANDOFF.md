@@ -1510,3 +1510,27 @@ Runtime-test `0.8.76-dev`:
 - new `Only bots can be issued commands` wording.
 
 If that passes, continue with implementation-order item 2 from the single-pipeline architecture handoff. Do not start the visualiser.
+
+
+## 0.8.76 partial runtime regression report — 2026-09-22
+
+Branch: `dev`  
+Version under test: `0.8.76-dev`  
+Runtime commit: `96781f32a40b5956051274affdc939913d76c54a`  
+Docs head entering this report: `44bb96f8bca55de9351c106e8091027b40b2bb8c`
+
+User-reported findings:
+- `/scb move` and `/scb stay` now produce invalid-target feedback with no target.
+- Pre-0.8.76 behavior was intentionally safer: these macros only sent bare `move`/`stay` with a valid friendly bot selected and silently did nothing otherwise, because invalid target context can make those bare server commands affect a broader scope.
+- Therefore do **not** convert these macros into no-target/global conditional commands as the fix. Restore silent target-only macro behavior while preserving the shared request front door for valid bot targets.
+- Grey/unavailable command buttons still run their visual click/highlight path and show the gold border. Grey should mean inert: no request execution and no pressed/highlight feedback.
+
+Status discipline:
+- These are user-observed 0.8.76 regressions.
+- The rest of 0.8.76 remains implemented/static-checked but not yet fully user-tested.
+- Visualiser remains deferred.
+
+Exact next step:
+- build `0.8.77-dev` with only the two regressions above fixed;
+- preserve Single direct/spammable policy and Group acknowledgement/settle/24-sec policy unchanged;
+- runtime-smoke 0.8.77 before proceeding to physical-lifecycle item 2.
