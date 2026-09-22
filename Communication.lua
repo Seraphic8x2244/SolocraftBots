@@ -2163,6 +2163,11 @@ end
 function SCB_PresetSummonOnClick()
     local snapshot, errorText, ok, botCount, botWord
     local forced = IsControlKeyDown and IsControlKeyDown() and true or false
+
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then
+        if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_FLYING")) end
+        return
+    end
     local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
     local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
 
@@ -2247,15 +2252,23 @@ end
 
 function SCB_HandleSpawnServerRejection(text)
     local hadOperation, hiddenKind, auraName, warning
-    if text ~= "Cannot add bots right now." then return end
+    local flying = text == "Cannot add bots while flying."
+    if text ~= "Cannot add bots right now." and not flying then return end
 
     hadOperation = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
     if hadOperation and SCB_AbortBotSpawnOperations then
         SCB_AbortBotSpawnOperations()
     end
 
-    hiddenKind, auraName = SCB_GetHiddenAuraKind()
-    if hiddenKind == "prowl" then
+    if flying then
+        warning = SCB_L("SUMMON_BLOCKED_FLYING")
+        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
+    else
+        hiddenKind, auraName = SCB_GetHiddenAuraKind()
+    end
+    if flying then
+        -- Exact taxi rejection already selected the warning above.
+    elseif hiddenKind == "prowl" then
         warning = SCB_L("SUMMON_BLOCKED_PROWL", "Cannot summon bots while prowling.")
     elseif hiddenKind == "shadowmeld" then
         warning = SCB_L("SUMMON_BLOCKED_SHADOWMELD", "Cannot summon bots while Shadowmelded.")

@@ -21,6 +21,7 @@ SCB.prefix = SCB_L("CHAT_PREFIX")
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
 SCB.commandButtons = {}
 SCB.manualAddButtons = {}
+SCB.taxiBlockers = {}
 SCB.presetSlotButtons = {}
 SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
@@ -327,6 +328,73 @@ function SCB_RefreshVisibleTooltip(button)
         GameTooltip:SetText(button.scbTooltip, 1, 1, 1, 1, true)
         GameTooltip:Show()
     end
+end
+
+function SCB_IsPlayerOnTaxi()
+    return UnitOnTaxi and UnitOnTaxi("player") and true or false
+end
+
+function SCB_CreateTaxiBlocker(target)
+    local blocker, shade
+    if not target then return nil end
+
+    blocker = CreateFrame("Frame", nil, target)
+    blocker:SetAllPoints(target)
+    blocker:SetFrameLevel(target:GetFrameLevel() + 30)
+    blocker:EnableMouse(true)
+    blocker.scbTooltip = SCB_L("TAXI_CONTROLS_DISABLED")
+    blocker:SetScript("OnEnter", SCB_TooltipOnEnter)
+    blocker:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+    shade = blocker:CreateTexture(nil, "BACKGROUND")
+    shade:SetAllPoints(blocker)
+    shade:SetTexture(0, 0, 0, 0.48)
+    blocker.scbShade = shade
+    blocker:Hide()
+
+    table.insert(SCB.taxiBlockers, blocker)
+    return blocker
+end
+
+function SCB_RefreshTaxiState()
+    local onTaxi = SCB_IsPlayerOnTaxi()
+    local wasOnTaxi = SCB.playerOnTaxi == true
+    local i, blocker
+
+    SCB.playerOnTaxi = onTaxi
+    for i = 1, table.getn(SCB.taxiBlockers or {}) do
+        blocker = SCB.taxiBlockers[i]
+        if blocker then
+            if onTaxi then blocker:Show() else blocker:Hide() end
+        end
+    end
+
+    if onTaxi and not wasOnTaxi
+        and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation()
+        and SCB_AbortBotSpawnOperations then
+        SCB_AbortBotSpawnOperations()
+    end
+
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
+end
+
+function SCB_QueueTaxiStateRefresh(delay)
+    local frame = SCB.taxiStateRefreshFrame
+    if not frame then
+        frame = CreateFrame("Frame", "SoloCraftBotsTaxiStateRefreshFrame", UIParent)
+        frame:Hide()
+        frame:SetScript("OnUpdate", function()
+            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
+            if this.scbElapsed < (this.scbDelay or 0.10) then return end
+            this.scbElapsed = 0
+            this:Hide()
+            SCB_RefreshTaxiState()
+        end)
+        SCB.taxiStateRefreshFrame = frame
+    end
+    frame.scbDelay = delay or 0.10
+    frame.scbElapsed = 0
+    frame:Show()
 end
 
 function SCB_CreateSectionTitle(parent, text, x, y)
@@ -960,6 +1028,7 @@ end
 function SCB_MainFrameOnShow()
     SCB_SetEscapeProxyShown(true)
     if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
+    if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
 end
 
 function SCB_MainFrameOnHide()
@@ -1501,6 +1570,13 @@ function SCB_CreateUI()
     SCB_CreateOptionsUI(frame)
     SCB_LayoutSections()
 
+    SCB.taxiBlockers = {}
+    SCB_CreateTaxiBlocker(SCB.sections.commands)
+    SCB_CreateTaxiBlocker(SCB.sections.assignments)
+    SCB_CreateTaxiBlocker(SCB.sections.summon)
+    SCB_CreateTaxiBlocker(SCB.presetSummonButton)
+    SCB_RefreshTaxiState()
+
     local safety = CreateFrame("Frame", "SoloCraftBotsSafetyMessage", UIParent)
     safety:SetWidth(520)
     safety:SetHeight(40)
@@ -1686,6 +1762,8 @@ eventFrame:SetScript("OnEvent", function()
         else
             SCB_ValidateSavedSession()
         end
+        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
+        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
     elseif event == "PLAYER_LEVEL_UP" then
         SCB_RefreshMainPaladinBlessingButton()
         if SCB.presetPanel then
@@ -1693,8 +1771,12 @@ eventFrame:SetScript("OnEvent", function()
         end
     elseif event == "PLAYER_CONTROL_LOST" then
         SCB.playerControlLost = true
+        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
+        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
     elseif event == "PLAYER_CONTROL_GAINED" then
         SCB.playerControlLost = nil
+        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
+        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
         if SCB.frame and SCB.frame:IsShown() then
             SCB_SetEscapeProxyShown(true)
         end

@@ -837,6 +837,10 @@ local function SCB_SpawnDebug(text)
 end
 
 function SCB_SendSpawnCommand(command)
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then
+        SCB_SpawnDebug("Blocked spawn payload while player is on taxi: " .. tostring(command))
+        return false
+    end
     if not SCB_IsValidatedSpawnCommand(command) then
         SCB_SpawnDebug("Blocked invalid spawn payload: " .. tostring(command))
         return false
@@ -1444,6 +1448,7 @@ function SCB_GetActiveBotOperation()
 end
 
 function SCB_IsManualAddAvailable()
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
     if SCB_GetActiveBotOperation() then return false end
     if SCB_HasLegacyPhysicalBotRuntime() then return false end
     if SCB_IsKickQueueActive and SCB_IsKickQueueActive() then return false end
@@ -1651,6 +1656,7 @@ function SCB_RequestManualAdd(classKey, role, extra)
     local command, operation, plan, state, now
     local parsedClass, parsedRole, parsedExtra
 
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
     command = SCB_BuildSpawnCommand and SCB_BuildSpawnCommand(classKey, role, extra) or nil
     if not command or not SCB_IsValidatedSpawnCommand(command) then return false end
     parsedClass, parsedRole, parsedExtra = SCB_ParseSpawnCommand(command)
