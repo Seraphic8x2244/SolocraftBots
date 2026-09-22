@@ -1541,7 +1541,8 @@ function SCB_RequestCommand(commandKey, scope, modifiers)
     end
 
     if not SCB_IsCommandTargetContextValid(commandKey, scope) then
-        if scope == "target" or scope == "group" then
+        if (scope == "target" or scope == "group")
+            and not (modifiers and modifiers.silentInvalidTarget) then
             SCB_ShowInvalidTargetError()
         end
         return false
@@ -1569,8 +1570,16 @@ function SCB_RequestCommand(commandKey, scope, modifiers)
 end
 
 local function SCB_SetCommandButtonAvailability(button)
+    local available
     if not button or not button.scbCommandKey or not button.scbRecipientKey then return end
-    button:SetAlpha(SCB_IsCommandRequestAvailable(button.scbCommandKey, button.scbRecipientKey) and 1 or 0.5)
+
+    available = SCB_IsCommandRequestAvailable(button.scbCommandKey, button.scbRecipientKey)
+    button:SetAlpha(available and 1 or 0.5)
+    if available then
+        button:Enable()
+    else
+        button:Disable()
+    end
 end
 
 function SCB_RefreshCommandAvailability()

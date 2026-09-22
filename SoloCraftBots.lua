@@ -1536,7 +1536,9 @@ SlashCmdList["SOLOCRAFTBOTS"] = function(msg)
     elseif command == "stay" or command == "move" then
         -- Macro target controls enter through the same command-request front
         -- door as the One row, preserving Single's direct/spammable policy.
-        if SCB_RequestCommand then SCB_RequestCommand(command, "target") end
+        if SCB_RequestCommand then
+            SCB_RequestCommand(command, "target", { silentInvalidTarget = true })
+        end
         return
     elseif command == "location" then
         SCB_PrintLocationProbe()
