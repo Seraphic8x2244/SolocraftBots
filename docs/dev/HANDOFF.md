@@ -1804,3 +1804,26 @@ Exact next test:
 3. quick post-landing Preset Summon + Replace Missing/Dead regression.
 
 Only after that passes, continue to item 2.2.
+
+
+## 0.8.80 taxi runtime finding — delayed UnitOnTaxi transition — 2026-09-23
+
+User/friend runtime evidence:
+- while visibly on a gryphon flight, the 0.8.80 operational sections were not grey/inert;
+- screenshot confirms SCB remained visually active during taxi;
+- user clarified that server-side bot "despawn" means their world entities disappear temporarily; bots do not leave the party/raid or go offline, and the same identities reappear after landing.
+
+API conclusion:
+- `UnitOnTaxi("player")` is valid for the Vanilla-era API;
+- the implementation mistake is transition timing: a one-shot event-time read plus one 0.10-second retry is insufficient because taxi state may not be updated immediately when control-lost/gained fires.
+
+Correction scope:
+- keep `UnitOnTaxi("player")` as authoritative actual state;
+- replace one-shot retry behavior with a low-cost transition watcher that polls while player control is lost and for a short settle window after control returns;
+- no taxi-driven Active Roster/session clearing, Missing classification, or identity rebinding;
+- no change to 0.8.79 manual Add semantics apart from the taxi gate becoming reliable.
+
+Status:
+- 0.8.80 taxi UI behavior is runtime-failed for transition detection;
+- 0.8.79 manual Add remains not yet runtime-cleared;
+- item 2.2/2.3 and visualiser remain deferred.

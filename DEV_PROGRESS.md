@@ -7,7 +7,7 @@
 - Branch head before this docs-only update: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — taxi-flight operational safety gate on top of tracked manual Add.
 - Latest status commit before this update: `0f861ca102014320cc6ed70aa8ffe5e8000d3107`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: add the newly identified taxi-flight safety prerequisite, then runtime-clear item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
+- Goal: correct the 0.8.80 taxi transition detection, then runtime-clear taxi safety plus item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
 - `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — 0.8.80-dev: disable bot-affecting UI/execution while `UnitOnTaxi("player")` is true and handle the exact flying spawn rejection.
@@ -307,6 +307,11 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.80-dev` taxi gating plus the still-unverified 0.8.79 manual Add lifecycle.
+Correct the 0.8.80 taxi gate before further runtime testing:
+- preserve `UnitOnTaxi("player")` as the authoritative taxi state;
+- do not rely on the immediate `PLAYER_CONTROL_LOST`/`PLAYER_CONTROL_GAINED` read or a single 0.10-second retry, because the API can lag the transition;
+- poll through the control-lost interval and briefly after control is regained so the UI eventually enters/exits taxi state reliably;
+- do not reinterpret taxi bot disappearance as roster leave/offline/missing semantics; the user's server keeps the same group bot identities and respawns their world entities on landing;
+- preserve the 0.8.79 manual Add lifecycle and all Active Roster/session semantics unchanged.
 
-Do not begin item 2.2 until both pass. If clean, proceed to item 2.2 remote accepted summon coordination; item 2.3 received exact human `slotIndex` follows separately. Keep the visualiser deferred.
+Then runtime-test taxi gating plus manual Add. Do not begin item 2.2 yet.
