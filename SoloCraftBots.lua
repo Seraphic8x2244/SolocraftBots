@@ -378,22 +378,39 @@ function SCB_RefreshTaxiState()
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 end
 
-function SCB_QueueTaxiStateRefresh(delay)
+function SCB_QueueTaxiStateRefresh(delay, settleSeconds)
     local frame = SCB.taxiStateRefreshFrame
+    local now = GetTime and GetTime() or 0
     if not frame then
         frame = CreateFrame("Frame", "SoloCraftBotsTaxiStateRefreshFrame", UIParent)
         frame:Hide()
         frame:SetScript("OnUpdate", function()
+            local current
             this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
             if this.scbElapsed < (this.scbDelay or 0.10) then return end
             this.scbElapsed = 0
-            this:Hide()
             SCB_RefreshTaxiState()
+
+            -- UnitOnTaxi can lag PLAYER_CONTROL_LOST/GAINED. Keep polling for
+            -- the whole control-lost interval, and after control returns until
+            -- the API has settled back to false for the requested grace window.
+            if SCB.playerControlLost then return end
+            if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return end
+
+            current = GetTime and GetTime() or 0
+            if this.scbStopAfter and current < this.scbStopAfter then return end
+            this:Hide()
         end)
         SCB.taxiStateRefreshFrame = frame
     end
+
     frame.scbDelay = delay or 0.10
     frame.scbElapsed = 0
+    if SCB.playerControlLost then
+        frame.scbStopAfter = nil
+    else
+        frame.scbStopAfter = now + (settleSeconds or 2.0)
+    end
     frame:Show()
 end
 
@@ -1029,6 +1046,7 @@ function SCB_MainFrameOnShow()
     SCB_SetEscapeProxyShown(true)
     if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
     if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
+    if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
 end
 
 function SCB_MainFrameOnHide()
@@ -1763,7 +1781,7 @@ eventFrame:SetScript("OnEvent", function()
             SCB_ValidateSavedSession()
         end
         if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
+        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
     elseif event == "PLAYER_LEVEL_UP" then
         SCB_RefreshMainPaladinBlessingButton()
         if SCB.presetPanel then
@@ -1776,7 +1794,7 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "PLAYER_CONTROL_GAINED" then
         SCB.playerControlLost = nil
         if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
+        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
         if SCB.frame and SCB.frame:IsShown() then
             SCB_SetEscapeProxyShown(true)
         end
