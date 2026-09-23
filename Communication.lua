@@ -609,7 +609,7 @@ function SCB_CommsPromptAccept()
             return
         end
     end
-    ok, errorText = SCB_StartPresetSummonSnapshot(incoming.snapshot)
+    ok, errorText = SCB_StartPresetRebuild(incoming.snapshot, false)
     if not ok then
         if errorText then SCB_Print(errorText) end
         FinishIncoming(incoming, "ERROR")
