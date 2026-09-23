@@ -1121,7 +1121,6 @@ end
 function SCB_IsCommandRequestAvailable(commandKey, scope)
     local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local group, roster
-    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
     if not commandInfo or not route or not SCB_IsCommandTargetContextValid(commandKey, scope) then
         return false
     end
@@ -1528,7 +1527,7 @@ end
 
 function SCB_RequestCommand(commandKey, scope, modifiers)
     local commandInfo, route
-    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return false end
     commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local moveInfo, moveRoute
     local forceMove = modifiers and modifiers.forceMove == true
@@ -1677,6 +1676,7 @@ function SCB_RaidMarkOnClick()
     if not this.scbMark or not SCB.raidMarkMode then
         return
     end
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     SCB_SendCommand(SCB.raidMarkMode .. "mark " .. this.scbMark)
 end
 
@@ -1924,7 +1924,7 @@ end
 -- options.silent: suppress normal kick-count chat (used by maintenance)
 function SCB_KickBots(mode, options)
     local members
-    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
+    if SCB_CanOperateBots and not SCB_CanOperateBots(not (options and options.silent)) then return false end
     members = SCB_CollectGroupMembers()
     local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
@@ -2169,10 +2169,7 @@ function SCB_PresetSummonOnClick()
     local snapshot, errorText, ok, botCount, botWord
     local forced = IsControlKeyDown and IsControlKeyDown() and true or false
 
-    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then
-        if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(SCB_L("SUMMON_BLOCKED_FLYING")) end
-        return
-    end
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
     local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
 
@@ -2267,7 +2264,6 @@ function SCB_HandleSpawnServerRejection(text)
 
     if flying then
         warning = SCB_L("SUMMON_BLOCKED_FLYING")
-        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
     else
         hiddenKind, auraName = SCB_GetHiddenAuraKind()
     end

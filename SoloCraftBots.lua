@@ -21,7 +21,6 @@ SCB.prefix = SCB_L("CHAT_PREFIX")
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
 SCB.commandButtons = {}
 SCB.manualAddButtons = {}
-SCB.taxiBlockers = {}
 SCB.presetSlotButtons = {}
 SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
@@ -116,11 +115,30 @@ function SCB_Print(text)
     end
 end
 
+function SCB_ShowBotOperationError(key)
+    local text = SCB_L(key)
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage(text, 1.0, 0.1, 0.1, 1.0)
+    else
+        SCB_Print(text)
+    end
+    if PlaySound then PlaySound("igQuestFailed") end
+end
+
+function SCB_CanOperateBots(showError)
+    if UnitOnTaxi and UnitOnTaxi("player") then
+        if showError then SCB_ShowBotOperationError("ERR_TAXI_OPERATION") end
+        return false
+    end
+    return true
+end
+
 function SCB_SendPartyBotCommand(command, options)
     local channel
     if not command or command == "" or not SendChatMessage then return false end
 
     options = options or {}
+    if SCB_CanOperateBots and not SCB_CanOperateBots(false) then return false end
     channel = options.channel or "GUILD"
     if options.registerSpawnIntent and SCB_RegisterSpawnIntent then
         SCB_RegisterSpawnIntent()
@@ -131,11 +149,6 @@ function SCB_SendPartyBotCommand(command, options)
 end
 
 function SCB_SendCommand(command, options)
-    -- No bot-affecting command is valid while the player is taxiing. Keep this
-    -- hard gate below every UI/macro command path so a stale visual state cannot
-    -- send during the 0.10-second taxi refresh interval.
-    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
-
     -- Target/Group exclusivity is owned by the targeted-command entry points,
     -- not by the generic sender. Global/role/emergency controls must remain live
     -- while a targeted acknowledgement sequence is in progress.
@@ -333,96 +346,6 @@ function SCB_RefreshVisibleTooltip(button)
         GameTooltip:SetText(button.scbTooltip, 1, 1, 1, 1, true)
         GameTooltip:Show()
     end
-end
-
-function SCB_IsPlayerOnTaxi()
-    return UnitOnTaxi and UnitOnTaxi("player") and true or false
-end
-
-function SCB_CreateTaxiBlocker(target)
-    local blocker, shade
-    if not target then return nil end
-
-    blocker = CreateFrame("Frame", nil, target)
-    blocker:SetAllPoints(target)
-    blocker:SetFrameLevel(target:GetFrameLevel() + 30)
-    blocker:EnableMouse(true)
-    blocker.scbTooltip = SCB_L("TAXI_CONTROLS_DISABLED")
-    blocker:SetScript("OnEnter", SCB_TooltipOnEnter)
-    blocker:SetScript("OnLeave", SCB_TooltipOnLeave)
-
-    shade = blocker:CreateTexture(nil, "BACKGROUND")
-    shade:SetAllPoints(blocker)
-    shade:SetTexture(0, 0, 0, 0.48)
-    blocker.scbShade = shade
-    blocker:Hide()
-
-    table.insert(SCB.taxiBlockers, blocker)
-    return blocker
-end
-
-function SCB_RefreshTaxiState()
-    local onTaxi = SCB_IsPlayerOnTaxi()
-    local wasOnTaxi = SCB.playerOnTaxi == true
-    local i, blocker
-
-    SCB.playerOnTaxi = onTaxi
-    for i = 1, table.getn(SCB.taxiBlockers or {}) do
-        blocker = SCB.taxiBlockers[i]
-        if blocker then
-            if onTaxi then blocker:Show() else blocker:Hide() end
-        end
-    end
-
-    if onTaxi and not wasOnTaxi
-        and SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation()
-        and SCB_AbortBotSpawnOperations then
-        SCB_AbortBotSpawnOperations()
-    end
-
-    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
-    if SCB_RefreshCommandAvailability then SCB_RefreshCommandAvailability() end
-end
-
-function SCB_QueueTaxiStateRefresh(delay, settleSeconds)
-    local frame = SCB.taxiStateRefreshFrame
-    local now = GetTime and GetTime() or 0
-    if not frame then
-        frame = CreateFrame("Frame", "SoloCraftBotsTaxiStateRefreshFrame", UIParent)
-        frame:Hide()
-        frame:SetScript("OnUpdate", function()
-            local current
-            this.scbElapsed = (this.scbElapsed or 0) + (arg1 or 0)
-            if this.scbElapsed < (this.scbDelay or 0.10) then return end
-            this.scbElapsed = 0
-            SCB_RefreshTaxiState()
-
-            -- While the main SCB frame is visible, keep this tiny 10 Hz watcher
-            -- alive permanently. The user may begin a taxi long after the
-            -- original show/transition settle window has expired.
-            if SCB.frame and SCB.frame:IsShown() then return end
-
-            -- UnitOnTaxi can lag PLAYER_CONTROL_LOST/GAINED. Keep polling for
-            -- the whole control-lost interval, and after control returns until
-            -- the API has settled back to false for the requested grace window.
-            if SCB.playerControlLost then return end
-            if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return end
-
-            current = GetTime and GetTime() or 0
-            if this.scbStopAfter and current < this.scbStopAfter then return end
-            this:Hide()
-        end)
-        SCB.taxiStateRefreshFrame = frame
-    end
-
-    frame.scbDelay = delay or 0.10
-    frame.scbElapsed = 0
-    if SCB.playerControlLost then
-        frame.scbStopAfter = nil
-    else
-        frame.scbStopAfter = now + (settleSeconds or 2.0)
-    end
-    frame:Show()
 end
 
 function SCB_CreateSectionTitle(parent, text, x, y)
@@ -973,6 +896,7 @@ end
 
 
 function SCB_DistanceOnClick()
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     SCB_EnsureSessionDB()
     if SoloCraftBotsDB.session.state.distance == "far" then
         if SCB_SendCommand("distance off") then
@@ -1056,8 +980,6 @@ end
 function SCB_MainFrameOnShow()
     SCB_SetEscapeProxyShown(true)
     if SCB_RefreshTargetCommandRow then SCB_RefreshTargetCommandRow() end
-    if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-    if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
 end
 
 function SCB_MainFrameOnHide()
@@ -1478,7 +1400,10 @@ function SCB_CreateRaidmarkUI(frame)
     local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
-    clearMarks:SetScript("OnClick", function() SCB_SendCommand("clearmarks") end)
+    clearMarks:SetScript("OnClick", function()
+        if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
+        SCB_SendCommand("clearmarks")
+    end)
     clearMarks:SetScript("OnEnter", SCB_TooltipOnEnter)
     clearMarks:SetScript("OnLeave", SCB_TooltipOnLeave)
 
@@ -1598,13 +1523,6 @@ function SCB_CreateUI()
     SCB_CreatePresetUI(frame)
     SCB_CreateOptionsUI(frame)
     SCB_LayoutSections()
-
-    SCB.taxiBlockers = {}
-    SCB_CreateTaxiBlocker(SCB.sections.commands)
-    SCB_CreateTaxiBlocker(SCB.sections.assignments)
-    SCB_CreateTaxiBlocker(SCB.sections.summon)
-    SCB_CreateTaxiBlocker(SCB.presetSummonButton)
-    SCB_RefreshTaxiState()
 
     local safety = CreateFrame("Frame", "SoloCraftBotsSafetyMessage", UIParent)
     safety:SetWidth(520)
@@ -1791,8 +1709,6 @@ eventFrame:SetScript("OnEvent", function()
         else
             SCB_ValidateSavedSession()
         end
-        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
     elseif event == "PLAYER_LEVEL_UP" then
         SCB_RefreshMainPaladinBlessingButton()
         if SCB.presetPanel then
@@ -1800,12 +1716,8 @@ eventFrame:SetScript("OnEvent", function()
         end
     elseif event == "PLAYER_CONTROL_LOST" then
         SCB.playerControlLost = true
-        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10) end
     elseif event == "PLAYER_CONTROL_GAINED" then
         SCB.playerControlLost = nil
-        if SCB_RefreshTaxiState then SCB_RefreshTaxiState() end
-        if SCB_QueueTaxiStateRefresh then SCB_QueueTaxiStateRefresh(0.10, 2.0) end
         if SCB.frame and SCB.frame:IsShown() then
             SCB_SetEscapeProxyShown(true)
         end
