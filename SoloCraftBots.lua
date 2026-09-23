@@ -131,6 +131,11 @@ function SCB_SendPartyBotCommand(command, options)
 end
 
 function SCB_SendCommand(command, options)
+    -- No bot-affecting command is valid while the player is taxiing. Keep this
+    -- hard gate below every UI/macro command path so a stale visual state cannot
+    -- send during the 0.10-second taxi refresh interval.
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
+
     -- Target/Group exclusivity is owned by the targeted-command entry points,
     -- not by the generic sender. Global/role/emergency controls must remain live
     -- while a targeted acknowledgement sequence is in progress.
@@ -376,6 +381,7 @@ function SCB_RefreshTaxiState()
     end
 
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
+    if SCB_RefreshCommandAvailability then SCB_RefreshCommandAvailability() end
 end
 
 function SCB_QueueTaxiStateRefresh(delay, settleSeconds)
@@ -390,6 +396,11 @@ function SCB_QueueTaxiStateRefresh(delay, settleSeconds)
             if this.scbElapsed < (this.scbDelay or 0.10) then return end
             this.scbElapsed = 0
             SCB_RefreshTaxiState()
+
+            -- While the main SCB frame is visible, keep this tiny 10 Hz watcher
+            -- alive permanently. The user may begin a taxi long after the
+            -- original show/transition settle window has expired.
+            if SCB.frame and SCB.frame:IsShown() then return end
 
             -- UnitOnTaxi can lag PLAYER_CONTROL_LOST/GAINED. Keep polling for
             -- the whole control-lost interval, and after control returns until

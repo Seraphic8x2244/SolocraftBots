@@ -473,7 +473,9 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
 end
 
 function SCB_MaintenanceReplaceOnClick()
-    local missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
+    local missing, dead, unavailableMissing, unavailableDead
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return end
+    missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
     local members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
     local botCount, otherHumans = 0, 0
     local survivorName, survivorRecord

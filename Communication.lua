@@ -1121,6 +1121,7 @@ end
 function SCB_IsCommandRequestAvailable(commandKey, scope)
     local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local group, roster
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
     if not commandInfo or not route or not SCB_IsCommandTargetContextValid(commandKey, scope) then
         return false
     end
@@ -1526,7 +1527,9 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
 end
 
 function SCB_RequestCommand(commandKey, scope, modifiers)
-    local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
+    local commandInfo, route
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
+    commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local moveInfo, moveRoute
     local forceMove = modifiers and modifiers.forceMove == true
     local sent = true
@@ -1920,7 +1923,9 @@ end
 -- options.preserveName: explicit name to preserve
 -- options.silent: suppress normal kick-count chat (used by maintenance)
 function SCB_KickBots(mode, options)
-    local members = SCB_CollectGroupMembers()
+    local members
+    if SCB_IsPlayerOnTaxi and SCB_IsPlayerOnTaxi() then return false end
+    members = SCB_CollectGroupMembers()
     local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
     local i, member, survivorName, safetyApplied
