@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.83-dev`
-- Current runtime commit: `e27915c25eb11d9653e783061197715c3fd3bf39` (0.8.83-dev)
-- Branch head before this docs-only update: `e27915c25eb11d9653e783061197715c3fd3bf39` — action-time taxi gate with no polling/UI greying.
-- Latest status commit before this update: `c6f5408a7df4731b68f1bcdb01c6084c6750bf33`
+- Version: `0.8.84-dev`
+- Current runtime commit: `e25d63f2a378ce1bcbf41682fc776794e91b0b03` (0.8.84-dev)
+- Branch head before this docs-only update: `e25d63f2a378ce1bcbf41682fc776794e91b0b03` — accepted remote Summon Request now enters the same preset-operation coordinator/front door as local Summon.
+- Latest status commit before this update: `9db2d7236f2a979e30a379a90edd2ebca5523eb6`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: simplify taxi safety to an action-time shared pipeline gate with error/fizz and remove all taxi polling/UI greying, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
+- Goal: runtime-clear architecture item 2.2 only. Received exact human `slotIndex` preservation remains item 2.3 and the visualiser remains deferred.
 
 ## Recent Commits
+- `e25d63f2a378ce1bcbf41682fc776794e91b0b03` — 0.8.84-dev: route accepted remote Summon Request through `SCB_StartPresetRebuild(..., false)`, matching local Summon coordinator ownership while leaving communications composition-only.
 - `e27915c25eb11d9653e783061197715c3fd3bf39` — 0.8.83-dev: remove taxi polling/UI greying and gate bot-affecting actions through one shared `UnitOnTaxi` predicate with red error + failure sound.
 - `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` — 0.8.82-dev: persistent taxi polling implementation; superseded before user validation by 0.8.83's action-time design.
 - `893bd5decaec458047114a6a9098e984f4f6de68` — 0.8.81-dev: keep polling taxi state through control-lost/gained transitions so delayed `UnitOnTaxi` updates cannot leave the UI active during flight.
@@ -43,6 +44,14 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
+- 0.8.84-dev implements architecture item 2.2 only:
+  - accepted remote Summon Request no longer calls `SCB_StartPresetSummonSnapshot()` directly;
+  - it now calls `SCB_StartPresetRebuild(incoming.snapshot, false)`, the same front door used by local Summon before `SCB_RequestPresetOperation()`;
+  - remote acceptance therefore respects active bot-operation/legacy-runtime exclusion, teardown/rebuild coordination, pending-add handling, Active Roster transition setup, taxi gating and coordinator phase ownership;
+  - preset communications remain composition intent only: slot class/role/extra plus human name/group/slotIndex/role/extra; no generated bot identity is serialized;
+  - generated bot-name -> logical-assignment binding remains owned by the summoning client through the existing spawn/tracker machinery;
+  - item 2.3 Save Received exact `slotIndex` persistence is unchanged and intentionally deferred.
+- 0.8.84 static inspection passed: exact two-file runtime diff, remote/local front-door call-site audit, low-level snapshot-summoner confinement to `Spawn.lua`, communications wire-format audit, TOC load-order/version check. Repository has no GitHub Actions workflow directory and the runtime commit has no CI status checks. In-game runtime testing is still required.
 - 0.8.83-dev action-time taxi gate is implemented, static-checked and user-tested:
   - one shared `SCB_CanOperateBots(showError)` function contains the only `UnitOnTaxi("player")` query;
   - no taxi `OnUpdate`, watcher frame, blocker/dimmer or taxi-driven button greying remains;
@@ -293,13 +302,15 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Item 2.1 is now runtime-cleared for the intended manual Add cooldown/lock behavior.
-- Proceed to architecture item 2.2 in a fresh chat: route accepted remote summon through the same preset-operation coordinator/front door used by local Summon.
-- Preserve current tested taxi gating and manual Add behavior.
-- Item 2.3 received exact human `slotIndex` preservation remains deferred until 2.2 is complete.
+- Runtime-test 0.8.84-dev with two SCB clients:
+  - request a preset remotely and accept it on the summoning client with no active bot operation; summon should complete normally;
+  - repeat with existing bots present and out of combat; acceptance should use the same coordinated teardown/rebuild behavior as local Summon;
+  - while the summoning client already owns a physical bot operation, accept another remote request and verify no nested/second summon starts;
+  - smoke local Summon afterward to confirm no regression;
+  - generated bot identities/logical bindings must remain local to the summoning client; the requester should not require bot-name state.
+- Do not start item 2.3 or visualiser work from this build.
 
 ## Planned / To-do
-- Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
 - Preserve received preset exact human `slotIndex` data when saving communicated presets.
 - Convert 5-player presets to the same exact logical human-slot editor/model as raid presets and remove human physical placement from logical identity.
 - Remove/rework `PRESET_ARRANGE_PLAYERS` so logical human assignments no longer cause physical human subgroup arrangement.
@@ -328,6 +339,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Start a fresh chat and implement item 2.2: accepted remote summon must enter through the preset-operation coordinator rather than calling the lower-level snapshot summon path directly.
+User-test `0.8.84-dev` architecture item 2.2: remote Summon Request acceptance must behave like local Summon through the shared preset-operation coordinator, including existing-bot teardown/rebuild and busy-operation exclusion.
 
-Keep requester intent composition-only; the summoning client owns generated bot identity and logical assignment. Do not start item 2.3 or visualiser work yet.
+Do not start item 2.3 or visualiser work until this runtime gate is reported back.

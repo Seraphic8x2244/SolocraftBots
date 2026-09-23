@@ -2049,3 +2049,49 @@ Exact next step:
 - requester sends composition intent only;
 - summoning client owns generated bot-name -> logical assignment;
 - do not start item 2.3 or visualiser work.
+
+
+## 0.8.84-dev remote Summon Request coordinator convergence — 2026-09-23
+
+Branch: `dev`  
+Runtime commit: `e25d63f2a378ce1bcbf41682fc776794e91b0b03`  
+Base/handoff commit entering slice: `9db2d7236f2a979e30a379a90edd2ebca5523eb6`
+
+Implemented architecture item 2.2 only:
+- accepted remote Summon Request no longer enters underneath coordinator ownership through `SCB_StartPresetSummonSnapshot(incoming.snapshot)`;
+- the accept handler now calls `SCB_StartPresetRebuild(incoming.snapshot, false)`, exactly the same front door local Summon uses before `SCB_RequestPresetOperation()`;
+- this makes remote acceptance obey the same bot-operation busy gate, pending-add handling, existing-bot teardown/rebuild, Active Roster transition, taxi guard and coordinator phase ownership as local Summon;
+- the request is deliberately non-forced, matching a normal local Summon click rather than Ctrl-forced replacement.
+
+Execution-identity boundary:
+- communications serialization already carries composition intent only: each logical slot's class/role/extra and each human's name/group/slotIndex/role/extra;
+- no generated bot names or assumed-spawn identity are transmitted;
+- the summoning client continues to generate/bind bot-name -> logical assignment through the existing tracker/assumed-spawn machinery;
+- requester-side bot identity state was not added.
+
+Deferred:
+- item 2.3 Save Received exact human `slotIndex` persistence is unchanged and not started;
+- unified logical-slot migration and `PRESET_ARRANGE_PLAYERS` rework are not started;
+- visualiser work is not started.
+
+Static checks:
+- runtime diff is exactly `Communication.lua` plus TOC version bump to `0.8.84-dev`;
+- remote handler and local Summon both enter `SCB_StartPresetRebuild`;
+- no `SCB_StartPresetSummonSnapshot` call remains in `Communication.lua`; low-level snapshot summoning is confined to `Spawn.lua`;
+- wire-format audit confirms no generated bot identity fields;
+- TOC loads `Spawn.lua` before `Communication.lua`;
+- repository root has no `.github` workflow directory and GitHub reports no CI statuses for the runtime commit.
+
+Status:
+- implemented and static-checked;
+- not user-tested yet;
+- taxi gating and manual Add cooldown/lock remain previously user-cleared.
+
+Exact next test:
+1. two SCB clients, empty/no-active-operation case: requester sends Summon Request, summoning client accepts, summon completes;
+2. existing bots present and out of combat: remote acceptance performs the same coordinated teardown/rebuild as local Summon;
+3. summoning client already owns a physical bot operation: accepting another request must not start a nested/second summon;
+4. local Summon regression smoke;
+5. confirm requester does not need generated bot-name state.
+
+Do not start item 2.3 or visualiser work until this runtime gate is reported back.
