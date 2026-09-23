@@ -1865,3 +1865,28 @@ Exact next test:
 - land and verify automatic restoration;
 - if still wrong, capture direct mid-flight `UnitOnTaxi("player")` return value;
 - then run manual Add lock/identity/timeout smoke.
+
+
+## 0.8.81 taxi runtime finding — API proven, watcher lifetime wrong — 2026-09-23
+
+Runtime evidence:
+- user ran `/run DEFAULT_CHAT_FRAME:AddMessage("taxi="..tostring(UnitOnTaxi("player")))` while visibly mid-flight;
+- result was exactly `taxi=1`;
+- therefore Vanilla taxi API support is confirmed on this client/server;
+- operational SCB sections still did not grey/block, except buttons already grey from their normal target-context rules.
+
+Diagnosis:
+- the 0.8.81 watcher correctly polls during control-lost and for a short post-transition settle, but if the SCB main window is already open and the taxi begins after that watcher has stopped, there is no persistent source that re-checks `UnitOnTaxi`;
+- this is a watcher-lifetime bug, not an API bug.
+
+Correction requirement:
+- keep a low-cost taxi poll active whenever the main SCB window is shown;
+- retain event-transition polling for startup/landing edges;
+- hard-guard shared operational entry points as a second safety layer;
+- keep preset editing/configuration usable;
+- preserve roster/session/Active Roster state across temporary taxi world despawn.
+
+Status:
+- 0.8.81 taxi behavior remains runtime-failed;
+- 0.8.79 manual Add remains not yet runtime-cleared;
+- item 2.2/2.3 and visualiser remain deferred.

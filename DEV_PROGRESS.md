@@ -7,7 +7,7 @@
 - Branch head before this docs-only update: `893bd5decaec458047114a6a9098e984f4f6de68` — persistent taxi-transition polling fix.
 - Latest status commit before this update: `5948d69aaf8d9333c8ffa351d8317187fc35a888`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: correct the 0.8.80 taxi transition detection, then runtime-clear taxi safety plus item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
+- Goal: correct the still-failing taxi watcher lifetime now that direct runtime proof shows `UnitOnTaxi("player") == 1` mid-flight, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
 - `893bd5decaec458047114a6a9098e984f4f6de68` — 0.8.81-dev: keep polling taxi state through control-lost/gained transitions so delayed `UnitOnTaxi` updates cannot leave the UI active during flight.
@@ -310,6 +310,13 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.81-dev` taxi polling first, then the still-unverified 0.8.79 manual Add lifecycle.
+Fix the taxi watcher lifetime:
+- runtime proof on 2026-09-23 shows `UnitOnTaxi("player")` returns `1` while visibly mid-flight;
+- therefore do not change taxi APIs again;
+- keep a low-cost taxi poll alive whenever the main SCB window is visible, so a flight begun after the prior 2-second settle window is still detected;
+- retain transition polling while player control is lost/gained;
+- add hard taxi guards to shared bot-affecting action entry points so stale UI cannot execute commands/removals/spawns;
+- preset editing/configuration remains usable; Preset Summon remains blocked;
+- do not change roster/session semantics because taxi despawn is temporary world disappearance, not group membership loss.
 
-Do not begin item 2.2 until both pass. If taxi still does not gate the UI, capture the direct mid-flight `UnitOnTaxi("player")` value before changing APIs again. Keep roster/session semantics unchanged because taxi despawn is temporary world disappearance, not group membership loss.
+Then runtime-test taxi gating again before manual Add. Do not begin item 2.2 yet.
