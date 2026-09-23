@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.80-dev`
-- Current runtime commit: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` (0.8.80-dev)
-- Branch head before this docs-only update: `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — taxi-flight operational safety gate on top of tracked manual Add.
-- Latest status commit before this update: `0f861ca102014320cc6ed70aa8ffe5e8000d3107`
+- Version: `0.8.81-dev`
+- Current runtime commit: `893bd5decaec458047114a6a9098e984f4f6de68` (0.8.81-dev)
+- Branch head before this docs-only update: `893bd5decaec458047114a6a9098e984f4f6de68` — persistent taxi-transition polling fix.
+- Latest status commit before this update: `5948d69aaf8d9333c8ffa351d8317187fc35a888`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 - Goal: correct the 0.8.80 taxi transition detection, then runtime-clear taxi safety plus item 2.1 manual Add before moving to item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
+- `893bd5decaec458047114a6a9098e984f4f6de68` — 0.8.81-dev: keep polling taxi state through control-lost/gained transitions so delayed `UnitOnTaxi` updates cannot leave the UI active during flight.
 - `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — 0.8.80-dev: disable bot-affecting UI/execution while `UnitOnTaxi("player")` is true and handle the exact flying spawn rejection.
 - `46ac48b01f9b701abe0b9151124a1e225a44a262` — 0.8.79-dev: route addon manual Add through a tracked one-assignment `manual-add` bot operation with explicit identity, join/timeout ownership and a 1.0-second minimum floor.
 - `87e61360ec36c2d9543b2e1bc8606b948b10d6bd` (`main`) — promote tested 0.8.78-dev runtime to stable 0.8.78; release tree differs only by stable TOC metadata and removal of top-level dev status files.
@@ -38,6 +39,14 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
+- 0.8.81-dev corrects the 0.8.80 taxi transition failure:
+  - `UnitOnTaxi("player")` remains the authoritative taxi signal;
+  - the taxi watcher now polls every 0.10s for the full `PLAYER_CONTROL_LOST` interval instead of doing one delayed read;
+  - after `PLAYER_CONTROL_GAINED`, it continues polling for a 2.0-second settle window and will keep polling longer if `UnitOnTaxi` still reports true;
+  - opening the SCB main frame also starts the same short settle watcher;
+  - no roster/session/Active Roster state is cleared or reclassified because bots temporarily despawn as world entities on taxi;
+  - 0.8.79 manual Add identity/cooldown behavior is unchanged.
+- 0.8.81 static inspection passed: two-file runtime diff, Lua block-balance clean, TOC/version consistency and non-force promotion after final branch-head recheck. Not user-tested yet.
 - 0.8.80-dev adds the taxi-flight safety prerequisite on top of 0.8.79:
   - `UnitOnTaxi("player")` is the authoritative local taxi signal;
   - Commands, Assignments, and Summon sections are covered by high-level mouse blockers/dimmers while taxiing, so their nested operational controls cannot click through;
@@ -262,19 +271,13 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Runtime-test `0.8.80-dev` taxi safety:
-  - board a gryphon/bat/wyvern: Commands, Assignments and Summon sections visibly dim and are completely inert;
-  - preset editor remains usable, but Preset Summon itself is inert;
-  - close/toggle still works;
-  - after landing, all blocked controls restore normally;
-  - if practical, start a manual Add then immediately board a taxi and confirm the operation does not remain stuck.
-- Then run the pending manual Add lifecycle test:
-  - one Add disables all role Add buttons immediately;
-  - spam clicks do not create a second request;
-  - expected bot join + 1.0-second floor releases Add;
-  - several sequential Adds retain requested class/role/special assignment;
-  - failed Add releases via rejection or ~5-second timeout and does not poison the next identity.
-- Quick regression: Preset Summon and Replace Missing/Dead still start/finish normally after landing.
+- Runtime-test `0.8.81-dev` taxi detection:
+  - board a taxi with SCB already open; within the transition, Commands/Assignments/Summon should become dim and inert and stay that way for the whole flight;
+  - preset editor remains usable, but Preset Summon is inert;
+  - land and confirm controls restore automatically;
+  - if taxi begins while an addon spawn operation is active, it must abort cleanly without changing saved roster identity.
+- If the UI still fails to enter taxi state, run `/run DEFAULT_CHAT_FRAME:AddMessage("taxi="..tostring(UnitOnTaxi("player")))` while mid-flight and report the exact value; this distinguishes client/API behavior from event timing.
+- Then run the pending 0.8.79 manual Add lifecycle test.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -307,11 +310,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Correct the 0.8.80 taxi gate before further runtime testing:
-- preserve `UnitOnTaxi("player")` as the authoritative taxi state;
-- do not rely on the immediate `PLAYER_CONTROL_LOST`/`PLAYER_CONTROL_GAINED` read or a single 0.10-second retry, because the API can lag the transition;
-- poll through the control-lost interval and briefly after control is regained so the UI eventually enters/exits taxi state reliably;
-- do not reinterpret taxi bot disappearance as roster leave/offline/missing semantics; the user's server keeps the same group bot identities and respawns their world entities on landing;
-- preserve the 0.8.79 manual Add lifecycle and all Active Roster/session semantics unchanged.
+Runtime-test `0.8.81-dev` taxi polling first, then the still-unverified 0.8.79 manual Add lifecycle.
 
-Then runtime-test taxi gating plus manual Add. Do not begin item 2.2 yet.
+Do not begin item 2.2 until both pass. If taxi still does not gate the UI, capture the direct mid-flight `UnitOnTaxi("player")` value before changing APIs again. Keep roster/session semantics unchanged because taxi despawn is temporary world disappearance, not group membership loss.

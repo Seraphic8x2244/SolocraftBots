@@ -1827,3 +1827,41 @@ Status:
 - 0.8.80 taxi UI behavior is runtime-failed for transition detection;
 - 0.8.79 manual Add remains not yet runtime-cleared;
 - item 2.2/2.3 and visualiser remain deferred.
+
+
+## 0.8.81-dev persistent taxi transition polling — 2026-09-23
+
+Branch: `dev`  
+Runtime commit: `893bd5decaec458047114a6a9098e984f4f6de68`  
+Failure-record/docs base: `5948d69aaf8d9333c8ffa351d8317187fc35a888`
+
+Correction:
+- retained `UnitOnTaxi("player")` as the actual taxi-state API;
+- replaced the one-shot 0.10-second delayed refresh with a persistent transition watcher;
+- while `SCB.playerControlLost` is true, taxi state is polled every 0.10 seconds without a timeout;
+- on `PLAYER_CONTROL_GAINED`, polling continues through a 2.0-second settle window and also continues beyond that while `UnitOnTaxi` still reports true;
+- opening the main SCB frame starts the same short settle watcher;
+- the existing high-level section blockers and shared spawn hard gate are unchanged.
+
+Important semantic clarification:
+- on this server, bots temporarily despawn as world entities during taxi but remain the same logical/group bots and reappear on landing;
+- taxi handling must therefore never clear or rebuild session/Active Roster merely because the world entities disappear;
+- 0.8.81 makes no roster/session semantics change.
+
+Static checks:
+- runtime diff limited to `SoloCraftBots.lua` plus TOC version;
+- Lua block-balance passed;
+- no 0.8.79 manual Add logic changed;
+- final `dev` head matched staged base before non-force promotion.
+
+Status:
+- 0.8.80 transition detection is runtime-failed;
+- 0.8.81 correction is implemented/static-checked, not user-tested;
+- 0.8.79 manual Add remains not user-tested;
+- item 2.2/2.3 and visualiser remain deferred.
+
+Exact next test:
+- board taxi with main UI open and verify the three operational sections become/stay inert;
+- land and verify automatic restoration;
+- if still wrong, capture direct mid-flight `UnitOnTaxi("player")` return value;
+- then run manual Add lock/identity/timeout smoke.
