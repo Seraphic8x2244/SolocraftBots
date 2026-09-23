@@ -2,14 +2,15 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.81-dev`
-- Current runtime commit: `893bd5decaec458047114a6a9098e984f4f6de68` (0.8.81-dev)
-- Branch head before this docs-only update: `893bd5decaec458047114a6a9098e984f4f6de68` — persistent taxi-transition polling fix.
-- Latest status commit before this update: `5948d69aaf8d9333c8ffa351d8317187fc35a888`
+- Version: `0.8.82-dev`
+- Current runtime commit: `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` (0.8.82-dev)
+- Branch head before this docs-only update: `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` — persistent visible taxi watcher plus hard action guards.
+- Latest status commit before this update: `631b25a11833f9c03746406fef78e45db560398f`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 - Goal: correct the still-failing taxi watcher lifetime now that direct runtime proof shows `UnitOnTaxi("player") == 1` mid-flight, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
+- `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` — 0.8.82-dev: keep taxi polling alive whenever the main SCB frame is visible and hard-block command/removal/maintenance entry points during taxi.
 - `893bd5decaec458047114a6a9098e984f4f6de68` — 0.8.81-dev: keep polling taxi state through control-lost/gained transitions so delayed `UnitOnTaxi` updates cannot leave the UI active during flight.
 - `ddde3789f75c7cabafaea2baa72733a06ea1d5c9` — 0.8.80-dev: disable bot-affecting UI/execution while `UnitOnTaxi("player")` is true and handle the exact flying spawn rejection.
 - `46ac48b01f9b701abe0b9151124a1e225a44a262` — 0.8.79-dev: route addon manual Add through a tracked one-assignment `manual-add` bot operation with explicit identity, join/timeout ownership and a 1.0-second minimum floor.
@@ -39,6 +40,16 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
+- 0.8.82-dev corrects the remaining 0.8.81 watcher-lifetime failure:
+  - user directly proved `UnitOnTaxi("player") == 1` while mid-flight, so API selection is settled;
+  - the taxi watcher now remains alive at 10 Hz for as long as the main SCB frame is visible, catching flights started long after the original transition settle window;
+  - command availability itself returns unavailable on taxi and is refreshed from each taxi poll;
+  - `SCB_RequestCommand` hard-blocks before targeted/group sequencing can begin;
+  - generic `SCB_SendCommand` hard-blocks as a lower-level fallback;
+  - `SCB_KickBots` and maintenance Replace hard-block before physical removal/replacement work begins;
+  - existing shared spawn/manual Add/preset Summon taxi guards remain in place;
+  - preset editing/configuration and roster/session semantics are unchanged.
+- 0.8.82 static inspection passed: four-file runtime diff, Lua block-balance on all modified Lua files, no Roster/Presets data changes, TOC/version consistency, and non-force promotion after final `dev` head recheck. Not user-tested yet.
 - 0.8.81-dev corrects the 0.8.80 taxi transition failure:
   - `UnitOnTaxi("player")` remains the authoritative taxi signal;
   - the taxi watcher now polls every 0.10s for the full `PLAYER_CONTROL_LOST` interval instead of doing one delayed read;
@@ -271,13 +282,13 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Runtime-test `0.8.81-dev` taxi detection:
-  - board a taxi with SCB already open; within the transition, Commands/Assignments/Summon should become dim and inert and stay that way for the whole flight;
-  - preset editor remains usable, but Preset Summon is inert;
-  - land and confirm controls restore automatically;
-  - if taxi begins while an addon spawn operation is active, it must abort cleanly without changing saved roster identity.
-- If the UI still fails to enter taxi state, run `/run DEFAULT_CHAT_FRAME:AddMessage("taxi="..tostring(UnitOnTaxi("player")))` while mid-flight and report the exact value; this distinguishes client/API behavior from event timing.
-- Then run the pending 0.8.79 manual Add lifecycle test.
+- Runtime-test `0.8.82-dev` taxi gate:
+  - with SCB already open, board a taxi; within about 0.10s Commands/Assignments/Summon should dim/become inert;
+  - command buttons should also individually reflect unavailable state;
+  - preset editor/config remains usable, while Preset Summon remains blocked;
+  - try a normal command/Kick/Replace while mid-flight; nothing bot-affecting should execute;
+  - land and confirm everything operational restores automatically.
+- Then run the still-pending 0.8.79 manual Add lifecycle test.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -310,13 +321,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Fix the taxi watcher lifetime:
-- runtime proof on 2026-09-23 shows `UnitOnTaxi("player")` returns `1` while visibly mid-flight;
-- therefore do not change taxi APIs again;
-- keep a low-cost taxi poll alive whenever the main SCB window is visible, so a flight begun after the prior 2-second settle window is still detected;
-- retain transition polling while player control is lost/gained;
-- add hard taxi guards to shared bot-affecting action entry points so stale UI cannot execute commands/removals/spawns;
-- preset editing/configuration remains usable; Preset Summon remains blocked;
-- do not change roster/session semantics because taxi despawn is temporary world disappearance, not group membership loss.
+Runtime-test `0.8.82-dev` taxi gating first. `UnitOnTaxi` is already user-proven; the only remaining question is watcher/UI/action behavior.
 
-Then runtime-test taxi gating again before manual Add. Do not begin item 2.2 yet.
+If taxi now passes, immediately continue with the pending 0.8.79 manual Add lock/identity/timeout smoke. Do not begin item 2.2 until both pass. Keep roster/session semantics unchanged across taxi despawn.

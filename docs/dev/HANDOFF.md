@@ -1890,3 +1890,45 @@ Status:
 - 0.8.81 taxi behavior remains runtime-failed;
 - 0.8.79 manual Add remains not yet runtime-cleared;
 - item 2.2/2.3 and visualiser remain deferred.
+
+
+## 0.8.82-dev persistent visible taxi gate — 2026-09-23
+
+Branch: `dev`  
+Runtime commit: `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898`  
+Runtime-finding/docs base: `631b25a11833f9c03746406fef78e45db560398f`
+
+Implemented:
+- `UnitOnTaxi("player")` remains authoritative; user directly confirmed `taxi=1` mid-flight;
+- the taxi watcher no longer stops after a 2-second settle while the main SCB frame remains visible;
+- it polls every 0.10 seconds for the entire visible lifetime of the main frame;
+- `SCB_RefreshTaxiState` now also refreshes command availability so command buttons themselves grey/disable according to taxi state;
+- `SCB_IsCommandRequestAvailable` returns false on taxi;
+- `SCB_RequestCommand` returns before any Single/Group sequencing starts on taxi;
+- `SCB_SendCommand` hard-blocks all lower-level bot command sends on taxi;
+- `SCB_KickBots` hard-blocks removals on taxi;
+- maintenance Replace returns before record selection/removal/spawn setup on taxi;
+- existing manual Add, shared spawn transport and Preset Summon taxi guards remain unchanged.
+
+Not changed:
+- no Roster.lua or Presets.lua data/runtime semantics changed;
+- taxi world despawn still does not clear or rebuild Active Roster/session identity;
+- preset editing/configuration remains usable;
+- 0.8.79 manual Add identity/cooldown implementation unchanged;
+- item 2.2/2.3 and visualiser deferred.
+
+Static checks:
+- runtime diff limited to `SoloCraftBots.lua`, `Communication.lua`, `Spawn.lua`, and TOC;
+- Lua lexical block balance passed on modified Lua files;
+- final dev head matched staged base before non-force promotion.
+
+Status:
+- 0.8.81 watcher lifetime is runtime-failed;
+- 0.8.82 is implemented/static-checked, not user-tested;
+- 0.8.79 manual Add remains not user-tested.
+
+Exact next test:
+1. keep SCB open, board taxi, verify operational sections and command buttons disable within ~0.10s;
+2. verify commands/Kick/Replace cannot act mid-flight while preset editing still works;
+3. land and verify restoration;
+4. then test manual Add lock/spam/join+1s/sequential identity/timeout behavior.
