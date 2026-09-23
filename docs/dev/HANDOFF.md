@@ -1957,3 +1957,58 @@ Status:
 - next runtime version will implement this simpler gate;
 - 0.8.79 manual Add still awaits runtime validation;
 - item 2.2/2.3 and visualiser remain deferred.
+
+
+## 0.8.83-dev action-time taxi gate — 2026-09-23
+
+Branch: `dev`  
+Runtime commit: `e27915c25eb11d9653e783061197715c3fd3bf39`  
+Scope/docs base: `8a3b126d0cb55ca1dfbfa361aa9e10c4115d7a8e`
+
+Final taxi design:
+- user already proved `UnitOnTaxi("player") == 1` while mid-flight;
+- one shared `SCB_CanOperateBots(showError)` predicate now owns the sole taxi-state query;
+- all taxi polling, watcher frames, transition refreshes, blockers/dimmers and taxi-driven button availability were removed;
+- user-facing blocked actions use red `UIErrorsFrame` text plus `PlaySound("igQuestFailed")`;
+- exact text: `You can't do that whilst on a taxi.`
+
+Covered user-facing actions:
+- normal command request pipeline, including Single/Group/All/role controls and slash-command paths;
+- Spawn Near/Far distance command;
+- raidmark assignment and clear-marks action;
+- manual Add;
+- Preset Summon;
+- Kick All/Dead;
+- maintenance Replace Missing/Dead.
+
+Lower-level safety:
+- `SCB_SendPartyBotCommand` silently rechecks the same shared predicate before any addon-owned PartyBot transport;
+- preset-operation coordinator silently rejects startup on taxi;
+- internal silent removal callers remain silent if blocked.
+
+Preserved:
+- no taxi-specific button greying; normal target/busy availability remains unchanged;
+- preset editing/configuration and local assignment selectors remain usable;
+- no roster/session/Active Roster clearing or Missing classification from temporary taxi world despawn;
+- 0.8.79 manual Add identity/cooldown implementation unchanged;
+- item 2.2/2.3 and visualiser deferred.
+
+Static checks:
+- runtime diff limited to `SoloCraftBots.lua`, `Communication.lua`, `Spawn.lua`, `Locale/enGB.lua`, and TOC;
+- Lua lexical block-balance passed on modified Lua files;
+- repository runtime search confirmed taxi polling/blocker symbols are gone;
+- only `SCB_CanOperateBots` contains the `UnitOnTaxi` call;
+- final `dev` head matched staged base before non-force promotion.
+
+Status:
+- implemented/static-checked;
+- not user-tested;
+- 0.8.82 polling build superseded before user validation;
+- 0.8.79 manual Add remains not user-tested.
+
+Exact next test:
+1. mid-flight, attempt each bot-affecting main action and confirm red taxi error + failure sound with no bot action;
+2. confirm there is no taxi-specific greying/dimming;
+3. edit presets/config while flying;
+4. land and confirm immediate normal operation;
+5. then run manual Add lock/identity/timeout smoke.
