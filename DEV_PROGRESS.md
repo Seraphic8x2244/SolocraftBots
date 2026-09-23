@@ -31,6 +31,7 @@
 
 ## Completed / Verified
 - 0.8.83-dev taxi action-time gate is user-verified: while mid-flight, bot-affecting controls remain visually normal, execute no bot action, and show the agreed red `You can't do that whilst on a taxi.` feedback with failure sound. Preset editing/configuration remains usable and normal operation resumes after landing.
+- Tracked manual Add cooldown/lock behavior carried from 0.8.79 is user-verified on 0.8.83-dev: manual summon now has the intended cooldown and behaves as expected. No regression reported in normal manual summon use.
 - Normal control commands use GUILD transport; spawn/add traffic remains SAY. User-verified on 0.8.54-dev.
 - Macro-safe targeted `/scb stay` and `/scb move`, including no-target safety, are user-verified from 0.8.52-dev.
 - Group targeting visibly cycles subgroup bots rather than only affecting the initially selected bot.
@@ -292,17 +293,10 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Runtime-test the still-pending 0.8.79 manual Add lifecycle carried forward in 0.8.83-dev:
-  - one accepted Add disables all Add role buttons immediately;
-  - repeated Add clicks do not send a second request;
-  - fast join remains locked until the 1.0-second floor, then re-enables;
-  - slower join completes on bind;
-  - sequential Adds preserve requested class/role/extra identity, including generated/default extras;
-  - rejection or ~5-second no-arrival timeout unlocks cleanly with no stale identity stealing the next bot;
-  - preset/maintenance/active paced Kick keep manual Add unavailable;
-  - one feedback line per accepted request.
-- Quick regression smoke after that: Preset Summon and Replace Missing/Dead still work post-taxi.
-- Covered-slot multiplayer testing remains pending until a second human is available.
+- Item 2.1 is now runtime-cleared for the intended manual Add cooldown/lock behavior.
+- Proceed to architecture item 2.2 in a fresh chat: route accepted remote summon through the same preset-operation coordinator/front door used by local Summon.
+- Preserve current tested taxi gating and manual Add behavior.
+- Item 2.3 received exact human `slotIndex` preservation remains deferred until 2.2 is complete.
 
 ## Planned / To-do
 - Route accepted remote preset summons through the same preset-operation coordinator as local Summon, while keeping bot execution identity local to the summoning client.
@@ -334,6 +328,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test the 0.8.79 manual Add lifecycle on current `0.8.83-dev`. Taxi safety is now user-cleared.
+Start a fresh chat and implement item 2.2: accepted remote summon must enter through the preset-operation coordinator rather than calling the lower-level snapshot summon path directly.
 
-Do not begin item 2.2 until manual Add passes. If it passes, record a docs-only user-test commit, then continue item 2.2 (accepted remote summon through the preset-operation coordinator) in a fresh chat.
+Keep requester intent composition-only; the summoning client owns generated bot identity and logical assignment. Do not start item 2.3 or visualiser work yet.

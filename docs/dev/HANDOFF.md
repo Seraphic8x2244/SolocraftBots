@@ -2030,3 +2030,22 @@ Status now:
 Exact next step:
 - runtime-test manual Add on current 0.8.83-dev;
 - if it passes, record the pass and proceed to item 2.2 in a fresh chat.
+
+
+## Manual Add cooldown runtime pass — 2026-09-23
+
+User result:
+- manual summon now has the intended cooldown;
+- normal manual summon behavior works as expected on current 0.8.83-dev.
+
+Status:
+- item 2.1 tracked manual Add cooldown/lock behavior is runtime-cleared;
+- taxi safety is already runtime-cleared;
+- no runtime code change required from this test;
+- architecture can proceed to item 2.2.
+
+Exact next step:
+- in a fresh chat, inspect the accepted remote summon path and route it through the existing preset-operation coordinator/front door;
+- requester sends composition intent only;
+- summoning client owns generated bot-name -> logical assignment;
+- do not start item 2.3 or visualiser work.
