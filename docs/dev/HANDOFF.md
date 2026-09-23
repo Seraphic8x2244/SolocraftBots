@@ -1932,3 +1932,28 @@ Exact next test:
 2. verify commands/Kick/Replace cannot act mid-flight while preset editing still works;
 3. land and verify restoration;
 4. then test manual Add lock/spam/join+1s/sequential identity/timeout behavior.
+
+
+## Taxi safety simplification — action-time gate agreed — 2026-09-23
+
+User decision:
+- do not continuously poll taxi state merely to grey the UI;
+- keep SCB considerate of aggregate Vanilla addon CPU cost;
+- use the already runtime-proven `UnitOnTaxi("player")` value only when bot-affecting work is requested;
+- feedback should be a normal red error plus failure/fizz sound:
+  `You can't do that whilst on a taxi.`
+
+Implementation target:
+- one shared `SCB_CanOperateBots` predicate owns the actual `UnitOnTaxi("player")` query;
+- remove taxi watcher frames, transition polling, section blockers/dimmers and taxi-specific button availability;
+- user-facing command, assignment, distance, manual Add, preset Summon, Kick and maintenance entry points use the predicate with feedback;
+- lower-level command/spawn paths use the same predicate silently so stale/indirect addon execution cannot escape the gate;
+- internal silent removal paths must remain silent if taxi blocks them;
+- preset editor/configuration and purely local selection controls remain usable;
+- no taxi-related roster/session/identity semantics.
+
+Status:
+- 0.8.82 polling implementation is superseded before user validation;
+- next runtime version will implement this simpler gate;
+- 0.8.79 manual Add still awaits runtime validation;
+- item 2.2/2.3 and visualiser remain deferred.

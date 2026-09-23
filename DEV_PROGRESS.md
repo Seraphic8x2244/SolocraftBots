@@ -7,7 +7,7 @@
 - Branch head before this docs-only update: `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` — persistent visible taxi watcher plus hard action guards.
 - Latest status commit before this update: `631b25a11833f9c03746406fef78e45db560398f`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
-- Goal: correct the still-failing taxi watcher lifetime now that direct runtime proof shows `UnitOnTaxi("player") == 1` mid-flight, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
+- Goal: simplify taxi safety to an action-time shared pipeline gate with error/fizz and remove all taxi polling/UI greying, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
 ## Recent Commits
 - `fc23a8f4b7fc8c4af5eb5823cd4fad8a7fcce898` — 0.8.82-dev: keep taxi polling alive whenever the main SCB frame is visible and hard-block command/removal/maintenance entry points during taxi.
@@ -321,6 +321,13 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.82-dev` taxi gating first. `UnitOnTaxi` is already user-proven; the only remaining question is watcher/UI/action behavior.
+Replace the 0.8.82 taxi watcher/UI-grey implementation with the agreed action-time design:
+- one shared `SCB_CanOperateBots` predicate owns the `UnitOnTaxi("player")` query;
+- no taxi polling, taxi OnUpdate frame, section blockers or taxi-driven button greying;
+- user-facing bot-affecting actions fail immediately with red error text plus the existing failure/fizz sound: `You can't do that whilst on a taxi.`;
+- lower-level/internal bot command/spawn paths use the same predicate silently as a safety backstop;
+- normal target/context availability remains unchanged, so only its existing greying remains;
+- preset editing/configuration remains usable;
+- no roster/session/Active Roster changes for temporary taxi world despawn.
 
-If taxi now passes, immediately continue with the pending 0.8.79 manual Add lock/identity/timeout smoke. Do not begin item 2.2 until both pass. Keep roster/session semantics unchanged across taxi despawn.
+Bump the runtime version, static-check, then runtime-test the click-time gate and the still-pending manual Add lifecycle. Do not begin item 2.2 yet.
