@@ -5,7 +5,7 @@
 - Version: `0.8.83-dev`
 - Current runtime commit: `e27915c25eb11d9653e783061197715c3fd3bf39` (0.8.83-dev)
 - Branch head before this docs-only update: `e27915c25eb11d9653e783061197715c3fd3bf39` — action-time taxi gate with no polling/UI greying.
-- Latest status commit before this update: `8a3b126d0cb55ca1dfbfa361aa9e10c4115d7a8e`
+- Latest status commit before this update: `c6f5408a7df4731b68f1bcdb01c6084c6750bf33`
 - Stable release: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 - Goal: simplify taxi safety to an action-time shared pipeline gate with error/fizz and remove all taxi polling/UI greying, then runtime-clear taxi safety plus item 2.1 manual Add before item 2.2. Received-slot work remains item 2.3; visualiser remains deferred.
 
@@ -30,6 +30,7 @@
 - `30e1f5d8f9b0e33a5bddaa8882e0d8d37468f6c9` — 0.8.62-dev: uniform 0.15s Group target settle/hold around every recipient.
 
 ## Completed / Verified
+- 0.8.83-dev taxi action-time gate is user-verified: while mid-flight, bot-affecting controls remain visually normal, execute no bot action, and show the agreed red `You can't do that whilst on a taxi.` feedback with failure sound. Preset editing/configuration remains usable and normal operation resumes after landing.
 - Normal control commands use GUILD transport; spawn/add traffic remains SAY. User-verified on 0.8.54-dev.
 - Macro-safe targeted `/scb stay` and `/scb move`, including no-target safety, are user-verified from 0.8.52-dev.
 - Group targeting visibly cycles subgroup bots rather than only affecting the initially selected bot.
@@ -41,16 +42,14 @@
 - 0.8.78-dev command regression smoke is user-verified: combat-first Move/Stay macros work for All vs targeted-bot scope as intended; unavailable command buttons are truly inert with no gold highlight; valid buttons re-enable; Single spam and Group sequencing remain good.
 
 ## Implemented / Awaiting Test
-- 0.8.83-dev replaces the taxi polling experiment with the agreed lightweight action-time gate:
+- 0.8.83-dev action-time taxi gate is implemented, static-checked and user-tested:
   - one shared `SCB_CanOperateBots(showError)` function contains the only `UnitOnTaxi("player")` query;
-  - no taxi `OnUpdate`, no taxi watcher frame, no section blocker/dimmer, and no taxi-driven button greying remain;
-  - blocked user actions show red UI error text `You can't do that whilst on a taxi.` and play the existing `igQuestFailed` failure sound;
-  - command request, distance, raidmark/clear-mark, manual Add, preset Summon, Kick and maintenance Replace entry points all use the shared predicate with feedback;
-  - raw addon PartyBot transport and preset-operation coordination use the same predicate silently as lower-level safety backstops;
-  - command/manual-Add availability is no longer altered by taxi state, so existing target/busy greying behaves exactly as before;
-  - preset editing/configuration and purely local selection controls remain usable;
-  - no roster/session/Active Roster semantics changed.
-- 0.8.83 static inspection passed: runtime diff limited to `SoloCraftBots.lua`, `Communication.lua`, `Spawn.lua`, `Locale/enGB.lua`, and TOC; Lua block-balance clean; only `SCB_CanOperateBots` references `UnitOnTaxi`; all taxi watcher/blocker symbols removed; final `dev` head rechecked before non-force promotion. Not user-tested yet.
+  - no taxi `OnUpdate`, watcher frame, blocker/dimmer or taxi-driven button greying remains;
+  - blocked user actions show red `You can't do that whilst on a taxi.` feedback and the failure sound;
+  - command request, distance, raidmark/clear-mark, manual Add, Preset Summon, Kick and maintenance Replace entry points are covered;
+  - raw addon PartyBot transport and preset-operation coordination retain silent safety backstops;
+  - preset editing/configuration remains usable and no roster/session/Active Roster semantics changed;
+  - user runtime result: works as expected.
 - 0.8.82-dev corrects the remaining 0.8.81 watcher-lifetime failure:
   - user directly proved `UnitOnTaxi("player") == 1` while mid-flight, so API selection is settled;
   - the taxi watcher now remains alive at 10 Hz for as long as the main SCB frame is visible, catching flights started long after the original transition settle window;
@@ -293,13 +292,16 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
   - Group sequencing remains good.
 
 ### Next Test
-- Runtime-test `0.8.83-dev` while already mid-flight:
-  - buttons should keep their normal visual state; no taxi-specific greying/dimming should occur;
-  - clicking Command, Assignment/mark, distance, Add, Preset Summon, Kick or Replace should perform no bot action;
-  - each user attempt should show red `You can't do that whilst on a taxi.` feedback with the failure/fizz sound;
-  - preset editing/configuration/local selectors should remain usable;
-  - after landing, bot actions should work immediately with no state-reset requirement.
-- Then run the still-pending 0.8.79 manual Add lifecycle test.
+- Runtime-test the still-pending 0.8.79 manual Add lifecycle carried forward in 0.8.83-dev:
+  - one accepted Add disables all Add role buttons immediately;
+  - repeated Add clicks do not send a second request;
+  - fast join remains locked until the 1.0-second floor, then re-enables;
+  - slower join completes on bind;
+  - sequential Adds preserve requested class/role/extra identity, including generated/default extras;
+  - rejection or ~5-second no-arrival timeout unlocks cleanly with no stale identity stealing the next bot;
+  - preset/maintenance/active paced Kick keep manual Add unavailable;
+  - one feedback line per accepted request.
+- Quick regression smoke after that: Preset Summon and Replace Missing/Dead still work post-taxi.
 - Covered-slot multiplayer testing remains pending until a second human is available.
 
 ## Planned / To-do
@@ -332,6 +334,6 @@ Use the Preset UI as a temporary live-status projection when physical layout dif
 - Dedicated 0.8.62-only timing validation is deferred; its behaviour will be covered with the current Group build.
 
 ## Exact Next Step
-Runtime-test `0.8.83-dev` action-time taxi blocking first. There should be no taxi-specific visual greying and no background polling.
+Runtime-test the 0.8.79 manual Add lifecycle on current `0.8.83-dev`. Taxi safety is now user-cleared.
 
-If taxi blocking passes, continue immediately with the pending 0.8.79 manual Add lock/spam/join+1s/identity/timeout smoke. Do not begin item 2.2 until both pass. Keep roster/session semantics unchanged across temporary taxi despawn.
+Do not begin item 2.2 until manual Add passes. If it passes, record a docs-only user-test commit, then continue item 2.2 (accepted remote summon through the preset-operation coordinator) in a fresh chat.

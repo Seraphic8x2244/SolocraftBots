@@ -2012,3 +2012,21 @@ Exact next test:
 3. edit presets/config while flying;
 4. land and confirm immediate normal operation;
 5. then run manual Add lock/identity/timeout smoke.
+
+
+## 0.8.83 taxi runtime pass — 2026-09-23
+
+User result:
+- `0.8.83-dev` action-time taxi blocking works as expected.
+
+Status now:
+- taxi safety prerequisite: implemented, static-checked and user-tested;
+- no taxi polling/UI greying remains;
+- shared `SCB_CanOperateBots` action-time gate is the retained design;
+- no runtime code change required from this test;
+- 0.8.79 manual Add lifecycle remains the only pending runtime-clearance item before architecture item 2.2;
+- item 2.2/2.3 and visualiser remain deferred.
+
+Exact next step:
+- runtime-test manual Add on current 0.8.83-dev;
+- if it passes, record the pass and proceed to item 2.2 in a fresh chat.
