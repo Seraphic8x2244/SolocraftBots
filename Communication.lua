@@ -513,19 +513,21 @@ end
 local function SaveIncomingSnapshot(incoming, name)
     local snapshot = incoming.snapshot
     local group = FindOrCreateSnapshotGroup(snapshot)
-    local playerGroups, playerRoles = {}, {}
+    local playerGroups, playerSlots, playerRoles = {}, {}, {}
     local i, player, key, preset
     if not group then return false end
     for i = 1, table.getn(snapshot.players or {}) do
         player = snapshot.players[i]
         key = player.name == SelfName() and "$self" or player.name
         playerGroups[key] = player.group or 1
+        if player.slotIndex then playerSlots[key] = player.slotIndex end
         playerRoles[key] = { role = player.role, extra = player.extra }
     end
     preset = {
         name = name,
         slots = SCB_CopySlots(snapshot.slots),
         playerGroups = playerGroups,
+        playerSlots = playerSlots,
         playerRoles = playerRoles,
     }
     table.insert(group.presets, preset)
