@@ -715,6 +715,69 @@ function SCB_SetPresetGroupDragHighlight(groupIndex, alpha)
     end
 end
 
+function SCB_PresetLayoutMismatchPulseOnUpdate()
+    local elapsed, pulse, alpha
+    local i, frame
+    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
+        this:Hide()
+        return
+    end
+    elapsed = (this.scbElapsed or 0) + (arg1 or 0)
+    this.scbElapsed = elapsed
+    pulse = 0.5 + (0.5 * math.sin(elapsed * 1.6))
+    alpha = 0.14 + (pulse * 0.20)
+
+    for i = 1, 8 do
+        frame = SCB.presetGroupFrames and SCB.presetGroupFrames[i] or nil
+        if frame and frame.scbLayoutMismatchKind then
+            frame:SetBackdropColor(0.55, 0.42, 0.04, alpha)
+        end
+    end
+end
+
+function SCB_RefreshPresetLayoutMismatchPresentation(observed)
+    local mismatches = {}
+    local any = false
+    local i, frame, kind
+
+    if SCB_GetPresetLiveLayoutMismatches then
+        mismatches = SCB_GetPresetLiveLayoutMismatches(observed) or {}
+    end
+
+    for i = 1, 8 do
+        frame = SCB.presetGroupFrames and SCB.presetGroupFrames[i] or nil
+        if frame then
+            kind = mismatches[i]
+            frame.scbLayoutMismatchKind = kind
+            if kind == "regrouped" then
+                frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REGROUPED")
+                any = true
+            elseif kind == "reordered" then
+                frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REORDERED")
+                any = true
+            else
+                frame.scbTooltip = nil
+                frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+            end
+
+            if frame.scbTooltip then
+                SCB_RefreshVisibleTooltip(frame)
+            elseif GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(frame) then
+                GameTooltip:Hide()
+            end
+        end
+    end
+
+    if SCB.presetLayoutMismatchPulseFrame then
+        if any and SCB.presetPanel and SCB.presetPanel:IsShown() then
+            SCB.presetLayoutMismatchPulseFrame.scbElapsed = 0
+            SCB.presetLayoutMismatchPulseFrame:Show()
+        else
+            SCB.presetLayoutMismatchPulseFrame:Hide()
+        end
+    end
+end
+
 function SCB_UpdateDragGhost()
     local x, y, scale
     if not SCB.dragGhost or not SCB.dragGhost:IsShown() or not GetCursorPosition then
@@ -1076,6 +1139,9 @@ function SCB_LoadPreset(groupIndex, presetIndex)
     SCB_SetPresetDirty(false)
     if SCB_RefreshPresetSummonWarning then
         SCB_RefreshPresetSummonWarning()
+    end
+    if SCB_RefreshPresetLayoutMismatchPresentation then
+        SCB_RefreshPresetLayoutMismatchPresentation()
     end
 end
 
@@ -3008,6 +3074,7 @@ function SCB_SetPresetPanelShown(show)
         SCB_RefreshPresetSummonWarning()
         SCB.presetPanel:Show()
         if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+        if SCB_RefreshPresetLayoutMismatchPresentation then SCB_RefreshPresetLayoutMismatchPresentation() end
         SCB_SetPresetToggleDirection(true)
         if SCB_MaybeStartPresetTutorial then SCB_MaybeStartPresetTutorial() end
     else
@@ -3463,6 +3530,9 @@ function SCB_CreatePresetUI(frame)
         })
         groupFrame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
         groupFrame:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+        groupFrame:EnableMouse(true)
+        groupFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
+        groupFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.presetGroupFrames[g] = groupFrame
 
         for localIndex = 1, 5 do
@@ -3539,6 +3609,11 @@ function SCB_CreatePresetUI(frame)
             SCB.presetSlotButtons[i] = { classButton = classButton, roleButton = roleButton }
         end
     end
+
+    SCB.presetLayoutMismatchPulseFrame = CreateFrame("Frame", "SoloCraftBotsPresetLayoutMismatchPulseFrame", panel)
+    SCB.presetLayoutMismatchPulseFrame.scbElapsed = 0
+    SCB.presetLayoutMismatchPulseFrame:SetScript("OnUpdate", SCB_PresetLayoutMismatchPulseOnUpdate)
+    SCB.presetLayoutMismatchPulseFrame:Hide()
 
     SCB_LayoutPresetRowGeometry()
     SCB_UpdateLayoutDebugBorders()

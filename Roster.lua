@@ -2286,7 +2286,12 @@ function SCB_RefreshTrackerLiveLayout(observed)
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
     local positions, changed
     local i, player, assignment, name, live, assumption
-    if not tracker or not tracker.ready or tracker.mode ~= "raid" then return false end
+    if not tracker or not tracker.ready or tracker.mode ~= "raid" then
+        if SCB_RefreshPresetLayoutMismatchPresentation then
+            SCB_RefreshPresetLayoutMismatchPresentation(observed)
+        end
+        return false
+    end
     positions = SCB_BuildLiveRaidPositions(observed)
     changed = false
 
@@ -2328,7 +2333,120 @@ function SCB_RefreshTrackerLiveLayout(observed)
             SCB_BurstDebug("Observed Blizzard raid layout revision " .. tostring(tracker.layoutRevision))
         end
     end
+    if SCB_RefreshPresetLayoutMismatchPresentation then
+        SCB_RefreshPresetLayoutMismatchPresentation(observed)
+    end
     return changed
+end
+
+local function SCB_LiveLayoutSetsMatch(expected, actual)
+    local name
+    for name in pairs(expected or {}) do
+        if not actual or actual[name] == nil then return false end
+    end
+    for name in pairs(actual or {}) do
+        if not expected or expected[name] == nil then return false end
+    end
+    return true
+end
+
+function SCB_GetPresetLiveLayoutMismatches(observed)
+    local result = {}
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    local currentGroup, groupCount
+    local assignmentBySlot, playerBySlot = {}, {}
+    local expectedByGroup, actualByGroup, completeByGroup = {}, {}, {}
+    local i, g, assignment, player, name, member, expectedRow, actualRow
+
+    if not tracker or not tracker.ready or tracker.mode ~= "raid" or (tracker.size or 0) <= 5 then
+        return result
+    end
+    if SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
+        return result
+    end
+    if tracker.presetGroupIndex and SoloCraftBotsDB
+        and SoloCraftBotsDB.currentPresetGroup ~= tracker.presetGroupIndex then
+        return result
+    end
+    currentGroup = SoloCraftBotsDB and SoloCraftBotsDB.presetGroups
+        and SoloCraftBotsDB.presetGroups[SoloCraftBotsDB.currentPresetGroup] or nil
+    if tracker.presetIndex and currentGroup and currentGroup.currentPreset ~= tracker.presetIndex then
+        return result
+    end
+    if SCB_CurrentPresetSize and tracker.size ~= SCB_CurrentPresetSize() then
+        return result
+    end
+
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    if not observed or observed.mode ~= "raid" or observed.count ~= tracker.size then
+        return result
+    end
+
+    groupCount = math.ceil((tracker.size or 0) / 5)
+    for g = 1, groupCount do
+        expectedByGroup[g] = {}
+        actualByGroup[g] = {}
+        completeByGroup[g] = true
+    end
+
+    for i = 1, table.getn(tracker.assignments or {}) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.slotIndex then
+            assignmentBySlot[assignment.slotIndex] = assignment
+        end
+    end
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        if player and player.slotIndex then
+            playerBySlot[player.slotIndex] = player
+        end
+    end
+
+    for i = 1, tracker.size do
+        assignment = assignmentBySlot[i]
+        player = playerBySlot[i]
+        name = nil
+        if assignment and assignment.botName and observed.byName[assignment.botName] then
+            name = assignment.botName
+        elseif assignment and assignment.scbAssumedName and observed.byName[assignment.scbAssumedName] then
+            name = assignment.scbAssumedName
+        elseif player and player.name and observed.byName[player.name] then
+            name = player.name
+        end
+
+        g = math.floor((i - 1) / 5) + 1
+        if name then
+            expectedByGroup[g][name] = math.mod(i - 1, 5) + 1
+        else
+            completeByGroup[g] = false
+        end
+    end
+
+    for i = 1, table.getn(observed.members or {}) do
+        member = observed.members[i]
+        g = member and member.currentGroup or nil
+        if member and member.name and g and g >= 1 and g <= groupCount then
+            actualByGroup[g][member.name] = member.groupRow
+        end
+    end
+
+    for g = 1, groupCount do
+        if completeByGroup[g] then
+            if not SCB_LiveLayoutSetsMatch(expectedByGroup[g], actualByGroup[g]) then
+                result[g] = "regrouped"
+            else
+                for name, expectedRow in pairs(expectedByGroup[g]) do
+                    actualRow = actualByGroup[g][name]
+                    if actualRow ~= expectedRow then
+                        result[g] = "reordered"
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    return result
 end
 
 function SCB_QueueTrackerLiveLayoutRefresh(delay)

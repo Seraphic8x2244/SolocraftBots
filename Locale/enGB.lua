@@ -26,6 +26,8 @@ T["NO_GROUP"] = "No Group"
 T["NO_PRESET"] = "No Preset"
 T["GROUP_NUMBER"] = "Group %d"
 T["PLAYERS"] = "Players"
+T["TIP_PRESET_LAYOUT_REORDERED"] = "Group composition correct; Blizzard client reordered members."
+T["TIP_PRESET_LAYOUT_REGROUPED"] = "Group rearranged in Blizzard Raid tab."
 
 -- Preset groups and locations
 T["GROUP_WORLD"] = "World"
