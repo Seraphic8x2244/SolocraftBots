@@ -801,11 +801,8 @@ end
 function SCB_PresetPlayerDragStart()
     if SCB_StopPresetTutorial then SCB_StopPresetTutorial(true) end
     local present, originSlot
-    if SCB_CurrentPresetSize() <= 5 then
-        return
-    end
     SCB.draggedPresetPlayer = this.scbPlayerKey
-    originSlot = SCB.presetEditorPlayers and SCB.presetEditorPlayers[this.scbPlayerKey]
+    originSlot = SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[this.scbPlayerKey]
     SCB.draggedPresetPlayerOriginSlot = originSlot
     present = SCB_GetPresentHumanMap()
     if present[this.scbPlayerKey] then
@@ -875,7 +872,7 @@ function SCB_PresetPlayerOnClick()
         return
     end
 
-    if arg1 == "RightButton" and SCB_CurrentPresetSize() > 5 and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
+    if arg1 == "RightButton" and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
         SCB.presetEditorPlayers[this.scbPlayerKey] = nil
         SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
         SCB.presetEditorPlayerSlots[this.scbPlayerKey] = nil
@@ -929,26 +926,6 @@ function SCB_CreatePresetPlayerNameButton(parent, width, height)
     return button
 end
 
-function SCB_AutoPartyPlayerSlots(roster)
-    local slots = {}
-    local i, info, partyIndex
-    -- In a five-player party the client fixes self at slot 1 and party1..4
-    -- are the actual invite-order positions. Preserve those positions even
-    -- when bots are interspersed between human players.
-    slots["$self"] = 1
-    for i = 1, table.getn(roster) do
-        info = roster[i]
-        if info.key ~= "$self" and info.unit then
-            local _, _, capturedIndex = string.find(info.unit, "party(%d+)")
-            partyIndex = tonumber(capturedIndex)
-            if partyIndex then
-                slots[info.key] = partyIndex + 1
-            end
-        end
-    end
-    return slots
-end
-
 -- One authoritative map from live human players to the preset rows they cover.
 -- The player overlay, hidden bot controls, blessing allocation and spawn occupancy
 -- must all agree on this map.  Human placement never mutates the bot assignment
@@ -985,7 +962,7 @@ SCB_RefreshPresetPlayers = function()
                     row.playerOverlay:SetPoint("LEFT", row.classButton, "LEFT", 0, 0)
                     row.playerOverlay:SetFrameLevel(row:GetFrameLevel() + 4)
                 end
-                draggable = size > 5
+                draggable = true
                 SCB_SetPlayerNameIdentity(row.playerOverlay, present[key], draggable)
                 row.playerOverlay.scbSlotIndex = slotIndex
                 row.playerOverlay:SetAlpha(1); row.playerOverlay:Show(); row.classButton:Hide()
@@ -1003,19 +980,17 @@ SCB_RefreshPresetPlayers = function()
     end
 
     poolIndex = 0
-    if size > 5 then
-        for i = 1, table.getn(roster) do
-            info = roster[i]
-            if not assignedPresent[info.key] then
-                poolIndex = poolIndex + 1
-                button = SCB.presetPlayerPoolButtons[poolIndex]
-                if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
-                button:ClearAllPoints()
-                button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
-                SCB_SetPlayerNameIdentity(button, info, true)
-                button.scbSlotIndex = nil
-                button:Show()
-            end
+    for i = 1, table.getn(roster) do
+        info = roster[i]
+        if not assignedPresent[info.key] then
+            poolIndex = poolIndex + 1
+            button = SCB.presetPlayerPoolButtons[poolIndex]
+            if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
+            SCB_SetPlayerNameIdentity(button, info, true)
+            button.scbSlotIndex = nil
+            button:Show()
         end
     end
     for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do SCB.presetPlayerPoolButtons[i]:Hide() end
@@ -1050,15 +1025,14 @@ end
 
 function SCB_LoadPreset(groupIndex, presetIndex)
     local group, preset, size, key, slotIndex
-    SCB.presetEditorPlayerSlots = {}
     SCB_EnsurePresetDB()
     group = SoloCraftBotsDB.presetGroups[groupIndex]
     if not group then
         group = SCB_CurrentPresetGroup()
         preset = SCB_CurrentPreset()
         size = group and group.size or SCB_CurrentPresetSize()
-        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
-        SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+        SCB.presetEditorPlayerSlots = SCB_CopyPlayerSlots(preset and preset.playerSlots or nil, size)
+        SCB.presetEditorPlayers = {}
         for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
             SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
         end
@@ -1074,7 +1048,7 @@ function SCB_LoadPreset(groupIndex, presetIndex)
 
     if preset then
         SCB.presetEditorSlots = SCB_NormalizePresetSlots(preset.slots, size)
-        SCB.presetEditorPlayers = SCB_CopyPlayerGroups(preset.playerGroups or preset.playerSlots, size, preset.playerGroups == nil)
+        SCB.presetEditorPlayerSlots = SCB_CopyPlayerSlots(preset.playerSlots, size)
         SCB.presetEditorPlayerRoles = SCB_CopyPlayerRoles(preset.playerRoles)
         -- Old presets did not necessarily persist self role. Seed it once from
         -- this character's default, then it becomes an ordinary preset value.
@@ -1085,8 +1059,15 @@ function SCB_LoadPreset(groupIndex, presetIndex)
         end
     else
         SCB.presetEditorSlots = SCB_DefaultPresetSlots(size)
-        SCB.presetEditorPlayers = { ["$self"] = 1 }
+        SCB.presetEditorPlayerSlots = { ["$self"] = 1 }
         SCB.presetEditorPlayerRoles = { ["$self"] = SCB_GetCharacterDefaultRoleTable() }
+    end
+
+    -- Exact logical slots are the editor source of truth at every preset size.
+    -- playerGroups remains a derived compatibility field for saved/protocol data.
+    SCB.presetEditorPlayers = {}
+    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
     end
 
     SCB_UpdatePresetSelectorText()
@@ -1096,13 +1077,6 @@ function SCB_LoadPreset(groupIndex, presetIndex)
     if SCB_RefreshPresetSummonWarning then
         SCB_RefreshPresetSummonWarning()
     end
-
-    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
-    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
-    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
-        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
-    end
-    if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
 end
 
 function SCB_SaveCurrentPreset()
@@ -1992,7 +1966,7 @@ SCB.PRESET_WAIT_SURVIVOR_GONE = "__SCB_WAIT_SURVIVOR_GONE__"
 SCB.PRESET_WAIT_GROUP = "__SCB_WAIT_GROUP__"
 SCB.PRESET_WAIT_FINAL_ROSTER = "__SCB_WAIT_FINAL_ROSTER__"
 SCB.PRESET_CHECK_COMBAT = "__SCB_CHECK_COMBAT__"
-SCB.PRESET_ARRANGE_PLAYERS = "__SCB_ARRANGE_PLAYERS__"
+SCB.PRESET_PREPARE_RAID_BOTS = "__SCB_PREPARE_RAID_BOTS__"
 SCB.PRESET_TRACK_ROSTER = "__SCB_TRACK_ROSTER__"
 
 function SCB_PresetGroupHasCombat()
@@ -2024,52 +1998,6 @@ function SCB_PresetGroupHasCombat()
     return false
 end
 
-function SCB_ArrangePresetPlayers()
-    local desired = SCB.presetHumanGroups or {}
-    local key, wantedGroup, wantedName, i, name, _, currentGroup
-    if not SetRaidSubgroup or not GetRaidRosterInfo or not GetNumRaidMembers then return true end
-    if GetNumRaidMembers() == 0 then return false end
-
-    -- Resolve each human by name immediately before moving them. Raid indices
-    -- can change after SetRaidSubgroup(), so never cache an index across moves.
-    for key, wantedGroup in pairs(desired) do
-        wantedName = SCB_PresetPlayerDisplayName(key)
-        if wantedName then
-            for i = 1, GetNumRaidMembers() do
-                name, _, currentGroup = GetRaidRosterInfo(i)
-                if name == wantedName then
-                    if currentGroup ~= wantedGroup then
-                        if SCB_RecordPresetSubgroupMoveBarrier then
-                            SCB_RecordPresetSubgroupMoveBarrier()
-                        end
-                        SetRaidSubgroup(i, wantedGroup)
-                    end
-                    break
-                end
-            end
-        end
-    end
-
-    -- Verify from a fresh roster snapshot. If the server has not reflected the
-    -- moves yet, leave the queue parked here and try again next frame.
-    for key, wantedGroup in pairs(desired) do
-        wantedName = SCB_PresetPlayerDisplayName(key)
-        if wantedName then
-            local found = false
-            for i = 1, GetNumRaidMembers() do
-                name, _, currentGroup = GetRaidRosterInfo(i)
-                if name == wantedName then
-                    found = true
-                    if currentGroup ~= wantedGroup then return false end
-                    break
-                end
-            end
-            if not found then return false end
-        end
-    end
-    return true
-end
-
 function SCB_ProbeSurvivorWorldPresence(name)
     local hadTarget, oldTargetName, found
     if not name or name == "" or not TargetByName or not UnitName then
@@ -2098,10 +2026,9 @@ function SCB_ProbeSurvivorWorldPresence(name)
 end
 
 -- Authoritative preset role tracking ----------------------------------------------
--- Initial preset spawning establishes bot-relative order in Blizzard's own group
--- roster. Raids use authoritative subgroup order; five-player parties use
--- player/party1..party4 order. Roles still come only from the preset: roster order
--- is used solely to bind each bot name to its logical preset assignment.
+-- Initial preset spawning establishes deterministic bot-relative order while
+-- ignoring human row insertion. Logical human slots suppress composition intents
+-- only; observed Blizzard player placement never chooses a logical assignment.
 function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     local tracker = {
@@ -2934,7 +2861,6 @@ function SCB_AbortBotSpawnOperationsCore()
     SCB.presetCombatRetryResetPending = nil
     SCB.presetLastBurstCommands = nil
     SCB.presetLastBurstRequeued = nil
-    SCB.presetHumanGroups = nil
     SCB.presetExpectedBotCountBeforeHandoff = nil
     SCB.presetSurvivorProbeRemaining = nil
     SCB.presetBootstrapBotName = nil

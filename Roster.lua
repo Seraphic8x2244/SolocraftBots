@@ -1884,24 +1884,12 @@ function SCB_GetPresetHumanLayout()
     local roster = SCB_GetHumanRoster()
     local present, assignedPresent, playerRows = {}, {}, {}
     local used = {}
-    local i, info, key, slotIndex
+    local i, info, slotIndex
 
     for i = 1, table.getn(roster) do present[roster[i].key] = roster[i] end
 
-    if size <= 5 then
-        local auto = SCB_AutoPartyPlayerSlots(roster)
-        for key, slotIndex in pairs(auto) do
-            if present[key] and slotIndex >= 1 and slotIndex <= size then
-                playerRows[key] = slotIndex
-                assignedPresent[key] = true
-            end
-        end
-        return roster, present, playerRows, assignedPresent
-    end
-
-    -- Raid presets render only explicit logical assignments. Present humans with
-    -- no exact saved/working slot remain in Other Players until the user assigns
-    -- them. Blizzard's current subgroup row never fills this table.
+    -- Party and raid presets use the same explicit logical-slot model. Blizzard's
+    -- current party/raid row is observation only and never supplies logical identity.
     for i = 1, table.getn(roster) do
         info = roster[i]
         slotIndex = SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[info.key] or nil
@@ -1918,7 +1906,7 @@ end
 function SCB_AssignPresetPlayer(key, slotIndex)
     local size = SCB_CurrentPresetSize()
     local groupIndex, otherKey, otherSlot
-    if size <= 5 or not key or not slotIndex or slotIndex < 1 or slotIndex > size then return false end
+    if not key or not slotIndex or slotIndex < 1 or slotIndex > size then return false end
 
     SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
     SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
@@ -1955,7 +1943,7 @@ end
 
 function SCB_PresetPlayerDragStop()
     local i, row
-    if not SCB.draggedPresetPlayer or SCB_CurrentPresetSize() <= 5 then return end
+    if not SCB.draggedPresetPlayer then return end
     for i = 1, SCB_CurrentPresetSize() do
         row = SCB.presetDropTargets and SCB.presetDropTargets[i] or nil
         if row and SCB_FrameContainsCursor(row) then
@@ -1993,28 +1981,17 @@ function SCB_BuildPresetExecutionSnapshot()
 
     for i = 1, table.getn(roster) do
         info = roster[i]
-        if size > 5 then
-            assignedGroup = SCB.presetEditorPlayers and SCB.presetEditorPlayers[info.key]
-            slotIndex = playerRows and playerRows[info.key] or nil
-            if not assignedGroup then
-                return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), info.name)
-            end
-            if assignedGroup < 1 or assignedGroup > math.ceil(size / 5) then
-                return nil, SCB_L("ERR_PRESET_PLAYER_GROUP")
-            end
-            if not slotIndex or SCB_PlayerSlotGroup(slotIndex) ~= assignedGroup then
-                return nil, SCB_L("ERR_PARTY_LAYOUT")
-            end
-            groupCounts[assignedGroup] = (groupCounts[assignedGroup] or 0) + 1
-            if groupCounts[assignedGroup] > 5 then
-                return nil, string.format(SCB_L("ERR_PRESET_GROUP_FULL"), assignedGroup)
-            end
-        else
-            assignedGroup = 1
-            slotIndex = playerRows and playerRows[info.key] or nil
-            if not slotIndex then
-                return nil, SCB_L("ERR_PARTY_LAYOUT")
-            end
+        slotIndex = playerRows and playerRows[info.key] or nil
+        if not slotIndex then
+            return nil, string.format(SCB_L("ERR_ASSIGN_PLAYER"), info.name)
+        end
+        assignedGroup = SCB_PlayerSlotGroup(slotIndex)
+        if not assignedGroup or assignedGroup < 1 or assignedGroup > math.ceil(size / 5) then
+            return nil, SCB_L("ERR_PRESET_PLAYER_GROUP")
+        end
+        groupCounts[assignedGroup] = (groupCounts[assignedGroup] or 0) + 1
+        if groupCounts[assignedGroup] > 5 then
+            return nil, string.format(SCB_L("ERR_PRESET_GROUP_FULL"), assignedGroup)
         end
 
         if info.key == "$self" then
@@ -2053,7 +2030,9 @@ function SCB_BuildPresetExecutionSnapshot()
     if not valid then return nil, errorText end
     return snapshot
 end
-end
+
+-- -------------------------------------------------------------------------
+-- Explicit spawn identityend
 
 -- -------------------------------------------------------------------------
 -- Explicit spawn identity and live layout (absorbed from RaidIdentity.lua in 0.8.32).

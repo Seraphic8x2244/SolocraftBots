@@ -1021,27 +1021,19 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
         and SCB_IsT3RaidLocation and SCB_IsT3RaidLocation()
 
     if size > 5 then
-        SCB.presetHumanGroups = {}
-        for i = 1, table.getn(snapshot.players or {}) do
-            player = snapshot.players[i]
-            if player.group and player.group >= 1 and player.group <= groupCount then
-                SCB.presetHumanGroups[player.name] = player.group
-            end
-        end
-
         if startBotState == "survivor" then
             if table.getn(groups[1] or {}) == 0 then
                 return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
             end
             if raidCount == 0 then table.insert(queue, SCB_CONVERT_NOW) end
-            safety.parkBeforeArrange = true
+            safety.parkBeforeBotBursts = true
             safety.removeAfterGroupOne = true
         elseif raidCount > 0 then
         elseif partyCount > 0 then
             table.insert(queue, SCB_CONVERT_NOW)
         elseif needsT3Bootstrap then
             SCB_QueueBootstrapBurst(queue, plans)
-            safety.parkBeforeArrange = true
+            safety.parkBeforeBotBursts = true
             safety.removeAfterGroupOne = true
         else
             firstAssignment = groups[1] and groups[1][1] or nil
@@ -1053,10 +1045,8 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
             table.insert(queue, SCB_WAIT_REAL_RAID_START)
         end
 
-        table.insert(queue, SCB.PRESET_ARRANGE_PLAYERS)
+        table.insert(queue, SCB.PRESET_PREPARE_RAID_BOTS)
     else
-        SCB.presetHumanGroups = nil
-
         if startBotState == "survivor" then
             if table.getn(groups[1] or {}) == 0 then
                 return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
@@ -1174,22 +1164,21 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             SCB.presetSpawnElapsed = 0
             return
 
-        elseif head == SCB.PRESET_ARRANGE_PLAYERS then
+        elseif head == SCB.PRESET_PREPARE_RAID_BOTS then
             safety = SCB_GetPresetSafety(false)
-            if safety and safety.parkBeforeArrange then
+            if safety and safety.parkBeforeBotBursts then
                 if not SCB.scb072TryParkSurvivorInGroupEight
                     or not SCB.scb072TryParkSurvivorInGroupEight() then
                     return
                 end
-                safety.parkBeforeArrange = nil
+                safety.parkBeforeBotBursts = nil
             end
-            if SCB_ArrangePresetPlayers and SCB_ArrangePresetPlayers() then
-                if not SCB_PresetSubgroupMoveBarrierPassed() then return end
-                SCB_PresetSpawnQueuePop()
-                SCB.presetSpawnElapsed = 0
-            else
-                return
-            end
+            -- Human logical slots never drive SetRaidSubgroup. This stage exists
+            -- only to settle any temporary bot bootstrap/survivor move before the
+            -- deterministic preset bot bursts begin.
+            if not SCB_PresetSubgroupMoveBarrierPassed() then return end
+            SCB_PresetSpawnQueuePop()
+            SCB.presetSpawnElapsed = 0
 
         elseif head == SCB.PRESET_TRACK_ROSTER then
             if SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker then
