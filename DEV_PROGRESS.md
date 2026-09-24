@@ -8,7 +8,7 @@
 - Development head before this documentation-only workflow migration: `d877ebf8cb5f9ce23dd73a2971ed0221a61787e8`
 - Current runtime commit: `e25d63f2a378ce1bcbf41682fc776794e91b0b03` (`0.8.84-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: runtime-clear architecture item 2.2, the remote Summon Request convergence onto the shared preset-operation coordinator.
+- Goal: finish runtime-clearing architecture item 2.2. A normal inbound remote Summon Request from Gaia has now passed in-game; the targeted teardown/rebuild and busy-operation cases remain outstanding.
 - Current scope boundary: do not start item 2.3 received-slot persistence, the unified logical-slot migration, or visualiser work until the 0.8.84 remote-summon runtime gate is reported back.
 
 ## Current Design / Development Contract
@@ -58,7 +58,7 @@
 - Ctrl-click Come sends Move + Come back-to-back in the same recipient send phase. Do not add an artificial delay unless runtime evidence specifically proves the same-frame pair fails.
 
 ### Active Decisions
-- 0.8.84 item 2.2 is implemented but not user-tested: accepted remote Summon Request now enters the same non-forced preset-operation front door as local Summon; requester remains composition-only and summoning-client identity ownership is unchanged.
+- 0.8.84 item 2.2 is implemented and partially user-tested: an inbound remote Summon Request from Gaia completed normally in-game. Accepted remote Summon Request enters the same non-forced preset-operation front door as local Summon; requester remains composition-only and summoning-client identity ownership is unchanged. Existing-bot teardown/rebuild and busy-operation exclusion still need focused runtime coverage.
 - After item 2.2 runtime clearance, item 2.3 is next: preserve received exact human `slotIndex` when saving a communicated preset.
 - Then migrate party and raid presets to one explicit logical-slot model. Remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so logical human assignment no longer physically arranges humans.
 - Saved logical composition must not be silently rewritten to follow transient Blizzard layout. Planned live mismatch presentation is a slow yellow whole-group background pulse:
@@ -85,10 +85,11 @@
 - `0.8.83-dev` / `e27915c25eb11d9653e783061197715c3fd3bf39`: tracked manual Add cooldown/lock behavior inherited from 0.8.79 was user-tested; normal manual summon and intended cooldown behavior work.
 - `0.8.78-dev` / `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`: command regression smoke passed — Move/Stay macros select Single vs All correctly, unavailable command buttons are inert with no gold highlight, valid buttons re-enable, Single spam remains good and Group sequencing remains good.
 - `0.8.45-dev` / `379859be7196872328a106085cec37c161ef23eb`: natural-play 40-player BWL pass covered repeated preset summons/rebuilds, dead/missing maintenance refills and unified paced removal without observed hangs/disconnects/wrong replacement flow.
+- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: user reported an inbound remote Summon Request from Gaia landed/completed normally. This clears the normal remote-request smoke only; no claim is made yet for existing-bot teardown/rebuild, busy-operation exclusion or local-Summon regression.
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 only. Remote Summon Request acceptance now calls `SCB_StartPresetRebuild(incoming.snapshot, false)` instead of the lower-level snapshot summoner.
+- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 only. Remote Summon Request acceptance now calls `SCB_StartPresetRebuild(incoming.snapshot, false)` instead of the lower-level snapshot summoner. Normal inbound remote-request use is user-smoke-tested; focused coordinator edge cases remain.
 - This gives remote acceptance the same active-operation exclusion, pending-add handling, existing-bot teardown/rebuild coordination, Active Roster transition setup, taxi gate and coordinator phase ownership as local Summon.
 - Wire data remains composition-only; no requester-side generated bot identity was added.
 - Item 2.3 Save Received exact-slot persistence is intentionally unchanged.
@@ -101,7 +102,7 @@
 - This workflow migration is documentation-only by scope; runtime files/TOC must remain byte-identical to pre-migration `dev`.
 
 ## Current Issues
-- 0.8.84 remote Summon Request coordinator convergence is statically checked but not user-tested.
+- 0.8.84 remote Summon Request coordinator convergence is statically checked and partially user-tested. Normal inbound use passed; existing-bot teardown/rebuild and busy-operation exclusion remain unverified.
 - Save Received discards transmitted exact human `slotIndex` instead of populating preset `playerSlots` (item 2.3).
 - Five-player preset UI still derives human rows from current party order instead of exposing the raid-style explicit logical-slot model.
 - `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` still couples logical human assignment to physical raid subgroup movement and conflicts with the agreed model.
@@ -111,15 +112,14 @@
 ## Testing
 
 ### Last Runtime Test
-- Version/commit: `0.8.83-dev` / `e27915c25eb11d9653e783061197715c3fd3bf39`
-- Passed: final action-time taxi safety and addon manual Add cooldown/normal summon behavior.
-- Failed: none reported on that tested delta.
-- Not tested: 0.8.84 remote Summon Request coordinator convergence.
+- Version/commit: `0.8.84-dev` / runtime `e25d63f2a378ce1bcbf41682fc776794e91b0b03`
+- Passed: user reported that an inbound remote Summon Request from Gaia landed/completed normally.
+- Failed: none reported from that smoke test.
+- Still not tested for item 2.2: existing-bot coordinated teardown/rebuild, busy-operation exclusion, local Summon regression, and an explicit check that requester-side generated bot-name state is unnecessary.
 
 ### Next Runtime Test
-- Use two SCB clients on `0.8.84-dev`.
-- Empty/no-active-operation case: requester sends Summon Request; summoning client accepts; summon completes normally.
-- Existing bots, out of combat: remote acceptance performs the same coordinated teardown/rebuild as local Summon.
+- Continue the focused `0.8.84-dev` item 2.2 gate with two SCB clients.
+- Existing bots, out of combat: remote acceptance must perform the same coordinated teardown/rebuild as local Summon.
 - Busy ownership: while the summoning client already owns a physical bot operation, accept another remote request and verify no nested/second summon starts.
 - Smoke local Summon afterward for regression.
 - Confirm requester does not need generated bot-name state; logical/generated identity remains local to the summoning client.
@@ -153,6 +153,6 @@
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-User-test `0.8.84-dev` architecture item 2.2: remote Summon Request acceptance must behave like local Summon through the shared preset-operation coordinator, including existing-bot teardown/rebuild and busy-operation exclusion.
+Finish the remaining `0.8.84-dev` architecture item 2.2 runtime gate: verify existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and that generated bot identity remains local to the summoning client.
 
 Do not start item 2.3 or visualiser work until this runtime gate is reported back.
