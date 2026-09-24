@@ -5,11 +5,10 @@
 ## Current
 - Branch: `dev`
 - Version: `0.8.85-dev`
-- Development head before this documentation-only workflow migration: `d877ebf8cb5f9ce23dd73a2971ed0221a61787e8`
 - Current runtime commit: `a1e58a1981e4f556f2ddeed506e1813811fcef4f` (`0.8.85-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: runtime-clear the 0.8.85 Ctrl-Come regression fix before proceeding to architecture item 2.3.
-- Current scope boundary: pause item 2.3 until the 0.8.85 Ctrl-Come regression fix is user-tested. Do not start the unified logical-slot migration or visualiser work.
+- Goal: proceed to architecture item 2.3 now that the 0.8.85 Ctrl-Come regression fix is runtime-cleared.
+- Current scope boundary: item 2.3 received-slot persistence is next. Do not start the broader unified logical-slot migration or visualiser work in the same slice.
 
 ## Current Design / Development Contract
 
@@ -58,7 +57,7 @@
 - Ctrl-click Come sends Move + Come back-to-back in the same recipient send phase. Do not add an artificial delay unless runtime evidence specifically proves the same-frame pair fails.
 
 ### Active Decisions
-- 0.8.85 fixes Ctrl-Come modifier normalization at `SCB_RequestCommand`: Vanilla `IsControlKeyDown()` returns a truthy numeric value, so strict `== true` discarded the modifier after the 0.8.76 front-door convergence. The request front door now normalizes any truthy `forceMove` value to real boolean `true`.
+- 0.8.85 fixes Ctrl-Come modifier normalization at `SCB_RequestCommand`: Vanilla `IsControlKeyDown()` returns a truthy numeric value, so strict `== true` discarded the modifier after the 0.8.76 front-door convergence. The request front door now normalizes any truthy `forceMove` value to real boolean `true`; user confirmed the reported One Ctrl-Come path now works.
 - 0.8.84 item 2.2 is implemented, statically checked and user-tested. Normal inbound requests, existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and summoning-client ownership of generated bot identity all passed.
 - After item 2.2 runtime clearance, item 2.3 is next: preserve received exact human `slotIndex` when saving a communicated preset.
 - Then migrate party and raid presets to one explicit logical-slot model. Remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so logical human assignment no longer physically arranges humans.
@@ -87,14 +86,14 @@
 - `0.8.83-dev` / `e27915c25eb11d9653e783061197715c3fd3bf39`: tracked manual Add cooldown/lock behavior inherited from 0.8.79 was user-tested; normal manual summon and intended cooldown behavior work.
 - `0.8.78-dev` / `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`: command regression smoke passed — Move/Stay macros select Single vs All correctly, unavailable command buttons are inert with no gold highlight, valid buttons re-enable, Single spam remains good and Group sequencing remains good.
 - `0.8.45-dev` / `379859be7196872328a106085cec37c161ef23eb`: natural-play 40-player BWL pass covered repeated preset summons/rebuilds, dead/missing maintenance refills and unified paced removal without observed hangs/disconnects/wrong replacement flow.
+- `0.8.85-dev` / `a1e58a1981e4f556f2ddeed506e1813811fcef4f`: user confirmed Ctrl-click One Come works after modifier normalization; the reported regression is runtime-cleared.
 - `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 is fully user-verified. Remote requests land normally; accepting with existing bots performs coordinated teardown/rebuild; busy-operation attempts are rejected with the expected busy warnings and do not start nested physical operations; local Summon still works; requester-side generated bot-name state is not required.
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- `0.8.85-dev` / `a1e58a1981e4f556f2ddeed506e1813811fcef4f`: Ctrl-Come regression fix. `SCB_RequestCommand` now normalizes truthy `modifiers.forceMove` to boolean `true`, restoring Move + Come for UI Ctrl-clicks on One and the other Come scopes without changing normal-click behavior.
-- Static diff review passed: runtime delta is one expression in `Communication.lua` plus TOC version bump. The same front door serves One, Group, All and paired-role Come buttons.
+- None for the 0.8.85 Ctrl-Come regression; the reported One path is runtime-cleared.
 - Item 2.2 remains fully runtime-cleared on `0.8.84-dev`.
-- Item 2.3 Save Received exact-slot persistence remains unimplemented and stays paused until the 0.8.85 regression fix passes.
+- Item 2.3 Save Received exact-slot persistence remains unimplemented and is the next development slice.
 
 ## Static / Automated Checks
 - 0.8.84 runtime diff was exactly `Communication.lua` plus TOC version bump to `0.8.84-dev`.
@@ -104,7 +103,7 @@
 - This workflow migration is documentation-only by scope; runtime files/TOC must remain byte-identical to pre-migration `dev`.
 
 ## Current Issues
-- `0.8.85-dev` Ctrl-Come fix is implemented/static-checked but not yet user-tested. User reported Ctrl-click Come on One was not working on 0.8.84.
+- No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
 - Save Received discards transmitted exact human `slotIndex` instead of populating preset `playerSlots` (item 2.3).
 - Five-player preset UI still derives human rows from current party order instead of exposing the raid-style explicit logical-slot model.
@@ -115,28 +114,25 @@
 ## Testing
 
 ### Last Runtime Test
-- Version/commit: `0.8.84-dev` / runtime `e25d63f2a378ce1bcbf41682fc776794e91b0b03`
-- Passed: normal inbound remote Summon Request; remote acceptance with existing bots using coordinated teardown/rebuild; busy-operation exclusion with expected busy warnings and no nested operation; local Summon regression smoke; requester does not require generated bot-name state.
-- Failed: none reported.
-- Result: architecture item 2.2 is runtime-cleared.
+- Version/commit: `0.8.85-dev` / runtime `a1e58a1981e4f556f2ddeed506e1813811fcef4f`
+- Passed: user confirmed Ctrl-click One Come works after the `forceMove` truthy-to-boolean normalization.
+- Failed: none reported on the 0.8.85 delta.
+- Result: the reported Ctrl-Come regression is runtime-cleared; architecture item 2.2 remains cleared from 0.8.84.
 
 ### Next Runtime Test
-- On `0.8.85-dev`, target a friendly bot and Ctrl-click the One Come button. Expected: that bot receives Move then Come; ordinary click remains Come only.
-- Smoke Ctrl-click Group Come once as a shared-front-door regression check. If convenient, All/paired-role Ctrl-Come may also be checked, but One is the reported failure and primary gate.
-- If this passes, resume item 2.3.
+- After item 2.3 is implemented, test Save Received with exact human logical-slot placement, including a received preset where a human's transmitted `slotIndex` differs from simple group-order inference.
 
 ## Planned / Next Work
-1. Runtime-clear the 0.8.85 Ctrl-Come fix.
-2. Implement item 2.3: preserve received exact human `slotIndex` as preset `playerSlots` when saving communicated presets.
-3. Unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
-4. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
-5. Audit remaining All-row/server target sensitivity and keep semantics declarative.
-6. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
-7. Add the neutral read-only activity/status surface.
-8. Return to the visualiser as a presentation-only consumer.
+1. Implement item 2.3: preserve received exact human `slotIndex` as preset `playerSlots` when saving communicated presets.
+2. Unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
+3. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
+4. Audit remaining All-row/server target sensitivity and keep semantics declarative.
+5. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
+6. Add the neutral read-only activity/status surface.
+7. Return to the visualiser as a presentation-only consumer.
 
 ## Deferred / Out of Scope
-- Item 2.3 is temporarily paused until the 0.8.85 Ctrl-Come regression fix is user-tested. After that, item 2.3 is the next architecture slice.
+- Item 2.3 is unblocked and is the next architecture slice. Keep the broader logical-slot migration and visualiser work out of that focused change.
 - Do not intercept arbitrary user-typed raw `.partybot add ...` commands into the SCB coordinator.
 - Do not add a delay between Ctrl-click Move and Come without focused runtime evidence.
 - Do not rewrite saved presets to follow Blizzard's transient row/order changes.
@@ -149,11 +145,11 @@
 - Stable 0.8.78 was promoted from tested runtime `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`; the promotion preserved the previous main history rather than force-pushing.
 - Stable 0.8.78 release tree used the tested dev runtime/assets unchanged. Release-only differences were stable TOC title/version and exclusion of development status files; no `Debug.lua` existed in that release tree.
 - No current main-only runtime/assets are known to require special preservation, but future promotion must still compare `main` and `dev` rather than assuming replacement because main has diverged historically.
-- Do not promote the current 0.8.84 dev line before its new runtime delta is user-tested and the broader intended consolidation/regression gate is accepted.
-- Known validation debt accepted for current release: none newly accepted here; 0.8.84 remains development-only and explicitly untested.
+- Do not promote the current 0.8.85 dev line merely from these focused passes; future promotion still requires the intended release comparison/regression gate.
+- Known validation debt accepted for current release: none newly accepted here; 0.8.85 remains development-only.
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-User-test `0.8.85-dev`: target a friendly bot and Ctrl-click the One Come button. It must issue Move + Come to that bot, while a normal One Come click remains Come only. Smoke Ctrl-click Group Come once if practical.
+Implement architecture item 2.3 only: when saving a received preset, preserve each transmitted human exact `slotIndex` into preset `playerSlots` while retaining existing group/role/extra data and protocol compatibility.
 
-If this passes, resume architecture item 2.3. Do not begin the broader unified logical-slot migration or visualiser work.
+Do not begin the broader unified logical-slot migration or visualiser work in the same slice.
