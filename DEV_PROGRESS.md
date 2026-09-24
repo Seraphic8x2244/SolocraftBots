@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.85-dev`
-- Current runtime commit: `a1e58a1981e4f556f2ddeed506e1813811fcef4f` (`0.8.85-dev`)
+- Version: `0.8.86-dev`
+- Current runtime commit: `c3f9d76bb240fef4d76331b27315f6460d097647` (`0.8.86-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: proceed to architecture item 2.3 now that the 0.8.85 Ctrl-Come regression fix is runtime-cleared.
-- Current scope boundary: item 2.3 received-slot persistence is next. Do not start the broader unified logical-slot migration or visualiser work in the same slice.
+- Goal: runtime-validate architecture item 2.3 received-slot persistence.
+- Current scope boundary: item 2.3 is implemented and awaiting user runtime validation. Do not start the broader unified logical-slot migration or visualiser work until this focused gate is cleared.
 
 ## Current Design / Development Contract
 
@@ -46,7 +46,7 @@
 - Preset addon protocol: prefix `SCBPRESET`, protocol `2`, 190-byte chunks, 30-second transaction timeout and 2-second handshake retry. Vanilla has no addon WHISPER destination here, so transport uses RAID with PARTY fallback and carries the intended target in the payload.
 - Preset snapshots are composition intent, not execution identity. They serialize group id/name, size, preset name, role counts, each logical slot's class/role/extra, and each human's name/group/`slotIndex`/role/extra. Generated bot names and assumed-spawn identity are never transmitted.
 - Incoming preset validation requires both sender and receiving client to be represented in the snapshot. The client that actually summons owns generated bot-name -> logical-assignment binding.
-- Known item 2.3 gap: the wire format already carries exact human `slotIndex`, but Save Received currently persists only `playerGroups` and `playerRoles`; it must later preserve those exact slots as preset `playerSlots`.
+- Save Received now persists each transmitted human `slotIndex` into preset `playerSlots` using the same player key normalization as `playerGroups`/`playerRoles`. The protocol remains version 2 and the existing transmitted group/role/extra data is unchanged.
 - PartyBot transport ownership: normal addon control commands use GUILD through `SCB_SendPartyBotCommand`; validated spawn/add commands use SAY through `SCB_SendSpawnCommand` and register spawn intent.
 - Current command execution policy:
   - Single is friendly-bot-targeted, direct and spammable; it does not create acknowledgement state or use the Group 24/sec pacing budget.
@@ -59,7 +59,7 @@
 ### Active Decisions
 - 0.8.85 fixes Ctrl-Come modifier normalization at `SCB_RequestCommand`: Vanilla `IsControlKeyDown()` returns a truthy numeric value, so strict `== true` discarded the modifier after the 0.8.76 front-door convergence. The request front door now normalizes any truthy `forceMove` value to real boolean `true`; user confirmed the reported One Ctrl-Come path now works.
 - 0.8.84 item 2.2 is implemented, statically checked and user-tested. Normal inbound requests, existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and summoning-client ownership of generated bot identity all passed.
-- After item 2.2 runtime clearance, item 2.3 is next: preserve received exact human `slotIndex` when saving a communicated preset.
+- 0.8.86 implements item 2.3 only: Save Received retains transmitted exact human `slotIndex` in preset `playerSlots`, while preserving the existing `playerGroups` and `playerRoles` data and protocol-2 wire format.
 - Then migrate party and raid presets to one explicit logical-slot model. Remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so logical human assignment no longer physically arranges humans.
 - Saved logical composition must not be silently rewritten to follow transient Blizzard layout. Planned live mismatch presentation is a slow yellow whole-group background pulse:
   - same subgroup/composition but Blizzard row reorder: tooltip `Group composition correct; Blizzard client reordered members.`
@@ -70,6 +70,8 @@
 - The future gnomish LCD/pixel visualiser is deliberately dumb. First add a neutral read-only status/activity surface for Command, Bot Operation, Communication and Roster/Layout; the visualiser later consumes it without scheduler/business logic.
 
 ## Recent Relevant Commits
+- `c3f9d76bb240fef4d76331b27315f6460d097647` — `0.8.86-dev`: development version bump for architecture item 2.3.
+- `c9a26ff8c0e58d08a6cb9992fa8af8065d9c482e` — preserve received preset human exact `slotIndex` as preset `playerSlots`.
 - `a1e58a1981e4f556f2ddeed506e1813811fcef4f` — `0.8.85-dev`: normalize Ctrl-Come `forceMove` at the command request front door so Vanilla numeric modifier values are honored.
 - `d877ebf8cb5f9ce23dd73a2971ed0221a61787e8` — document 0.8.84 remote summon coordination; pre-migration `dev` head.
 - `e25d63f2a378ce1bcbf41682fc776794e91b0b03` — `0.8.84-dev`: accepted remote Summon Request enters the shared preset-operation coordinator.
@@ -91,11 +93,13 @@
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- None for the 0.8.85 Ctrl-Come regression; the reported One path is runtime-cleared.
-- Item 2.2 remains fully runtime-cleared on `0.8.84-dev`.
-- Item 2.3 Save Received exact-slot persistence remains unimplemented and is the next development slice.
+- `0.8.86-dev` / runtime `c3f9d76bb240fef4d76331b27315f6460d097647`: item 2.3 Save Received exact-slot persistence. `SaveIncomingSnapshot` now records each received human's transmitted `slotIndex` into preset `playerSlots` alongside the existing group and role/extra data.
+- The 0.8.85 Ctrl-Come regression and item 2.2 remote Summon coordination remain runtime-cleared from their exact tested commits.
 
 ## Static / Automated Checks
+- Item 2.3 handoff-to-runtime diff is exactly `Communication.lua` (+3/-1) plus the TOC version bump to `0.8.86-dev`.
+- Static review confirms the protocol remains `SCBPRESET` protocol 2: serialization/deserialization are unchanged; received `slotIndex` is already parsed and inbound validation already checks transmitted exact slots before Save Received persists them.
+- No Lua compiler executable is available in the current chat runtime, so this slice has static diff/flow validation but no local compiler result.
 - 0.8.84 runtime diff was exactly `Communication.lua` plus TOC version bump to `0.8.84-dev`.
 - Remote and local Summon both enter `SCB_StartPresetRebuild`; no `SCB_StartPresetSummonSnapshot` call remains in `Communication.lua`, and low-level snapshot summoning is confined to `Spawn.lua`.
 - Preset wire-format audit confirms no generated bot identity fields; TOC loads `Spawn.lua` before `Communication.lua`.
@@ -105,7 +109,7 @@
 ## Current Issues
 - No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
-- Save Received discards transmitted exact human `slotIndex` instead of populating preset `playerSlots` (item 2.3).
+- Item 2.3 has no known code issue after static review, but the new `0.8.86-dev` Save Received persistence delta is not yet user-tested.
 - Five-player preset UI still derives human rows from current party order instead of exposing the raid-style explicit logical-slot model.
 - `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` still couples logical human assignment to physical raid subgroup movement and conflicts with the agreed model.
 - Pending regression debt: retest dungeon -> 10-player preset for the historical 0.8.55 scope fix; monitor the intermittent first-summon subgroup mismatch first observed around 0.8.50; Replace Dead still needs a separate focused runtime smoke.
@@ -120,11 +124,12 @@
 - Result: the reported Ctrl-Come regression is runtime-cleared; architecture item 2.2 remains cleared from 0.8.84.
 
 ### Next Runtime Test
-- After item 2.3 is implemented, test Save Received with exact human logical-slot placement, including a received preset where a human's transmitted `slotIndex` differs from simple group-order inference.
+- On `0.8.86-dev`, receive and Save a preset where at least one human's transmitted exact `slotIndex` differs from simple group-order inference. Load the saved received preset and verify that human returns to the transmitted exact logical row/slot, while the saved group assignment and role/extra remain unchanged.
+- Prefer a >5-player preset for this focused check because the current raid editor exposes exact logical rows more directly. Do not use this test to begin the broader party/raid logical-slot migration.
 
 ## Planned / Next Work
-1. Implement item 2.3: preserve received exact human `slotIndex` as preset `playerSlots` when saving communicated presets.
-2. Unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
+1. Runtime-clear item 2.3 Save Received exact-slot persistence on `0.8.86-dev`.
+2. After that gate only, unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
 3. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
 4. Audit remaining All-row/server target sensitivity and keep semantics declarative.
 5. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
@@ -132,7 +137,7 @@
 7. Return to the visualiser as a presentation-only consumer.
 
 ## Deferred / Out of Scope
-- Item 2.3 is unblocked and is the next architecture slice. Keep the broader logical-slot migration and visualiser work out of that focused change.
+- The broader logical-slot migration remains blocked on the focused 0.8.86 item 2.3 runtime gate. Keep unified party/raid editing and visualiser work out of this validation slice.
 - Do not intercept arbitrary user-typed raw `.partybot add ...` commands into the SCB coordinator.
 - Do not add a delay between Ctrl-click Move and Come without focused runtime evidence.
 - Do not rewrite saved presets to follow Blizzard's transient row/order changes.
@@ -145,11 +150,12 @@
 - Stable 0.8.78 was promoted from tested runtime `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`; the promotion preserved the previous main history rather than force-pushing.
 - Stable 0.8.78 release tree used the tested dev runtime/assets unchanged. Release-only differences were stable TOC title/version and exclusion of development status files; no `Debug.lua` existed in that release tree.
 - No current main-only runtime/assets are known to require special preservation, but future promotion must still compare `main` and `dev` rather than assuming replacement because main has diverged historically.
-- Do not promote the current 0.8.85 dev line merely from these focused passes; future promotion still requires the intended release comparison/regression gate.
-- Known validation debt accepted for current release: none newly accepted here; 0.8.85 remains development-only.
+- Do not promote the current 0.8.86 dev line yet. The branch is development-stable enough to continue, but promotion still requires the intended release comparison/regression gate; item 2.3 itself is also still runtime-untested.
+- Current `main` and `dev` have diverged historically, so release preparation must compare and reconcile them rather than overwrite `main`.
+- Known validation debt accepted for current release: none newly accepted here; 0.8.86 remains development-only.
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Implement architecture item 2.3 only: when saving a received preset, preserve each transmitted human exact `slotIndex` into preset `playerSlots` while retaining existing group/role/extra data and protocol compatibility.
+User-test `0.8.86-dev` Save Received exact-slot persistence: receive and save a preset with a human in a transmitted exact logical `slotIndex` that is not recoverable merely from group order, then load the saved preset and verify the exact slot plus group/role/extra data were retained.
 
-Do not begin the broader unified logical-slot migration or visualiser work in the same slice.
+Do not begin the broader unified logical-slot migration or visualiser work until this item 2.3 runtime gate passes.
