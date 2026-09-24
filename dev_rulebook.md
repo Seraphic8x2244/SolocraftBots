@@ -89,33 +89,14 @@ Nampower, SuperWoW, ClassicAPI and other explicitly selected client extensions m
 
 Rules:
 
-- Treat extensions as optional capability enhancements unless the project explicitly requires one.
-- Prefer the native 1.12.1 path when it provides a good solution.
-- Use an extension when it materially improves correctness, capability or implementation quality.
-- Preserve a native/non-DLL path where reasonably possible.
-- Do not make existing native functionality DLL-dependent without an explicit reason.
-- If a feature cannot reasonably preserve a native fallback, flag that dependency before treating it as required.
-- When an extension is an explicit project prerequisite, use its real capabilities directly rather than duplicating weaker fallback implementations without a reason.
-
----
-
-## 5. Versioning
-
-The addon `.toc` is the single source of truth for version.
-
-Example:
-
-```lua
-local ADDON_NAME = "AddonName"
-local ADDON_VERSION = GetAddOnMetadata(ADDON_NAME, "Version")
-```
-
-Rules:
-
-- Never hardcode the addon version separately in Lua.
-- Use the real addon/folder name with `GetAddOnMetadata`.
-- Development builds use `-dev`.
-- Do not invent `-dev1`, `-dev2`, etc.; commits identify individual development states.
+- The addon `.toc` `## Version` field is the single source of truth for the addon version.
+- Runtime Lua must never contain a separately hardcoded addon version string. Whenever the addon needs to display, report, compare, or transmit its own version, read it from TOC metadata with `GetAddOnMetadata("<AddonFolderName>", "Version")` using the real addon/folder name.
+- Every new addon build must increment the numeric TOC version. For ordinary development revisions, increment the patch component, for example `0.5.1-dev` -> `0.5.2-dev` -> `0.5.3-dev`.
+- A build means a new testable/runtime state of the addon. Multiple implementation commits may contribute to one build, but before that state is handed off for testing or use, its TOC version must be higher than the previous build.
+- A deliberate major/minor release-line change may bump that component instead of the patch component.
+- Documentation-only/status-only commits do not create a new addon build and therefore do not require a version bump.
+- Development builds keep the `-dev` suffix.
+- Do not invent suffix counters such as `-dev1` or `-dev2`; increment the numeric version instead.
 
 Development:
 
