@@ -4,12 +4,12 @@
 
 ## Current
 - Branch: `dev`
-- Branch head / handoff: `ce6c349e09690391a323d35222e7e82fdf3cd7e8`
-- Version: `0.8.86-dev`
-- Current runtime commit: `c3f9d76bb240fef4d76331b27315f6460d097647` (`0.8.86-dev`)
+- Version: `0.8.87-dev`
+- Current implementation commit: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`)
+- Current runtime-tested commit: `c3f9d76bb240fef4d76331b27315f6460d097647` (`0.8.86-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: begin the unified party/raid logical-slot migration now that architecture item 2.3 is runtime-cleared.
-- Current scope boundary: item 2.3 is implemented and user-verified. The unified logical-slot migration is now unblocked; visualiser work remains deferred.
+- Goal: runtime-validate the first narrow unified party/raid logical-slot migration slice.
+- Current scope boundary: party and raid preset editing now share explicit human logical-slot assignment, and preset summoning no longer physically arranges humans. This 0.8.87 delta is statically checked but not yet user-tested. Do not begin yellow mismatch presentation, maintenance changes, visualiser work, or unrelated cleanup until this gate passes.
 
 ## Current Design / Development Contract
 
@@ -71,6 +71,9 @@
 - The future gnomish LCD/pixel visualiser is deliberately dumb. First add a neutral read-only status/activity surface for Command, Bot Operation, Communication and Roster/Layout; the visualiser later consumes it without scheduler/business logic.
 
 ## Recent Relevant Commits
+- `ff9725d0336ded2f406661bf9863d88719322124` — fix the unified logical-slot snapshot scope closure found during post-commit diff review.
+- `aba30180ba1c40dd8544010291be55ee191589fb` — `0.8.87-dev`: unify party/raid human logical-slot editing and replace human arrangement with bot-only raid preparation.
+- `6bcc9949222513d4f8e38a90d43071149f162f31` — record the verified 0.8.86 starting point before the logical-slot implementation.
 - `c3f9d76bb240fef4d76331b27315f6460d097647` — `0.8.86-dev`: development version bump for architecture item 2.3.
 - `c9a26ff8c0e58d08a6cb9992fa8af8065d9c482e` — preserve received preset human exact `slotIndex` as preset `playerSlots`.
 - `a1e58a1981e4f556f2ddeed506e1813811fcef4f` — `0.8.85-dev`: normalize Ctrl-Come `forceMove` at the command request front door so Vanilla numeric modifier values are honored.
@@ -95,25 +98,25 @@
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- No currently implemented architecture slice is awaiting runtime validation.
-- The 0.8.86 item 2.3 Save Received exact-slot persistence, 0.8.85 Ctrl-Come regression fix, and 0.8.84 item 2.2 remote Summon coordination are runtime-cleared from their exact tested commits.
+- `0.8.87-dev` / implementation `ff9725d0336ded2f406661bf9863d88719322124`: party and raid preset editing now use the same explicit `presetEditorPlayerSlots` logical-slot source of truth. Five-player presets no longer derive human logical identity from `party1..party4` order; present unassigned party humans use the same Other Players pool and drag/drop assignment model as raids.
+- `SCB_ArrangePresetPlayers()`, `PRESET_ARRANGE_PLAYERS`, `presetHumanGroups`, and the human logical-slot -> `SetRaidSubgroup` path are removed. The former queue position is now `PRESET_PREPARE_RAID_BOTS`, which only parks/settles a temporary bot bootstrap/survivor before deterministic bot bursts.
+- Bot logical order remains separately controlled: existing bot-only burst/subgroup placement and bot-only ordinal reconciliation are unchanged by this slice.
+- The 0.8.86 item 2.3 Save Received exact-slot persistence, 0.8.85 Ctrl-Come regression fix, and 0.8.84 item 2.2 remote Summon coordination remain runtime-cleared from their exact tested commits.
 
 ## Static / Automated Checks
-- Item 2.3 handoff-to-runtime diff is exactly `Communication.lua` (+3/-1) plus the TOC version bump to `0.8.86-dev`.
-- Static review confirms the protocol remains `SCBPRESET` protocol 2: serialization/deserialization are unchanged; received `slotIndex` is already parsed and inbound validation already checks transmitted exact slots before Save Received persists them.
-- No Lua compiler executable is available in the current chat runtime, so this slice has static diff/flow validation but no local compiler result.
-- 0.8.84 runtime diff was exactly `Communication.lua` plus TOC version bump to `0.8.84-dev`.
-- Remote and local Summon both enter `SCB_StartPresetRebuild`; no `SCB_StartPresetSummonSnapshot` call remains in `Communication.lua`, and low-level snapshot summoning is confined to `Spawn.lua`.
-- Preset wire-format audit confirms no generated bot identity fields; TOC loads `Spawn.lua` before `Communication.lua`.
-- The repository currently has no GitHub Actions workflow directory and the 0.8.84 runtime commit has no CI status checks.
-- This workflow migration is documentation-only by scope; runtime files/TOC must remain byte-identical to pre-migration `dev`.
+- The focused 0.8.87 implementation diff from the documented starting-point commit `6bcc9949222513d4f8e38a90d43071149f162f31` through `ff9725d0336ded2f406661bf9863d88719322124` changes only `Presets.lua` (+29/-103), `Roster.lua` (+16/-39), `Spawn.lua` (+12/-23), and the TOC version bump (+1/-1).
+- Repository scan confirms zero remaining references to `SCB_AutoPartyPlayerSlots`, `SCB_ArrangePresetPlayers`, `PRESET_ARRANGE_PLAYERS`, `presetHumanGroups`, or `parkBeforeArrange`.
+- Remaining `SetRaidSubgroup` calls were inspected: they operate on bot burst/refill placement, bot maintenance placement, or temporary bot bootstrap/survivor parking. No remaining human logical-slot path calls `SetRaidSubgroup`.
+- `PRESET_PREPARE_RAID_BOTS` has one definition, one enqueue site and one queue handler; the handler only preserves the existing bot bootstrap/survivor parking barrier before deterministic raid bot bursts.
+- Party snapshot validation already requires unique numeric `slotIndex` values; `SCB_GetSnapshotOccupiedSlots()` suppresses those exact party logical slots, so the unified editor feeds the existing exact-slot execution path without a new party compatibility layer.
+- No standalone Lua 5.0-compatible compiler executable is available in the current chat runtime, so 0.8.87 has static diff/flow validation but no local compiler result.
+- Item 2.3 protocol behavior remains unchanged: `SCBPRESET` protocol 2 serialization/deserialization was not edited by this slice.
 
 ## Current Issues
+- The 0.8.87 unified logical-slot core is not runtime-validated yet. Its new delta is the only blocker for this focused gate.
 - No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
 - Item 2.3 has no remaining known runtime issue after the 0.8.86 pass.
-- Five-player preset UI still derives human rows from current party order instead of exposing the raid-style explicit logical-slot model.
-- `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` still couples logical human assignment to physical raid subgroup movement and conflicts with the agreed model.
 - Pending regression debt: retest dungeon -> 10-player preset for the historical 0.8.55 scope fix; monitor the intermittent first-summon subgroup mismatch first observed around 0.8.50; Replace Dead still needs a separate focused runtime smoke.
 - Historical Naxx observation: one genuinely dead bot was once omitted from Replace Missing/Dead. If it recurs, investigate Vanilla dead-state observation/classification rather than adding an unsafe health fallback.
 
@@ -126,10 +129,14 @@
 - Result: architecture item 2.3 is runtime-cleared and the unified logical-slot migration is unblocked.
 
 ### Next Runtime Test
-- Defined after the first focused unified logical-slot migration implementation slice. Do not combine unrelated visualiser or maintenance work into that slice.
+- Test exact build `0.8.87-dev` at implementation `ff9725d0336ded2f406661bf9863d88719322124` plus documentation-only handoff commits.
+- Five-player core proof: with a 5-man preset, move self from logical slot 1 to a different exact slot (slot 5 is a useful strong test because the client still presents self as its own first party member), save, reload/reopen the preset, and confirm self remains on that logical slot. If another human is present, confirm an unsaved human appears in Other Players until explicitly assigned and their saved exact slot survives reload.
+- Summon that 5-man preset and confirm the human suppresses exactly the chosen underlying bot slot, the target remains a party, and the remaining bots retain deterministic logical order.
+- Raid regression: use a known working raid-sized preset with explicitly assigned humans, summon/rebuild it, confirm SCB does not move humans to satisfy their logical slots, and confirm bot bootstrap/survivor parking plus deterministic bot subgroup/order behavior still completes normally.
+- Do not begin yellow mismatch presentation, maintenance changes, or visualiser work from this test unless the 0.8.87 core first passes.
 
 ## Planned / Next Work
-1. Unify party/raid explicit logical-slot editing and remove logical-human -> physical-placement coupling. Keep bot logical ordering intentionally controlled and human Blizzard placement observational.
+1. Runtime-clear the 0.8.87 unified logical-slot core.
 2. After the core logical-slot model is runtime-cleared, add the agreed yellow live-layout mismatch pulse/tooltips.
 3. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
 4. Audit remaining All-row/server target sensitivity and keep semantics declarative.
@@ -151,12 +158,12 @@
 - Stable 0.8.78 was promoted from tested runtime `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`; the promotion preserved the previous main history rather than force-pushing.
 - Stable 0.8.78 release tree used the tested dev runtime/assets unchanged. Release-only differences were stable TOC title/version and exclusion of development status files; no `Debug.lua` existed in that release tree.
 - No current main-only runtime/assets are known to require special preservation, but future promotion must still compare `main` and `dev` rather than assuming replacement because main has diverged historically.
-- Do not promote the current 0.8.86 dev line yet. Item 2.3 is runtime-cleared, but promotion still requires the intended release comparison/regression gate and completion/validation of the remaining planned architecture work.
+- Do not promote the current 0.8.87 dev line yet. Item 2.3 is runtime-cleared, but the unified logical-slot core is still awaiting runtime validation and promotion still requires the intended release comparison/regression gate and completion/validation of the remaining planned architecture work.
 - Current `main` and `dev` have diverged historically, so release preparation must compare and reconcile them rather than overwrite `main`.
-- Known validation debt accepted for current release: none newly accepted here; 0.8.86 remains development-only.
+- Known validation debt accepted for current release: none newly accepted here; 0.8.87 remains development-only.
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Begin the unified logical-slot migration with the narrow core model only: make party and raid preset editing use the same explicit human logical-slot assignment model, and remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so a human logical slot never instructs SCB to physically arrange that human in Blizzard's party/raid layout.
+Runtime-test the focused `0.8.87-dev` unified logical-slot core described above. Verify five-player exact human slot editing/save/reload/suppression and a raid-sized summon/rebuild with no SCB-driven human subgroup arrangement while deterministic bot placement/order still behaves normally.
 
-Preserve deterministic bot logical ordering separately from observed human placement. Do not begin the visualiser or unrelated maintenance work in this slice.
+Do not begin the yellow mismatch presentation, maintenance changes, visualiser work, or unrelated cleanup until this runtime gate is explicitly accepted.
