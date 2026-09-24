@@ -1530,7 +1530,7 @@ function SCB_RequestCommand(commandKey, scope, modifiers)
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return false end
     commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local moveInfo, moveRoute
-    local forceMove = modifiers and modifiers.forceMove == true
+    local forceMove = modifiers and modifiers.forceMove and true or false
     local sent = true
     local i
 
