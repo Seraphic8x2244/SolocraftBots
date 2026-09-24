@@ -4,6 +4,7 @@
 
 ## Current
 - Branch: `dev`
+- Branch head / handoff: `ce6c349e09690391a323d35222e7e82fdf3cd7e8`
 - Version: `0.8.86-dev`
 - Current runtime commit: `c3f9d76bb240fef4d76331b27315f6460d097647` (`0.8.86-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
