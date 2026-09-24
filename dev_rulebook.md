@@ -89,6 +89,29 @@ Nampower, SuperWoW, ClassicAPI and other explicitly selected client extensions m
 
 Rules:
 
+- Treat extensions as optional capability enhancements unless the project explicitly requires one.
+- Prefer the native 1.12.1 path when it provides a good solution.
+- Use an extension when it materially improves correctness, capability or implementation quality.
+- Preserve a native/non-DLL path where reasonably possible.
+- Do not make existing native functionality DLL-dependent without an explicit reason.
+- If a feature cannot reasonably preserve a native fallback, flag that dependency before treating it as required.
+- When an extension is an explicit project prerequisite, use its real capabilities directly rather than duplicating weaker fallback implementations without a reason.
+
+---
+
+## 5. Versioning
+
+The addon `.toc` is the single source of truth for version.
+
+Example:
+
+```lua
+local ADDON_NAME = "AddonName"
+local ADDON_VERSION = GetAddOnMetadata(ADDON_NAME, "Version")
+```
+
+Rules:
+
 - The addon `.toc` `## Version` field is the single source of truth for the addon version.
 - Runtime Lua must never contain a separately hardcoded addon version string. Whenever the addon needs to display, report, compare, or transmit its own version, read it from TOC metadata with `GetAddOnMetadata("<AddonFolderName>", "Version")` using the real addon/folder name.
 - Every new addon build must increment the numeric TOC version. For ordinary development revisions, increment the patch component, for example `0.5.1-dev` -> `0.5.2-dev` -> `0.5.3-dev`.
