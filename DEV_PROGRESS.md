@@ -8,8 +8,8 @@
 - Development head before this documentation-only workflow migration: `d877ebf8cb5f9ce23dd73a2971ed0221a61787e8`
 - Current runtime commit: `e25d63f2a378ce1bcbf41682fc776794e91b0b03` (`0.8.84-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: finish runtime-clearing architecture item 2.2. A normal inbound remote Summon Request from Gaia has now passed in-game; the targeted teardown/rebuild and busy-operation cases remain outstanding.
-- Current scope boundary: do not start item 2.3 received-slot persistence, the unified logical-slot migration, or visualiser work until the 0.8.84 remote-summon runtime gate is reported back.
+- Goal: proceed to architecture item 2.3 now that 0.8.84 item 2.2 remote Summon Request coordinator convergence is fully runtime-cleared.
+- Current scope boundary: item 2.3 received-slot persistence is next. Do not start the unified logical-slot migration or visualiser work as part of item 2.3.
 
 ## Current Design / Development Contract
 
@@ -58,7 +58,7 @@
 - Ctrl-click Come sends Move + Come back-to-back in the same recipient send phase. Do not add an artificial delay unless runtime evidence specifically proves the same-frame pair fails.
 
 ### Active Decisions
-- 0.8.84 item 2.2 is implemented and partially user-tested: an inbound remote Summon Request from Gaia completed normally in-game. Accepted remote Summon Request enters the same non-forced preset-operation front door as local Summon; requester remains composition-only and summoning-client identity ownership is unchanged. Existing-bot teardown/rebuild and busy-operation exclusion still need focused runtime coverage.
+- 0.8.84 item 2.2 is implemented, statically checked and user-tested. Normal inbound requests, existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and summoning-client ownership of generated bot identity all passed.
 - After item 2.2 runtime clearance, item 2.3 is next: preserve received exact human `slotIndex` when saving a communicated preset.
 - Then migrate party and raid presets to one explicit logical-slot model. Remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so logical human assignment no longer physically arranges humans.
 - Saved logical composition must not be silently rewritten to follow transient Blizzard layout. Planned live mismatch presentation is a slow yellow whole-group background pulse:
@@ -85,14 +85,12 @@
 - `0.8.83-dev` / `e27915c25eb11d9653e783061197715c3fd3bf39`: tracked manual Add cooldown/lock behavior inherited from 0.8.79 was user-tested; normal manual summon and intended cooldown behavior work.
 - `0.8.78-dev` / `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`: command regression smoke passed — Move/Stay macros select Single vs All correctly, unavailable command buttons are inert with no gold highlight, valid buttons re-enable, Single spam remains good and Group sequencing remains good.
 - `0.8.45-dev` / `379859be7196872328a106085cec37c161ef23eb`: natural-play 40-player BWL pass covered repeated preset summons/rebuilds, dead/missing maintenance refills and unified paced removal without observed hangs/disconnects/wrong replacement flow.
-- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: user reported an inbound remote Summon Request from Gaia landed/completed normally. This clears the normal remote-request smoke only; no claim is made yet for existing-bot teardown/rebuild, busy-operation exclusion or local-Summon regression.
+- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 is fully user-verified. Remote requests land normally; accepting with existing bots performs coordinated teardown/rebuild; busy-operation attempts are rejected with the expected busy warnings and do not start nested physical operations; local Summon still works; requester-side generated bot-name state is not required.
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 only. Remote Summon Request acceptance now calls `SCB_StartPresetRebuild(incoming.snapshot, false)` instead of the lower-level snapshot summoner. Normal inbound remote-request use is user-smoke-tested; focused coordinator edge cases remain.
-- This gives remote acceptance the same active-operation exclusion, pending-add handling, existing-bot teardown/rebuild coordination, Active Roster transition setup, taxi gate and coordinator phase ownership as local Summon.
-- Wire data remains composition-only; no requester-side generated bot identity was added.
-- Item 2.3 Save Received exact-slot persistence is intentionally unchanged.
+- None for item 2.2; it is fully runtime-cleared on `0.8.84-dev`.
+- Item 2.3 Save Received exact-slot persistence remains unimplemented and is the next development slice.
 
 ## Static / Automated Checks
 - 0.8.84 runtime diff was exactly `Communication.lua` plus TOC version bump to `0.8.84-dev`.
@@ -102,7 +100,7 @@
 - This workflow migration is documentation-only by scope; runtime files/TOC must remain byte-identical to pre-migration `dev`.
 
 ## Current Issues
-- 0.8.84 remote Summon Request coordinator convergence is statically checked and partially user-tested. Normal inbound use passed; existing-bot teardown/rebuild and busy-operation exclusion remain unverified.
+- Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
 - Save Received discards transmitted exact human `slotIndex` instead of populating preset `playerSlots` (item 2.3).
 - Five-player preset UI still derives human rows from current party order instead of exposing the raid-style explicit logical-slot model.
 - `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` still couples logical human assignment to physical raid subgroup movement and conflicts with the agreed model.
@@ -113,29 +111,25 @@
 
 ### Last Runtime Test
 - Version/commit: `0.8.84-dev` / runtime `e25d63f2a378ce1bcbf41682fc776794e91b0b03`
-- Passed: user reported that an inbound remote Summon Request from Gaia landed/completed normally.
-- Failed: none reported from that smoke test.
-- Still not tested for item 2.2: existing-bot coordinated teardown/rebuild, busy-operation exclusion, local Summon regression, and an explicit check that requester-side generated bot-name state is unnecessary.
+- Passed: normal inbound remote Summon Request; remote acceptance with existing bots using coordinated teardown/rebuild; busy-operation exclusion with expected busy warnings and no nested operation; local Summon regression smoke; requester does not require generated bot-name state.
+- Failed: none reported.
+- Result: architecture item 2.2 is runtime-cleared.
 
 ### Next Runtime Test
-- Continue the focused `0.8.84-dev` item 2.2 gate with two SCB clients.
-- Existing bots, out of combat: remote acceptance must perform the same coordinated teardown/rebuild as local Summon.
-- Busy ownership: while the summoning client already owns a physical bot operation, accept another remote request and verify no nested/second summon starts.
-- Smoke local Summon afterward for regression.
-- Confirm requester does not need generated bot-name state; logical/generated identity remains local to the summoning client.
+- None pending for item 2.2.
+- After item 2.3 is implemented, test Save Received with exact human logical-slot placement, including a received preset where a human's transmitted `slotIndex` differs from simple group-order inference.
 
 ## Planned / Next Work
-1. Runtime-clear 0.8.84 item 2.2.
-2. Implement item 2.3: preserve received exact human `slotIndex` as preset `playerSlots` when saving communicated presets.
-3. Unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
-4. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
-5. Audit remaining All-row/server target sensitivity and keep semantics declarative.
-6. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
-7. Add the neutral read-only activity/status surface.
-8. Return to the visualiser as a presentation-only consumer.
+1. Implement item 2.3: preserve received exact human `slotIndex` as preset `playerSlots` when saving communicated presets.
+2. Unify party/raid explicit logical-slot editing, remove logical-human -> physical-placement coupling, and add the agreed yellow live-layout mismatch pulse/tooltips.
+3. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
+4. Audit remaining All-row/server target sensitivity and keep semantics declarative.
+5. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
+6. Add the neutral read-only activity/status surface.
+7. Return to the visualiser as a presentation-only consumer.
 
 ## Deferred / Out of Scope
-- Do not start item 2.3, logical-slot migration or visualiser work until the 0.8.84 remote-summon runtime gate is reported back.
+- Item 2.3 is now unblocked. Keep the broader logical-slot migration and visualiser work out of that focused slice.
 - Do not intercept arbitrary user-typed raw `.partybot add ...` commands into the SCB coordinator.
 - Do not add a delay between Ctrl-click Move and Come without focused runtime evidence.
 - Do not rewrite saved presets to follow Blizzard's transient row/order changes.
@@ -153,6 +147,6 @@
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Finish the remaining `0.8.84-dev` architecture item 2.2 runtime gate: verify existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and that generated bot identity remains local to the summoning client.
+Implement architecture item 2.3 only: when saving a received preset, preserve each transmitted human exact `slotIndex` into preset `playerSlots` while retaining existing group/role/extra data and protocol compatibility.
 
-Do not start item 2.3 or visualiser work until this runtime gate is reported back.
+Do not begin the broader unified logical-slot migration or visualiser work in the same slice.
