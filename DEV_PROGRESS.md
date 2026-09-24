@@ -6,10 +6,10 @@
 - Branch: `dev`
 - Version: `0.8.87-dev`
 - Current implementation commit: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`)
-- Current runtime-tested commit: `c3f9d76bb240fef4d76331b27315f6460d097647` (`0.8.86-dev`)
+- Current runtime-tested implementation: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`, focused gate partially passed; save/reopen persistence still unconfirmed)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: runtime-validate the first narrow unified party/raid logical-slot migration slice.
-- Current scope boundary: party and raid preset editing now share explicit human logical-slot assignment, and preset summoning no longer physically arranges humans. This 0.8.87 delta is statically checked but not yet user-tested. Do not begin yellow mismatch presentation, maintenance changes, visualiser work, or unrelated cleanup until this gate passes.
+- Goal: finish runtime validation of the first narrow unified party/raid logical-slot migration slice.
+- Current scope boundary: 0.8.87 has runtime-passed 5-man logical-slot movement, exact underlying-bot suppression, and raid summon regression. Save/reopen persistence of the chosen 5-man logical slot is the remaining explicit gate. Do not begin yellow mismatch presentation, maintenance changes, visualiser work, or unrelated cleanup until this gate passes.
 
 ## Current Design / Development Contract
 
@@ -61,7 +61,7 @@
 - 0.8.85 fixes Ctrl-Come modifier normalization at `SCB_RequestCommand`: Vanilla `IsControlKeyDown()` returns a truthy numeric value, so strict `== true` discarded the modifier after the 0.8.76 front-door convergence. The request front door now normalizes any truthy `forceMove` value to real boolean `true`; user confirmed the reported One Ctrl-Come path now works.
 - 0.8.84 item 2.2 is implemented, statically checked and user-tested. Normal inbound requests, existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and summoning-client ownership of generated bot identity all passed.
 - 0.8.86 architecture item 2.3 is implemented and user-verified: Save Received retains transmitted exact human `slotIndex` in preset `playerSlots`, while preserving the existing `playerGroups` and `playerRoles` data and protocol-2 wire format.
-- Next migrate party and raid presets to one explicit logical-slot model. Remove/rework `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` so logical human assignment no longer physically arranges humans.
+- Party and raid presets now use one explicit logical-slot model. `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` are removed so logical human assignment no longer physically arranges humans. Runtime validation is partially passed; save/reopen persistence is the remaining focused check.
 - Saved logical composition must not be silently rewritten to follow transient Blizzard layout. Planned live mismatch presentation is a slow yellow whole-group background pulse:
   - same subgroup/composition but Blizzard row reorder: tooltip `Group composition correct; Blizzard client reordered members.`
   - actual subgroup rearrangement outside SCB: tooltip `Group rearranged in Blizzard Raid tab.`
@@ -95,10 +95,11 @@
 - `0.8.85-dev` / `a1e58a1981e4f556f2ddeed506e1813811fcef4f`: user confirmed Ctrl-click One Come works after modifier normalization; the reported regression is runtime-cleared.
 - `0.8.84-dev` / `e25d63f2a378ce1bcbf41682fc776794e91b0b03`: architecture item 2.2 is fully user-verified. Remote requests land normally; accepting with existing bots performs coordinated teardown/rebuild; busy-operation attempts are rejected with the expected busy warnings and do not start nested physical operations; local Summon still works; requester-side generated bot-name state is not required.
 - `0.8.86-dev` / runtime `c3f9d76bb240fef4d76331b27315f6460d097647`: architecture item 2.3 is user-verified. A received preset was saved and reloaded with the transmitted human exact logical `slotIndex` preserved, while group and role/extra data remained intact.
+- `0.8.87-dev` / implementation `ff9725d0336ded2f406661bf9863d88719322124`: user confirmed self can be moved to a different logical slot in a 5-man preset, summoning suppresses/replaces the correct underlying bot slot, and raid summon still works correctly with no reported regression. Save/reopen persistence of the chosen 5-man slot was not explicitly reported and remains the focused gate.
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- `0.8.87-dev` / implementation `ff9725d0336ded2f406661bf9863d88719322124`: party and raid preset editing now use the same explicit `presetEditorPlayerSlots` logical-slot source of truth. Five-player presets no longer derive human logical identity from `party1..party4` order; present unassigned party humans use the same Other Players pool and drag/drop assignment model as raids.
+- `0.8.87-dev` / implementation `ff9725d0336ded2f406661bf9863d88719322124`: party and raid preset editing now use the same explicit `presetEditorPlayerSlots` logical-slot source of truth. Five-player movement and exact-slot bot suppression are runtime-passed; save/reopen persistence of the chosen 5-man logical slot remains unconfirmed. Present unassigned party humans use the same Other Players pool and drag/drop assignment model as raids.
 - `SCB_ArrangePresetPlayers()`, `PRESET_ARRANGE_PLAYERS`, `presetHumanGroups`, and the human logical-slot -> `SetRaidSubgroup` path are removed. The former queue position is now `PRESET_PREPARE_RAID_BOTS`, which only parks/settles a temporary bot bootstrap/survivor before deterministic bot bursts.
 - Bot logical order remains separately controlled: existing bot-only burst/subgroup placement and bot-only ordinal reconciliation are unchanged by this slice.
 - The 0.8.86 item 2.3 Save Received exact-slot persistence, 0.8.85 Ctrl-Come regression fix, and 0.8.84 item 2.2 remote Summon coordination remain runtime-cleared from their exact tested commits.
@@ -113,7 +114,7 @@
 - Item 2.3 protocol behavior remains unchanged: `SCBPRESET` protocol 2 serialization/deserialization was not edited by this slice.
 
 ## Current Issues
-- The 0.8.87 unified logical-slot core is not runtime-validated yet. Its new delta is the only blocker for this focused gate.
+- The 0.8.87 unified logical-slot core is partially runtime-validated. Five-man slot movement, correct underlying-bot suppression, and raid summon regression passed; save/reopen persistence of the chosen 5-man logical slot is the remaining blocker for this focused gate.
 - No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
 - Item 2.3 has no remaining known runtime issue after the 0.8.86 pass.
@@ -123,17 +124,15 @@
 ## Testing
 
 ### Last Runtime Test
-- Version/commit: `0.8.86-dev` / runtime `c3f9d76bb240fef4d76331b27315f6460d097647`
-- Passed: received-preset Save/Load preserved transmitted human exact logical `slotIndex`; saved group and role/extra data remained intact.
-- Failed: none reported on the 0.8.86 item 2.3 delta.
-- Result: architecture item 2.3 is runtime-cleared and the unified logical-slot migration is unblocked.
+- Version/implementation: `0.8.87-dev` / `ff9725d0336ded2f406661bf9863d88719322124` plus documentation-only branch updates.
+- Passed: self can be moved to a different logical slot in a 5-man preset; summoning suppresses/replaces the correct underlying bot slot; raid summon still works correctly with no reported regression.
+- Not yet explicitly confirmed: save/reopen persistence of the chosen 5-man logical slot. If another human is available, the Other Players -> explicit assignment -> save/reopen path also remains useful coverage.
+- Result: the 0.8.87 gate is partially passed but not yet accepted as complete.
 
 ### Next Runtime Test
-- Test exact build `0.8.87-dev` at implementation `ff9725d0336ded2f406661bf9863d88719322124` plus documentation-only handoff commits.
-- Five-player core proof: with a 5-man preset, move self from logical slot 1 to a different exact slot (slot 5 is a useful strong test because the client still presents self as its own first party member), save, reload/reopen the preset, and confirm self remains on that logical slot. If another human is present, confirm an unsaved human appears in Other Players until explicitly assigned and their saved exact slot survives reload.
-- Summon that 5-man preset and confirm the human suppresses exactly the chosen underlying bot slot, the target remains a party, and the remaining bots retain deterministic logical order.
-- Raid regression: use a known working raid-sized preset with explicitly assigned humans, summon/rebuild it, confirm SCB does not move humans to satisfy their logical slots, and confirm bot bootstrap/survivor parking plus deterministic bot subgroup/order behavior still completes normally.
-- Do not begin yellow mismatch presentation, maintenance changes, or visualiser work from this test unless the 0.8.87 core first passes.
+- On the same `0.8.87-dev` runtime code, save the 5-man preset after moving self to a non-default logical slot, reload/reopen the preset, and confirm self remains on that exact logical slot.
+- If another human is present, confirm an unassigned human appears in Other Players until explicitly assigned and that their chosen exact slot also survives save/reopen.
+- Do not begin yellow mismatch presentation, maintenance changes, or visualiser work until this final focused persistence check passes.
 
 ## Planned / Next Work
 1. Runtime-clear the 0.8.87 unified logical-slot core.
@@ -158,12 +157,12 @@
 - Stable 0.8.78 was promoted from tested runtime `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`; the promotion preserved the previous main history rather than force-pushing.
 - Stable 0.8.78 release tree used the tested dev runtime/assets unchanged. Release-only differences were stable TOC title/version and exclusion of development status files; no `Debug.lua` existed in that release tree.
 - No current main-only runtime/assets are known to require special preservation, but future promotion must still compare `main` and `dev` rather than assuming replacement because main has diverged historically.
-- Do not promote the current 0.8.87 dev line yet. Item 2.3 is runtime-cleared, but the unified logical-slot core is still awaiting runtime validation and promotion still requires the intended release comparison/regression gate and completion/validation of the remaining planned architecture work.
+- Do not promote the current 0.8.87 dev line yet. Item 2.3 is runtime-cleared and the unified logical-slot core has partially passed runtime validation, but save/reopen persistence is still unconfirmed; promotion also requires the intended release comparison/regression gate and completion/validation of the remaining planned architecture work.
 - Current `main` and `dev` have diverged historically, so release preparation must compare and reconcile them rather than overwrite `main`.
 - Known validation debt accepted for current release: none newly accepted here; 0.8.87 remains development-only.
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Runtime-test the focused `0.8.87-dev` unified logical-slot core described above. Verify five-player exact human slot editing/save/reload/suppression and a raid-sized summon/rebuild with no SCB-driven human subgroup arrangement while deterministic bot placement/order still behaves normally.
+Finish the focused `0.8.87-dev` gate by saving a 5-man preset after moving self to a non-default logical slot, reloading/reopening it, and confirming that exact logical slot persists. If another human is available, also verify Other Players -> explicit assignment -> save/reopen persistence.
 
 Do not begin the yellow mismatch presentation, maintenance changes, visualiser work, or unrelated cleanup until this runtime gate is explicitly accepted.
