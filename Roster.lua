@@ -2030,9 +2030,7 @@ function SCB_BuildPresetExecutionSnapshot()
     if not valid then return nil, errorText end
     return snapshot
 end
-
--- -------------------------------------------------------------------------
--- Explicit spawn identityend
+end
 
 -- -------------------------------------------------------------------------
 -- Explicit spawn identity and live layout (absorbed from RaidIdentity.lua in 0.8.32).
