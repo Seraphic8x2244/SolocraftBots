@@ -4,13 +4,13 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.99-dev`
-- Current implementation head before this handoff update: `20ee998a730cd9afd9b6524713a4d57066fabc11`
+- TOC version: `0.8.100-dev`
+- Current implementation head before this handoff update: `bc77a914da0c11e15939216abcb0bf51925d5d94`
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
-- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.99-dev` adds Resummon Group through the existing maintenance coordinator and is the next runtime candidate.
-- Immediate goal: runtime-validate Resummon Group without reopening accepted summon/rebuild identity work. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
+- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.99-dev` Resummon Group remains implemented but untested. `0.8.100-dev` makes requested-preset acceptance own leadership, raid conversion and receiver-side auto-loot setup and is the next runtime candidate.
+- Immediate goal: runtime-validate the 0.8.100 requested-preset ownership flow, then return to the still-untested 0.8.99 Resummon Group gate. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -72,6 +72,17 @@
 - Power evidence remains `Rage power` or `Energy power`; no intended-role value is consulted.
 - Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
+## Requested preset ownership — 0.8.100
+- A Request no longer requires the requester to create a raid before sending a >5-player preset.
+- Acceptance is the point where execution ownership changes. The receiver does not take leadership merely because a request prompt was opened.
+- On Accept, if the receiver is not already group leader it sends a protocol control request back to the requester. The requester transfers party/raid leadership with the native leader-promotion path, and the receiver waits for its own authoritative leader state before continuing.
+- For a >5-player snapshot received while still in a party, the new receiver/leader calls `ConvertToRaid()` itself and waits until raid membership plus raid-leader rank are visible before starting the preset rebuild.
+- In an existing raid, the receiver becomes raid leader rather than merely Raid Assistant. This is required because subgroup management and especially loot setup belong to the summoner's execution ownership.
+- Immediately before starting the accepted rebuild, the receiver applies **its own** configured Auto Loot Method and starts the existing short retry queue. `off` still means no automatic change.
+- `SCB_ApplyAutoLootMethod()` now uses explicit local group-leader authority: party leader in parties; rank 2 from `GetRaidRosterInfo()` in raids. This removes the previous raid ambiguity from relying only on `IsPartyLeader()`.
+- Request leadership transfer is only attempted after the receiver accepts. If the requester is no longer group leader or leader transfer is unavailable, the request fails without starting the preset.
+- Request communications protocol was bumped from 2 to 3 because older clients do not understand the new leadership-control message.
+
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
 - Keep exact burst intent records, reverse send, join-assumption identity, subgroup movement and Active Roster replacement binding.
@@ -96,7 +107,7 @@
 - Raw user-typed `.partybot add ...` remains outside SCB coordinator ownership.
 - Taxi safety remains action-time only through `SCB_CanOperateBots(showError)`.
 - Never use `UnitHealth()==0` as a dead-state fallback.
-- Preset protocol remains `SCBPRESET` protocol 2; snapshots carry logical composition/human slot intent, never generated bot names.
+- Preset protocol is now `SCBPRESET` protocol 3. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 3 adds the accepted-request leadership handoff control flow.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
 
 ## Runtime results
@@ -144,30 +155,46 @@ Exact `0.8.92-dev` baseline:
 - Confirmed target changes refresh the new button through the existing command-row target refresh.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
 
+## Static validation for 0.8.100
+- Verified `dev` matched the documented 0.8.99 handoff before the implementation write; update was fast-forward only.
+- Reviewed implementation diff `bc77a914da0c11e15939216abcb0bf51925d5d94`.
+- Confirmed the old sender-side “create a raid before requesting” and Raid Assistant preconditions are gone.
+- Confirmed leadership transfer is receiver-initiated only after Accept, not when the prompt is merely received.
+- Confirmed the receiver waits for local leader authority before conversion/rebuild and waits for raid formation before continuing a >5 request.
+- Confirmed receiver-side Auto Loot is applied immediately before the accepted rebuild and queued for retry using the existing auto-loot path.
+- Confirmed raid loot authority now checks local raid rank 2 instead of depending only on `IsPartyLeader()`.
+- Confirmed communication protocol is 3 on both serialized snapshots and offer handshakes.
+- Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
+
 ## Focused runtime gate
-Test only the new `0.8.99-dev` Resummon Group delta. **Do not repeat accepted 5-man, stuck-10-man, subgroup-highlight, Rogue or Bear/rage tests.**
+Test the new `0.8.100-dev` Request flow first. Do not repeat accepted summon/rebuild identity tests.
 
-1. **Basic tracked group resummon**
-   - Target a preset/Active-Roster-bound bot.
-   - Confirm `Resummon Group` becomes enabled and its tooltip names that logical group.
-   - Click it and confirm only tracked bots assigned to that group are removed and recreated.
-   - Confirm humans are untouched.
-   - Confirm recreated bots return to the correct raid subgroup and Preset Manager identities/checks rebind normally.
+1. **>5 request starting from a party**
+   - Keep the requester and receiver in a normal party; do not manually create a raid.
+   - Request a 10-player preset from the other SCB player.
+   - Receiver accepts.
+   - Confirm leadership transfers to the receiver automatically.
+   - Confirm the receiver converts the party to a raid automatically.
+   - Confirm the requested preset then starts normally without the old “Create a raid before requesting...” error.
 
-2. **Unbound/manual bot isolation**
-   - If an unbound manually joined bot is present in the same live subgroup, Resummon Group must leave it alone.
-   - If that unbound bot consumes capacity needed by the full tracked group, the action should refuse before removing anything and explain that the group cannot fit.
-   - Targeting an unbound bot should not enable Resummon Group because it has no Active Roster group identity.
+2. **Receiver Auto Loot**
+   - Give the receiver a non-Off Auto Loot Method before accepting.
+   - Confirm that method is applied by the receiver after leadership/raid conversion and remains correct as bots join.
+   - This deliberately uses the receiver's local setting, not the requester's setting.
 
-3. **Missing-slot inclusion**
-   - Opportunistic only: if the selected logical group already has a tracked missing bot, Resummon Group should restore that assignment while rebuilding the remaining tracked bots.
+3. **Refusal side-effect check**
+   - Send another request and refuse it.
+   - Confirm merely receiving/refusing the prompt does not transfer leadership or convert the party/raid.
 
-4. **Survivor safety**
-   - Opportunistic only: when resummoning would otherwise remove every bot keeping the player grouped in an instance, the existing survivor rule must retain one and replace it last.
-   - Do not manufacture a risky instance state solely for this test.
+4. **Existing-raid request**
+   - Opportunistic if convenient: when already in a raid, accepting a request should transfer raid leadership to the receiving summoner rather than only granting Assistant, then apply the receiver's Auto Loot setting.
 
-5. **Remaining validation debt**
-   - Cat/energy role confirmation and the genuine mismatch popup remain opportunistic runtime coverage; neither blocks this maintenance test.
+5. **Resummon Group remains untested from 0.8.99**
+   - After the Request flow is accepted, return to the previously documented Resummon Group basic tracked-group test.
+   - Its implementation was not changed by 0.8.100.
+
+6. **Remaining opportunistic debt**
+   - Cat/energy role confirmation and the genuine mismatch popup remain opportunistic runtime coverage.
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
