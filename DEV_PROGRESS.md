@@ -105,13 +105,14 @@ Exact `0.8.92-dev` baseline:
    - Full Summon restored the configured subgroup.
    - 0.8.92 whole-group pulse was too subtle.
    - User runtime-tested the targeted character-box pulse in 0.8.96 and confirmed it is working.
-4. **Combat validation: PARTIAL.**
+4. **Combat validation: PARTIAL; 0.8.97 Feral power path PASS.**
    - Rogue exclusion passed.
    - Two feral Druids and one DPS Warrior did not accumulate evidence at a reasonable rate while clearing roughly 25% of Stockades at level 60; one feral reached yellow, the others remained stage 0.
    - User observed repeated Feral Faerie Fire, which 0.8.92 ignored because the spell is shared by bear/cat.
    - User also clarified that a genuine mismatch must produce an obvious popup rather than relying on a passive icon/transient centre message.
    - 0.8.96 direct power inference was runtime-tested with two bear Druids: both visibly entered Bear Form but remained red because the read was still combat-text-triggered.
-   - 0.8.97 rebuilds that trigger so live rage/energy is sampled directly outside combat. This new delta is untested.
+   - 0.8.97 direct-power rebuild is runtime-confirmed: a preset-bound Druid validated as soon as Bear Form/rage appeared, without requiring combat.
+   - User also manually joined an unbound Cat Druid after kicking a Rogue. Preset Manager correctly did not show that Druid, a role-validation tick, or a subgroup-warning highlight because it had no preset/logical-slot binding. This is expected behaviour, not a regression.
 
 ## Static validation for 0.8.97
 - Verified `dev` was still exactly at the 0.8.96 handoff before the write; the implementation update was fast-forward only.
@@ -127,10 +128,9 @@ Exact `0.8.92-dev` baseline:
 Test only the new `0.8.97-dev` validation delta. **Do not repeat the accepted 5-man, stuck-10-man, subgroup-highlight or Rogue tests.**
 
 1. **Direct Feral power validation**
-   - No combat is required.
-   - A pending Druid in Bear Form/rage should leave red and reach green from the live power bar alone.
-   - A pending Druid in Cat Form/energy should do the same as melee evidence.
-   - `Faerie Fire (Feral)` is irrelevant to this test.
+   - Bear Form/rage path is **PASS** in 0.8.97 without combat.
+   - Cat Form/energy remains unproven for a preset-bound Druid; a manually joined unbound Cat Druid is intentionally outside Preset Manager validation.
+   - `Faerie Fire (Feral)` is irrelevant to this path.
    - A mana-form Druid must not receive Feral-role evidence from the power bar.
 
 2. **General combat indicator progression**
