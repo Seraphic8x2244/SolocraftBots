@@ -1127,6 +1127,9 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
         end
     end
 
+    -- Full rebuilds intentionally burst one logical group at a time;
+    -- cross-group packing saves negligible time but weakens deterministic
+    -- bot-order inference.
     for g = 1, groupCount do
         if table.getn(groups[g] or {}) > 0 then
             SCB_QueuePlannedBurst(queue, plans, "preset", g, groups[g])
@@ -1687,7 +1690,7 @@ local function SCB_RecordManualAddArrival(state)
     if slot and intent then
         slot.class = slot.class or intent.class
         slot.assumedRole = intent.role
-        slot.role = slot.confirmedRole or intent.role
+        slot.role = intent.role
         slot.extra = intent.extra
         slot.updatedAt = SCB_OperationNow()
     end
