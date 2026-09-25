@@ -1193,8 +1193,6 @@ local SCB_ROLE_SPELLS = {
         { "Mortal Strike", "meleedps" },
         { "Bloodthirst", "meleedps" },
         { "Whirlwind", "meleedps" },
-        { "Sweeping Strikes", "meleedps" },
-        { "Death Wish", "meleedps" },
     },
     priest = {
         { "Greater Heal", "healer" },
@@ -1215,20 +1213,10 @@ local SCB_ROLE_SPELLS = {
         { "Maul", "tank" },
         { "Growl", "tank" },
         { "Swipe", "tank" },
-        { "Demoralizing Roar", "tank" },
-        { "Enrage", "tank" },
-        { "Frenzied Regeneration", "tank" },
-        { "Feral Charge", "tank" },
-        { "Bash", "tank" },
         { "Cat Form", "meleedps" },
-        { "Claw", "meleedps" },
         { "Rake", "meleedps" },
         { "Ferocious Bite", "meleedps" },
         { "Shred", "meleedps" },
-        { "Rip", "meleedps" },
-        { "Pounce", "meleedps" },
-        { "Ravage", "meleedps" },
-        { "Tiger's Fury", "meleedps" },
         -- Faerie Fire (Feral) is handled separately below: the spell alone is
         -- ambiguous, but the caster's live rage/energy power type disambiguates
         -- bear from cat without consulting the intended role.
@@ -1538,6 +1526,7 @@ end
 -- -------------------------------------------------------------------------
 
 local SCB_CONFIRM_COLORS = {
+    [0] = { 1.00, 0.10, 0.10 },
     [1] = { 1.00, 0.90, 0.00 },
     [2] = { 0.20, 1.00, 0.20 },
 }
@@ -1703,11 +1692,9 @@ function SCB_RefreshPresetRoleIndicators()
                             end
                             if stage < 0 then stage = 0 end
                             if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
-                            if stage > 0 then
-                                color = SCB_CONFIRM_COLORS[stage]
-                                row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
-                                row.scbConfirmedTick:Show()
-                            end
+                            color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
+                            row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
+                            row.scbConfirmedTick:Show()
                         end
                     end
                 end
