@@ -1229,8 +1229,9 @@ local SCB_ROLE_SPELLS = {
         { "Pounce", "meleedps" },
         { "Ravage", "meleedps" },
         { "Tiger's Fury", "meleedps" },
-        -- Faerie Fire (Feral) is intentionally excluded: both bear and cat
-        -- roles can use it, so it cannot independently validate either role.
+        -- Faerie Fire (Feral) is handled separately below: the spell alone is
+        -- ambiguous, but the caster's live rage/energy power type disambiguates
+        -- bear from cat without consulting the intended role.
         { "Healing Touch", "healer" },
         { "Regrowth", "healer" },
         { "Rejuvenation", "healer" },
@@ -1854,6 +1855,17 @@ local function SCB_CombatSourceNeedsRoleConfirmation(text)
     return key and SCB.roleDetectionPendingNames and SCB.roleDetectionPendingNames[key] == true
 end
 
+local function SCB_GetDruidFeralRoleFromPower(name)
+    local member, powerType
+    if not name or not UnitPowerType then return nil end
+    member = SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+    if not member or not member.unit then return nil end
+    powerType = UnitPowerType(member.unit)
+    if powerType == 1 then return "tank" end
+    if powerType == 3 then return "meleedps" end
+    return nil
+end
+
 function SCB_HandleRoleCombatText(text, eventName)
     local source, name, classKey, spell, role
     if not SCB_EnsureRoleDetectionOption() then return false end
@@ -1871,6 +1883,11 @@ function SCB_HandleRoleCombatText(text, eventName)
     if not SCB_ClassSupportsRoleValidation(classKey) then return false end
 
     spell, role = SCB_FindRoleSpell(classKey, text)
+    if (not spell or not role) and classKey == "druid"
+        and string.find(text, "Faerie Fire (Feral)", 1, true) then
+        role = SCB_GetDruidFeralRoleFromPower(name)
+        if role then spell = "Faerie Fire (Feral)" end
+    end
     if not spell or not role then return false end
     SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     return true
