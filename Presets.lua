@@ -752,9 +752,6 @@ function SCB_RefreshPresetLayoutMismatchPresentation(observed)
             if kind == "regrouped" then
                 frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REGROUPED")
                 any = true
-            elseif kind == "reordered" then
-                frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REORDERED")
-                any = true
             else
                 frame.scbTooltip = nil
                 frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
@@ -2172,12 +2169,14 @@ end
 -- refreshes can never accidentally turn a tank off.
 
 local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
-    local reconciledNow = false
     if not tracker or not tracker.ready then return false end
-    if SCB_ReconcileTrackerFromAssumedRoles then
-        reconciledNow = SCB_ReconcileTrackerFromAssumedRoles(tracker, observed) == true
-    end
-    if initial or reconciledNow then
+
+    -- Finalization has already bound each uncovered logical assignment from the
+    -- settled bot-only Blizzard order inside its group. Join-name assumptions
+    -- remain provisional operational hints and must never overwrite that mapping.
+    tracker.scbRoleIdentityReconciled = true
+
+    if initial then
         if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker, observed) end
         if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout(observed) end
     end
