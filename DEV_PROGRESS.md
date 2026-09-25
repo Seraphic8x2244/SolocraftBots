@@ -4,14 +4,13 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.92-dev`
-- Current implementation head before this handoff update: `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`
-- Starting handoff for this slice: `532262e1f83075c15c7a1874d57600bd8c726526`
-- Last runtime-tested implementation: `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` (`0.8.88-dev`; failed the layout/summon gate)
-- Last runtime-cleared implementation: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`)
+- TOC version: `0.8.94-dev`
+- Current implementation head before this handoff update: `e8357eb4c7f7cea0c1d5cf4f6928a072a66f0655`
+- Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- `0.8.91-dev` is superseded and must not be runtime-tested as the acceptance candidate.
-- Immediate goal: runtime-test this exact `0.8.92-dev` identity/layout/combat-validation slice before maintenance, visualiser or unrelated cleanup.
+- `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
+- `0.8.94-dev` contains only the follow-up presentation/combat-validation delta and is the next runtime candidate.
+- Immediate goal: validate the targeted subgroup-row highlight and revised combat-role evidence UI. Do not reopen accepted summon/rebuild identity work unless a new regression appears.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -33,43 +32,48 @@
 - Final identity is the settled subgroup's **bot-only ordinal order** mapped to uncovered logical assignments in ascending slot order. This is the proven pre-0.8.87 principle from `6bcc9949222513d4f8e38a90d43071149f162f31`.
 - Join-line name -> intent binding is provisional/operational identity. It remains important for mixed-group refill, but it must not overwrite settled full-rebuild ordinal identity.
 
-## 0.8.92 implementation
-### Full summon / rebuild identity
-- Audited current rebuild against pre-0.8.87 `6bcc994...`.
-- Existing `SCB_ArrangePresetHumanGroups()` preserves the proven subgroup-preparation rule: humans are resolved by name, moved only between subgroups, then subgroup membership is freshly verified. No row forcing was added.
-- Existing full rebuild still queues uncovered assignments group-by-group and uses `PRESET_WAIT_GROUP` between groups. Cross-group burst packing was deliberately not introduced.
-- `SCB_TryFinalizeRaidRoleTracking()` already performs the correct final mapping: it filters humans by using only `initialActive` bot assignments, obtains bots by Blizzard subgroup, requires exact per-group bot counts, then maps bot-only ordinal order to assignment order.
-- Fixed the actual identity handoff defect: `SCB_PostFinalizeRaidRoleTracking()` no longer calls `SCB_ReconcileTrackerFromAssumedRoles()` after ordinal finalization. The settled bot-only mapping is authoritative and `tracker.scbRoleIdentityReconciled` is marked complete.
-- `SCB_ReconcileTrackerFromAssumedRoles()` remains defined but has no call sites. Do not delete it in this gate; dead/compatibility cleanup remains deferred until runtime proof.
-- Once an Active Roster slot exists, live-roster role identity and combat validation prefer that settled slot over provisional `assumedRolesByName`.
-- Preset role indicators prefer `assignment.botName` over `assignment.scbAssumedName`.
-- Manual Add keeps `slot.role` as the intended requested role rather than replacing it with prior combat-confirmed state.
+## 0.8.94 implementation
+### Full summon / rebuild identity — accepted baseline from 0.8.92
+- `SCB_ArrangePresetHumanGroups()` preserves the proven subgroup-preparation rule: humans are resolved by name, moved only between subgroups, then subgroup membership is freshly verified. No row forcing exists.
+- Full rebuild queues uncovered assignments group-by-group and uses `PRESET_WAIT_GROUP` between groups.
+- `SCB_TryFinalizeRaidRoleTracking()` filters humans, obtains bots by Blizzard subgroup, requires exact per-group bot counts, then maps bot-only ordinal order to assignment order.
+- `SCB_PostFinalizeRaidRoleTracking()` does not reconcile settled ordinal identity back through provisional join assumptions.
+- `SCB_ReconcileTrackerFromAssumedRoles()` remains defined but has no call sites. Keep cleanup deferred until later.
+- Active Roster settled identity outranks provisional `assumedRolesByName`; combat evidence never rewrites intended `slot.role`.
 
-### Passive layout warning correction
-- Removed the invalid `reordered` / absolute-row mismatch mode.
-- Parties produce no layout mismatch warning.
-- Raids compare expected vs observed **member sets by subgroup only**. A genuine wrong subgroup still produces `regrouped` and the existing slow yellow group pulse/tooltip.
-- Within-subgroup Blizzard row differences remain observable in tracker layout data but are not treated as an error and do not warn.
-- Removed the obsolete `TIP_PRESET_LAYOUT_REORDERED` locale text.
+### Passive layout warning
+- Party absolute-row mismatch logic remains removed.
+- Raid mismatch classification is subgroup-only.
+- 0.8.92 runtime: manually moving the user to the wrong raid subgroup correctly produced a warning and the next full Summon put them back into the configured subgroup.
+- 0.8.92 presentation problem: the whole-group yellow pulse was so subtle that the user initially thought the build was stale.
+- 0.8.93/0.8.94 presentation change: mismatch classification also returns the exact logical slot(s) whose known member is in the wrong subgroup. Only those character rows receive a stronger gold pulse; the whole group background no longer pulses. The group tooltip remains available.
+- This is presentation only; it does not change subgroup correction or physical roster ownership.
 
 ### Combat-role validation semantics
-- Intended/assumed role and combat-confirmed role are now separate state. Combat evidence updates `confirmedRole` and evidence only; it never writes the detected role back into `slot.role`.
-- Validation eligibility is derived from the class definition by counting **distinct SCB role values**:
-  - meaningful role validation: Warrior, Paladin, Shaman, Druid, Priest;
-  - no role validation: Rogue, Hunter, Warlock;
-  - Mage is also excluded from the role validator because Fire/Frost are two preset specs but both are `rangedps`. The current role-only combat detector cannot honestly validate Mage spec.
-- Removed Mage/Rogue/Hunter/Warlock spell tables from the role sniffer; those classes never enter the pending-name validation lifecycle.
-- First tick still means SCB has bound/inferred the bot to the logical assignment.
-- The second role-validation indicator is shown only for validation-eligible classes. Existing red/yellow/green evidence progression is retained.
-- If combat evidence confirms a different role from the intended assignment, the second tick is replaced by a persistent red `X` for that assignment.
-- A confirmed disagreement emits one chat warning plus the existing centre-screen SCB warning, identifying bot name, group, logical slot, intended role, detected role and the last role-unique spell evidence. It is de-duplicated per bot/current assignment disagreement rather than repeated for every spell.
-- Full rebuild starts a fresh role-validation epoch by clearing prior combat evidence/recent-observation/mismatch-warning state.
+- Intended role and combat-confirmed role remain separate state. Evidence never mutates the requested role/preset.
+- Validation-eligible classes remain Warrior, Paladin, Shaman, Druid and Priest.
+- Rogue/Hunter/Warlock remain excluded. Runtime 0.8.92 confirmed Rogue correctly receives no second validation indicator.
+- Mage remains excluded because Fire/Frost are preset specs but both map to `rangedps`; the current role validator cannot honestly distinguish the spec.
+- First green tick = SCB bound the bot to that logical assignment.
+- Revised second-indicator semantics:
+  - no role evidence yet: **no second marker**;
+  - one recognised independent observation: yellow check;
+  - two observations agreeing with intended role: green check;
+  - confirmed different role: persistent red `X` plus active warning.
+- The former red stage-0 marker was removed because it made “not yet observed” look like an error.
+- A confirmed mismatch now opens a real `StaticPopup` (unless the user has explicitly hidden SCB screen warnings) and also writes the chat warning. The transient 2.4-second centre message is no longer the primary mismatch alert.
+- Expanded frequent but role-specific evidence:
+  - Warrior melee adds Sweeping Strikes and Death Wish alongside Mortal Strike/Bloodthirst/Whirlwind.
+  - Druid bear adds Demoralizing Roar, Enrage, Frenzied Regeneration, Feral Charge and Bash.
+  - Druid cat adds Claw, Rip, Pounce, Ravage and Tiger's Fury alongside existing cat abilities.
+- `Faerie Fire (Feral)` is not role-specific by spell name, but 0.8.94 combines the observed cast with native `UnitPowerType(unit)`: rage = bear/tank evidence, energy = cat/melee evidence. It never consults the intended role to make that classification.
+- Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
 ## Refill / maintenance contract — unchanged
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
 - Keep exact burst intent records, reverse send, join-assumption identity, subgroup movement and Active Roster replacement binding.
 - Do not redesign refill into group-by-group bursts; mixed-group refill saves meaningful time.
-- Combat-role validation is a later independent watchdog for any mistaken mixed-burst identity assumption, not a reason to remove that optimisation.
+- Combat-role validation is an independent watchdog for mistaken mixed-burst identity assumptions, not a reason to remove that optimisation.
 
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
@@ -84,44 +88,58 @@
 - Preset protocol remains `SCBPRESET` protocol 2; snapshots carry logical composition/human slot intent, never generated bot names.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
 
-## Validation performed for 0.8.92
-- Verified `dev` started exactly at handoff `532262e1f83075c15c7a1874d57600bd8c726526`.
-- Reviewed the changed call sites and commit diffs after implementation.
-- Confirmed no remaining `reordered` warning path / `TIP_PRESET_LAYOUT_REORDERED` reference.
-- Confirmed no remaining combat path assigns `confirmedRole` back into `slot.role`.
-- Confirmed `SCB_ReconcileTrackerFromAssumedRoles()` has no remaining caller.
+## Runtime results
+Exact `0.8.92-dev` baseline:
+1. **5-player logical-slot regression: PASS.**
+   - User confirmed non-first logical player placement suppresses/replaces the correct underlying bot intent.
+   - No invalid party row warning reported.
+2. **10-player subgroup + deterministic summon: PASS.**
+   - User tested two separate 10-player presets with the player in Group 1 in one preset and Group 2 in the other.
+   - No stuck `Preset Summon is already in progress` state.
+   - User explicitly does not want this re-tested.
+3. **Passive subgroup detection/correction: LOGIC PASS; PRESENTATION SUPERSEDED.**
+   - Manual wrong-subgroup move was detected.
+   - Full Summon restored the configured subgroup.
+   - 0.8.92 whole-group pulse was too subtle; 0.8.94 replaces only that presentation.
+4. **Combat validation: PARTIAL.**
+   - Rogue exclusion passed.
+   - Two feral Druids and one DPS Warrior did not accumulate evidence at a reasonable rate while clearing roughly 25% of Stockades at level 60; one feral reached yellow, the others remained stage 0.
+   - User observed repeated Feral Faerie Fire, which 0.8.92 ignored because the spell is shared by bear/cat.
+   - User also clarified that a genuine mismatch must produce an obvious popup rather than relying on a passive icon/transient centre message.
+   - 0.8.94 addresses these findings; its delta is untested.
+
+## Static validation for 0.8.94
+- Verified `dev` was still exactly at the documented head before each write; both updates were fast-forward only.
+- Reviewed commit diffs for `f443d647acbf8bf5bfcc325fd67b04dfc8dedaa8` and `e8357eb4c7f7cea0c1d5cf4f6928a072a66f0655`.
+- Confirmed the old red stage-0 colour entry and whole-group mismatch pulse path are gone.
+- Confirmed Feral Faerie Fire is not blindly assigned a role from spell name; it is disambiguated only through live rage/energy power type.
+- Confirmed `UnitPowerType(unit)` is native to Vanilla 1.12 and the first return is the integer power type; no ClassicAPI dependency is required.
 - GitHub reports no CI/status checks for the implementation head.
-- Canonical Lua 5.0.2 compiler pass is **not claimed**: this shell has no `lua`/`luac`, and the private `VanillaTemplate/tools/lua50` checker could not be materialized into the execution shell. Static diff/call-site review is the available validation here.
-- Runtime status: **untested**. This is the next acceptance candidate.
+- Canonical Lua 5.0.2 compiler pass is **not claimed**. The canonical `VanillaTemplate/tools/lua50` checker is visible through the GitHub connection and this shell has a working C compiler, but the connected private repository files cannot be materialized into the isolated shell and the shell has no DNS/network access. Static diff/call-site review is the available check in this environment.
 
 ## Focused runtime gate
-Test the exact current `0.8.92-dev` build, not 0.8.91:
+Test only the new `0.8.94-dev` delta. **Do not repeat the accepted 5-man or stuck-10-man summon tests.**
 
-1. **5-player logical-slot regression**
-   - Put the player in a non-first logical preset slot.
-   - Summon/re-summon.
-   - Confirm the exact underlying bot intent is suppressed/replaced correctly.
-   - Confirm no yellow layout warning appears merely because party physical row differs.
+1. **Targeted subgroup highlight**
+   - With a completed 10-player preset, manually move one known member to the wrong raid subgroup.
+   - Confirm the moved character's preset row/box gets a clearly visible gold pulse.
+   - Confirm the whole group background no longer does the subtle pulse.
+   - No need to re-prove Summon correction unless the new presentation somehow causes a regression.
 
-2. **10-player subgroup + deterministic identity**
-   - Use a preset with at least one human logically in Group 2; starting from a wrong physical subgroup is useful.
-   - Summon/re-summon and confirm SCB moves the human into the configured subgroup and completes normally with no stuck `Preset Summon is already in progress`.
-   - Prefer the historical repeated Druid-role pattern (tank / melee / healer / ranged) if convenient; it is a strong check that final bot order still matches preset bot-relative order.
-   - A within-subgroup row difference must not produce a yellow warning.
+2. **Combat indicator semantics**
+   - Enable combat validation.
+   - An eligible bot with zero evidence should show only the first binding tick — no red second marker/X.
+   - First recognised role observation should add a yellow second check; second agreeing observation should turn it green.
+   - Rogue/Hunter/Warlock/Mage exclusions are unchanged; Rogue was already runtime-cleared and need not be re-tested.
 
-3. **Passive actionable warning**
-   - After completion, manually move a human to the wrong raid subgroup.
-   - Confirm the affected group(s) get the yellow `Group rearranged in Blizzard Raid tab.` warning.
-   - Next full Summon/rebuild should correct the subgroup again.
+3. **Feral evidence**
+   - Bear/cat Feral Faerie Fire should now count when the caster's live power type is rage/energy respectively.
+   - Two separated valid observations should progress yellow -> green.
+   - The spell must not validate a mana-form Druid.
 
-4. **Combat-role indicators**
-   - Enable combat role validation.
-   - Warrior/Paladin/Shaman/Druid/Priest bots should receive the second evidence indicator and turn green after two recognised role-unique observations.
-   - Rogue/Hunter/Warlock should retain only the first binding tick; they should not be scanned for role confirmation.
-   - Mage should also retain only the first binding tick for now because this detector does not validate Fire vs Frost spec.
-   - If a real binding disagreement is encountered, confirm the role indicator becomes a red `X` and one chat + centre-screen warning names the bot, group/slot, intended role, detected role and evidence.
-
-Do not begin maintenance changes, visualiser work, or unrelated cleanup until this runtime gate is explicitly accepted.
+4. **Mismatch alert**
+   - If a genuine confirmed role disagreement occurs naturally, confirm the persistent red `X` is accompanied by an actual popup plus chat warning.
+   - Do not spend time engineering an artificial mismatch solely for this gate; runtime proof can be opportunistic.
 
 ## Deferred / later
 - Resummon Group through the existing maintenance/bot-operation lifecycle.
