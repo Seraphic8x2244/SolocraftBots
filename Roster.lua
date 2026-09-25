@@ -1728,6 +1728,8 @@ end
 -- -------------------------------------------------------------------------
 
 local detectionFrame = CreateFrame("Frame", "SoloCraftBotsRoleDetectionEventFrame", UIParent)
+local SCB_FERAL_POWER_SAMPLE_INTERVAL = 0.35
+
 local SCB_DETECTION_EVENTS = {
     "CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF",
     "CHAT_MSG_SPELL_SELF_BUFF",
@@ -1839,10 +1841,10 @@ local function SCB_CombatSourceNeedsRoleConfirmation(text)
     return key and SCB.roleDetectionPendingNames and SCB.roleDetectionPendingNames[key] == true
 end
 
-local function SCB_GetDruidFeralRoleFromPower(name)
-    local member, powerType
+local function SCB_GetDruidFeralRoleFromPower(name, member)
+    local powerType
     if not name or not UnitPowerType then return nil, nil end
-    member = SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+    member = member or (SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil)
     if not member or not member.unit then return nil, nil end
     powerType = UnitPowerType(member.unit)
     if powerType == 1 then return "tank", "Rage power" end
@@ -1865,17 +1867,6 @@ function SCB_HandleRoleCombatText(text, eventName)
     name, classKey = SCB_FindLiveBotForCombatSource(source)
     if not name or not classKey then return false end
     if not SCB_ClassSupportsRoleValidation(classKey) then return false end
-
-    -- Feral Druid role comes directly from the live power bar. Rage uniquely
-    -- identifies bear form and energy uniquely identifies cat form; no spell
-    -- name is required or consulted for this inference.
-    if classKey == "druid" then
-        role, spell = SCB_GetDruidFeralRoleFromPower(name)
-        if role and spell then
-            SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
-            return true
-        end
-    end
 
     spell, role = SCB_FindRoleSpell(classKey, text)
     if not spell or not role then return false end
@@ -1932,8 +1923,37 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     return changed
 end
 
+local function SCB_ScanPendingDruidPowerEvidence()
+    local roster = SCB.liveRoster or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    local members = roster and roster.members or {}
+    local i, member, slot, classKey, role, evidence
+
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if SCB_LiveBotNeedsRoleConfirmation(member) then
+            slot = SCB_GetActiveSlotByName and member.name and SCB_GetActiveSlotByName(member.name) or nil
+            classKey = member.assumedClass or member.classFile or (slot and slot.class) or nil
+            if type(classKey) == "string" then classKey = string.lower(classKey) end
+            if classKey == "druid" then
+                role, evidence = SCB_GetDruidFeralRoleFromPower(member.name, member)
+                if role and evidence then
+                    SCB_AddBotRoleEvidence(member.name, classKey, role, evidence, "POWER_BAR")
+                end
+            end
+        end
+    end
+end
+
 detectionFrame:SetScript("OnEvent", function()
     if arg1 then SCB_HandleRoleCombatText(arg1, event) end
+end)
+
+detectionFrame:SetScript("OnUpdate", function()
+    this.scbPowerElapsed = (this.scbPowerElapsed or 0) + (arg1 or 0)
+    if this.scbPowerElapsed < SCB_FERAL_POWER_SAMPLE_INTERVAL then return end
+    this.scbPowerElapsed = 0
+    if not SCB.roleDetectionEventsEnabled then return end
+    SCB_ScanPendingDruidPowerEvidence()
 end)
 
 SCB.roleDetectionEventsEnabled = false
