@@ -866,6 +866,27 @@ function SCB_GetAutoLootInfo(method)
     return SCB.AUTO_LOOT_METHODS[1]
 end
 
+function SCB_IsLocalGroupLeader()
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local selfName, i, name, rank
+
+    if raidCount > 0 and GetRaidRosterInfo then
+        selfName = UnitName and UnitName("player") or nil
+        if not selfName then return false end
+        for i = 1, raidCount do
+            name, rank = GetRaidRosterInfo(i)
+            if name == selfName then return rank == 2 end
+        end
+        return false
+    end
+
+    if partyCount > 0 and IsPartyLeader then
+        return IsPartyLeader() and true or false
+    end
+    return false
+end
+
 function SCB_ApplyAutoLootMethod()
     local method, current, partyCount, raidCount
     SCB_EnsureOptionsDB()
@@ -874,7 +895,7 @@ function SCB_ApplyAutoLootMethod()
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if partyCount <= 0 and raidCount <= 0 then return false end
-    if IsPartyLeader and not IsPartyLeader() then return false end
+    if not SCB_IsLocalGroupLeader() then return false end
     if GetLootMethod then current = GetLootMethod(); if current == method and method ~= "master" then return true end end
     if method == "master" then
         if UnitName and UnitName("player") then SetLootMethod("master", UnitName("player")) else return false end
