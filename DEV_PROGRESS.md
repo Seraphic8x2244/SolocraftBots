@@ -4,12 +4,12 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.96-dev`
-- Current implementation head before this handoff update: `421376db04611cd65c00f033e7e727bcdca4bde3`
+- TOC version: `0.8.97-dev`
+- Current implementation head before this handoff update: `ad77dd62dd33b24f44732f5ac82725dda6c9354d`
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
-- `0.8.96-dev` contains only the follow-up presentation/combat-validation delta and is the next runtime candidate.
+- `0.8.97-dev` contains the direct Feral power-state rebuild and is the next runtime candidate.
 - Immediate goal: validate the targeted subgroup-row highlight and revised combat-role evidence UI. Do not reopen accepted summon/rebuild identity work unless a new regression appears.
 
 ## Architecture / ownership
@@ -32,7 +32,7 @@
 - Final identity is the settled subgroup's **bot-only ordinal order** mapped to uncovered logical assignments in ascending slot order. This is the proven pre-0.8.87 principle from `6bcc9949222513d4f8e38a90d43071149f162f31`.
 - Join-line name -> intent binding is provisional/operational identity. It remains important for mixed-group refill, but it must not overwrite settled full-rebuild ordinal identity.
 
-## 0.8.96 implementation
+## 0.8.97 implementation
 ### Full summon / rebuild identity — accepted baseline from 0.8.92
 - `SCB_ArrangePresetHumanGroups()` preserves the proven subgroup-preparation rule: humans are resolved by name, moved only between subgroups, then subgroup membership is freshly verified. No row forcing exists.
 - Full rebuild queues uncovered assignments group-by-group and uses `PRESET_WAIT_GROUP` between groups.
@@ -63,11 +63,13 @@
 - 0.8.94 temporarily removed the red stage-0 tick and broadened the spell catalogue; both were explicitly rejected by the user and reverted in 0.8.95.
 - A confirmed mismatch opens a real `StaticPopup` (unless the user has explicitly hidden SCB screen warnings) and also writes the chat warning. The transient 2.4-second centre message is no longer the primary mismatch alert.
 - Do not broaden the role-specific spell catalogue without explicit agreement. The original role-spell set is retained.
-- Feral Druid validation uses the live power bar directly and does not inspect `Faerie Fire (Feral)` or any other spell to distinguish bear/cat:
+- Feral Druid validation uses the live power bar directly and does not inspect `Faerie Fire (Feral)` to distinguish bear/cat:
   - rage power type = bear/tank evidence;
   - energy power type = cat/melee evidence;
-  - mana power type = no Feral-role evidence, then normal healer/ranged spell evidence may still apply.
-- Feral power evidence is sampled when combat text identifies that pending Druid as the source. The evidence label is `Rage power` or `Energy power`; no intended-role value is consulted.
+  - mana power type = no Feral-role evidence, then normal spell evidence may still apply.
+- 0.8.96 still sampled the power bar only after combat text identified that Druid as the source. Runtime proved this was the wrong trigger: two bots visibly entered Bear Form while their validation checks remained red outside combat.
+- 0.8.97 removes that combat gate. While role validation has pending tracked bots, the existing detection frame directly samples pending Druid unit power every 0.35 seconds. The interval is intentionally just beyond the existing 0.30-second duplicate-observation guard, preserving the established two-observation red -> yellow -> green threshold without introducing a second lifecycle.
+- Power evidence remains `Rage power` or `Energy power`; no intended-role value is consulted.
 - Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
 ## Refill / maintenance contract — unchanged
@@ -98,54 +100,46 @@ Exact `0.8.92-dev` baseline:
    - User tested two separate 10-player presets with the player in Group 1 in one preset and Group 2 in the other.
    - No stuck `Preset Summon is already in progress` state.
    - User explicitly does not want this re-tested.
-3. **Passive subgroup detection/correction: LOGIC PASS; PRESENTATION SUPERSEDED.**
+3. **Passive subgroup detection/correction: PASS through 0.8.96.**
    - Manual wrong-subgroup move was detected.
    - Full Summon restored the configured subgroup.
-   - 0.8.92 whole-group pulse was too subtle; 0.8.94 replaces only that presentation.
+   - 0.8.92 whole-group pulse was too subtle.
+   - User runtime-tested the targeted character-box pulse in 0.8.96 and confirmed it is working.
 4. **Combat validation: PARTIAL.**
    - Rogue exclusion passed.
    - Two feral Druids and one DPS Warrior did not accumulate evidence at a reasonable rate while clearing roughly 25% of Stockades at level 60; one feral reached yellow, the others remained stage 0.
    - User observed repeated Feral Faerie Fire, which 0.8.92 ignored because the spell is shared by bear/cat.
    - User also clarified that a genuine mismatch must produce an obvious popup rather than relying on a passive icon/transient centre message.
-   - 0.8.96 addresses these findings; its delta is untested.
+   - 0.8.96 direct power inference was runtime-tested with two bear Druids: both visibly entered Bear Form but remained red because the read was still combat-text-triggered.
+   - 0.8.97 rebuilds that trigger so live rage/energy is sampled directly outside combat. This new delta is untested.
 
-## Static validation for 0.8.96
-- Verified `dev` remained at the inspected head before each fast-forward write.
-- Reviewed the 0.8.95 revert and 0.8.96 Feral-power diffs.
-- Confirmed the red stage-0 validation tick is restored.
-- Confirmed the unrequested additional Warrior/Druid role spells are absent.
+## Static validation for 0.8.97
+- Verified `dev` was still exactly at the 0.8.96 handoff before the write; the implementation update was fast-forward only.
+- Reviewed the 0.8.97 diff.
+- Confirmed the combat handler no longer performs the Feral power inference.
+- Confirmed a single direct scanner now reads pending Druid live unit power through the existing role-detection lifecycle.
+- Confirmed the scanner retains the existing two-observation threshold and uses a 0.35-second sample interval, just beyond the existing 0.30-second duplicate guard.
 - Confirmed there are zero `Faerie Fire (Feral)` references in `Roster.lua`.
-- Confirmed Feral bear/cat inference is based only on live `UnitPowerType(unit)` after a pending Druid is identified as the combat-text source.
-- Confirmed the targeted character-row subgroup highlight remains in place.
-- GitHub reports no CI/status checks for this development line.
+- Confirmed the red stage-0 validation tick remains restored and the unrequested extra Warrior/Druid spells remain absent.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
 
 ## Focused runtime gate
-Test only the new `0.8.96-dev` delta. **Do not repeat the accepted 5-man or stuck-10-man summon tests.**
+Test only the new `0.8.97-dev` validation delta. **Do not repeat the accepted 5-man, stuck-10-man, subgroup-highlight or Rogue tests.**
 
-1. **Targeted subgroup highlight**
-   - With a completed 10-player preset, manually move one known member to the wrong raid subgroup.
-   - Confirm the moved character's preset row/box gets a clearly visible gold pulse.
-   - Confirm the whole group background no longer does the subtle pulse.
-   - No need to re-prove Summon correction unless the new presentation somehow causes a regression.
-
-2. **Combat indicator semantics**
-   - Enable combat validation.
-   - An eligible bot with zero evidence should show the red second validation check.
-   - First recognised role observation should turn that second check yellow; second agreeing observation should turn it green.
-   - A red `X` is distinct from the red pending check and means a confirmed mismatch.
-   - Rogue/Hunter/Warlock/Mage exclusions are unchanged; Rogue was already runtime-cleared and need not be re-tested.
-
-3. **Feral evidence**
-   - Do not test or rely on `Faerie Fire (Feral)`.
-   - A pending Feral Druid in rage should validate as bear/tank from the power bar alone.
-   - A pending Feral Druid in energy should validate as cat/melee from the power bar alone.
-   - Repeated separated power-state observations should progress red -> yellow -> green.
+1. **Direct Feral power validation**
+   - No combat is required.
+   - A pending Druid in Bear Form/rage should leave red and reach green from the live power bar alone.
+   - A pending Druid in Cat Form/energy should do the same as melee evidence.
+   - `Faerie Fire (Feral)` is irrelevant to this test.
    - A mana-form Druid must not receive Feral-role evidence from the power bar.
 
-4. **Mismatch alert**
+2. **General combat indicator progression**
+   - Still outstanding from the previous gate: for another eligible class/role, red = no evidence, yellow = one recognised observation, green = confirmed after the second.
+   - A red `X` is distinct from the red pending check and means a confirmed mismatch.
+
+3. **Mismatch alert**
    - If a genuine confirmed role disagreement occurs naturally, confirm the persistent red `X` is accompanied by an actual popup plus chat warning.
-   - Do not spend time engineering an artificial mismatch solely for this gate; runtime proof can be opportunistic.
+   - Runtime proof remains opportunistic; do not engineer a mismatch solely for this gate.
 
 ## Deferred / later
 - Resummon Group through the existing maintenance/bot-operation lifecycle.
