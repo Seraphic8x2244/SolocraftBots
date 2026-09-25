@@ -8,8 +8,8 @@
 - Current implementation commit: `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` (`0.8.88-dev`)
 - Current runtime-tested implementation: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`, unified logical-slot gate passed)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: runtime-validate the `0.8.88-dev` yellow live-layout mismatch presentation on top of the runtime-cleared unified logical-slot model.
-- Current scope boundary: 0.8.87 unified logical-slot behavior is user-tested and accepted. The 0.8.88 delta is presentation/observation only and is statically checked but not yet user-tested. Do not begin maintenance changes, visualiser work, or unrelated cleanup until this gate passes.
+- Goal: diagnose and correct the failed `0.8.88-dev` live-layout mismatch presentation gate without broadening scope.
+- Current scope boundary: 0.8.87 unified logical-slot behavior remains the last runtime-cleared baseline. Runtime testing found that 0.8.88 does not present a warning in the tested 5-man or 10-man cases, and the 10-man summon also appeared to place the player in an unexpected Blizzard raid group. Treat the presentation failure and possible subgroup regression as one focused gate; do not begin maintenance changes, visualiser work, or unrelated cleanup.
 
 ## Current Design / Development Contract
 
@@ -124,7 +124,8 @@
 - Item 2.3 protocol behavior remains unchanged: `SCBPRESET` protocol 2 serialization/deserialization was not edited by this slice.
 
 ## Current Issues
-- The 0.8.88 mismatch presentation has not yet been exercised in WoW 1.12.1; runtime behavior/visual strength/tooltip accessibility are the current focused gate.
+- `0.8.88-dev` runtime test failed: no mismatch presentation appeared in the tested 5-man case, and no mismatch presentation appeared in the tested 10-man case.
+- The 10-man test also raised a possible subgroup regression: the player appeared in an unexpected Blizzard raid group after summon. This must be traced before changing presentation logic because it may expose an underlying summon/layout issue rather than a display-only problem.
 - No known runtime issue remains in the 0.8.87 unified logical-slot core after the focused gate passed.
 - No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
@@ -135,18 +136,16 @@
 ## Testing
 
 ### Last Runtime Test
-- Version/implementation: `0.8.87-dev` / `ff9725d0336ded2f406661bf9863d88719322124` plus documentation-only branch updates.
-- Passed: self can be moved to a different logical slot in a 5-man preset; summoning suppresses/replaces the correct underlying bot slot; raid summon still works correctly; moved player location persists when swapping presets.
-- Result: the focused 0.8.87 unified logical-slot gate is accepted as passed.
+- Version/implementation: `0.8.88-dev` / `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` plus documentation-only branch updates.
+- Passed: the underlying 0.8.87 5-man logical-slot behavior still visibly represents the saved player slot.
+- Failed: no yellow mismatch presentation appeared in the tested 5-man case; no yellow mismatch presentation appeared in the tested 10-man case.
+- New observation: the 10-man summon appeared to place the player in an unexpected Blizzard raid group. The screenshot/chat also shows repeated `Preset Summon is already in progress` messages during the 10-man test, which may be relevant to the 0.8.88 classifier suppression and/or an unfinished summon state.
+- Result: the 0.8.88 presentation gate is failed and not accepted.
 
 ### Next Runtime Test
-- Test exact runtime code `0.8.88-dev` at `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` plus documentation-only handoff commits.
-- First confirm a raid group whose live Blizzard rows exactly match its logical rows has no yellow pulse.
-- Same-subgroup reorder case: use a preset where the same five intended members remain in the same subgroup but Blizzard presents at least one on a different row (a human deliberately saved to a non-Blizzard row is a strong case). The whole affected preset group should pulse slowly yellow and hovering the group background should show `Group composition correct; Blizzard client reordered members.`
-- Actual subgroup case: rearrange members in the Blizzard Raid tab without using SCB so a tracked member crosses subgroup boundaries. Every affected logical group whose composition changed should pulse yellow and show `Group rearranged in Blizzard Raid tab.`
-- Restore the Blizzard layout and confirm the pulse clears. Confirm switching to a different preset suppresses the active-layout warning for that other preset.
-- Confirm SCB does not move any human or alter the saved logical slot assignment as a result of these warnings.
-- Do not begin maintenance changes, visualiser work, or unrelated cleanup unless the 0.8.88 presentation gate is accepted.
+- First diagnose the exact 10-man summon completion/layout state and why the mismatch classifier is silent. Verify whether `SCB_HasBotSpawnOperation()` remains true after the visible summon has otherwise completed, and separately trace all remaining `SetRaidSubgroup` paths to prove none can target a human.
+- Correct the focused issue in the next versioned build, then retest both 5-man and 10-man mismatch presentation plus the 10-man human subgroup result.
+- Do not begin maintenance changes, visualiser work, or unrelated cleanup until this gate is resolved.
 
 ## Planned / Next Work
 1. Runtime-clear the 0.8.88 yellow live-layout mismatch presentation.
@@ -176,6 +175,6 @@
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Runtime-test the focused `0.8.88-dev` presentation at implementation `252f6f3acb33f755b0c6d5c34dedc68e0538b15e`: verify no pulse for an exact layout, the yellow reorder tooltip for same-group Blizzard row differences, the yellow regroup tooltip for an actual Raid-tab subgroup change, and clearing after the layout is restored.
+Diagnose the failed `0.8.88-dev` runtime gate before writing the next build: determine why 5-man is not classified, why the tested 10-man case remains silent, whether an active preset operation is suppressing presentation after visible summon completion, and whether any bot subgroup-placement path can explain the player's unexpected 10-man Blizzard subgroup.
 
-Do not begin maintenance changes, visualiser work, or unrelated cleanup until this runtime gate is explicitly accepted.
+Do not begin maintenance changes, visualiser work, or unrelated cleanup.
