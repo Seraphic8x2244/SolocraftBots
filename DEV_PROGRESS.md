@@ -4,13 +4,13 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.97-dev`
-- Current implementation head before this handoff update: `ad77dd62dd33b24f44732f5ac82725dda6c9354d`
+- TOC version: `0.8.98-dev`
+- Current implementation head before this handoff update: `0785bca9cade18ca7aca798f41791b1b666e5ad8`
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
-- `0.8.97-dev` contains the direct Feral power-state rebuild and is the next runtime candidate.
-- Immediate goal: validate the targeted subgroup-row highlight and revised combat-role evidence UI. Do not reopen accepted summon/rebuild identity work unless a new regression appears.
+- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.98-dev` adds Resummon Group through the existing maintenance coordinator and is the next runtime candidate.
+- Immediate goal: runtime-validate Resummon Group without reopening accepted summon/rebuild identity work. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -72,11 +72,18 @@
 - Power evidence remains `Rage power` or `Energy power`; no intended-role value is consulted.
 - Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
-## Refill / maintenance contract — unchanged
+## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
 - Keep exact burst intent records, reverse send, join-assumption identity, subgroup movement and Active Roster replacement binding.
 - Do not redesign refill into group-by-group bursts; mixed-group refill saves meaningful time.
 - Combat-role validation is an independent watchdog for mistaken mixed-burst identity assumptions, not a reason to remove that optimisation.
+- 0.8.98 adds **Resummon Group** as another `kind="maintenance"` action rather than a new physical-operation path.
+- UX: a full-width `Resummon Group` button sits below Replace Dead/Missing + Kick All in Command Bots. It is enabled only while a friendly bot target is bound to an Active Roster slot.
+- Scope is the target bot's logical Active Roster group (`intendedGroup` preferred over observed `currentGroup`), not arbitrary live occupants.
+- The action rebuilds every expected tracked bot assignment in that logical group, including already-missing tracked assignments. Humans and unbound/manual bots are deliberately left alone.
+- If any tracked assignment in the selected group cannot produce a valid replacement record, the action aborts before kicking anything; no partial destructive resummon.
+- Live tracked bots in the selected group are removed through the shared paced kick queue, then the existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths are reused unchanged.
+- If the selected group contains every live bot and survivor safety is required, one tracked bot is retained and replaced last through the existing survivor lifecycle. A lone required survivor is left in place rather than risking instance removal.
 
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
@@ -124,25 +131,42 @@ Exact `0.8.92-dev` baseline:
 - Confirmed the red stage-0 validation tick remains restored and the unrequested extra Warrior/Druid spells remain absent.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
 
+## Static validation for 0.8.98
+- Verified `dev` still matched the documented 0.8.97 handoff before writing; implementation commit was a fast-forward.
+- Reviewed the implementation diff for `0785bca9cade18ca7aca798f41791b1b666e5ad8`.
+- Confirmed Resummon Group starts `SCB_BeginBotOperation("maintenance", ...)` and stores its state in `operation.maintenance`.
+- Confirmed removals route through `SCB_KickBots("all", { names=..., manageSafety=false, silent=true })`; no new uninvite scheduler exists.
+- Confirmed replacement bursts still use `SCB_0826BeginMaintenanceBurst()`, the existing assumed-spawn burst identity path and `SCB_BindReplacementToActiveSlot()`.
+- Confirmed humans/unbound bots are not added to the removal-name set.
+- Confirmed invalid/unbuildable selected-group records abort before any kick.
+- Confirmed target changes refresh the new button through the existing command-row target refresh.
+- Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
+
 ## Focused runtime gate
-Test only the new `0.8.97-dev` validation delta. **Do not repeat the accepted 5-man, stuck-10-man, subgroup-highlight or Rogue tests.**
+Test only the new `0.8.98-dev` Resummon Group delta. **Do not repeat accepted 5-man, stuck-10-man, subgroup-highlight, Rogue or Bear/rage tests.**
 
-1. **Direct Feral power validation**
-   - Bear Form/rage path is **PASS** in 0.8.97 without combat.
-   - Cat Form/energy remains unproven for a preset-bound Druid; a manually joined unbound Cat Druid is intentionally outside Preset Manager validation.
-   - `Faerie Fire (Feral)` is irrelevant to this path.
-   - A mana-form Druid must not receive Feral-role evidence from the power bar.
+1. **Basic tracked group resummon**
+   - Target a preset/Active-Roster-bound bot.
+   - Confirm `Resummon Group` becomes enabled and its tooltip names that logical group.
+   - Click it and confirm only tracked bots assigned to that group are removed and recreated.
+   - Confirm humans are untouched.
+   - Confirm recreated bots return to the correct raid subgroup and Preset Manager identities/checks rebind normally.
 
-2. **General combat indicator progression**
-   - Still outstanding from the previous gate: for another eligible class/role, red = no evidence, yellow = one recognised observation, green = confirmed after the second.
-   - A red `X` is distinct from the red pending check and means a confirmed mismatch.
+2. **Unbound/manual bot isolation**
+   - If an unbound manually joined bot is present in the same live subgroup, Resummon Group must leave it alone.
+   - Targeting an unbound bot should not enable Resummon Group because it has no Active Roster group identity.
 
-3. **Mismatch alert**
-   - If a genuine confirmed role disagreement occurs naturally, confirm the persistent red `X` is accompanied by an actual popup plus chat warning.
-   - Runtime proof remains opportunistic; do not engineer a mismatch solely for this gate.
+3. **Missing-slot inclusion**
+   - Opportunistic only: if the selected logical group already has a tracked missing bot, Resummon Group should restore that assignment while rebuilding the remaining tracked bots.
+
+4. **Survivor safety**
+   - Opportunistic only: when resummoning would otherwise remove every bot keeping the player grouped in an instance, the existing survivor rule must retain one and replace it last.
+   - Do not manufacture a risky instance state solely for this test.
+
+5. **Remaining validation debt**
+   - Cat/energy role confirmation and the genuine mismatch popup remain opportunistic runtime coverage; neither blocks this maintenance test.
 
 ## Deferred / later
-- Resummon Group through the existing maintenance/bot-operation lifecycle.
 - Audit remaining All-row/server target sensitivity.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
 - Add neutral read-only activity/status surface, then visualiser as a presentation-only consumer.
