@@ -595,6 +595,7 @@ function SCB_MaintenanceResummonGroupOnClick()
     local assignments, removedNames = {}, {}
     local survivorName, survivorRecord
     local botCount, otherHumans, targetedLiveCount, unavailableCount = 0, 0, 0, 0
+    local destinationOccupants, destinationAssignments = 0, 0
     local id, slot, record, member, i, now, readyAt, state
 
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
@@ -640,6 +641,7 @@ function SCB_MaintenanceResummonGroupOnClick()
                 record = SCB_0826CopyMaintenanceAssignment(record)
                 record.group = slot.intendedGroup or slot.currentGroup or group
                 table.insert(assignments, record)
+                destinationAssignments = destinationAssignments + 1
 
                 member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
                 if member and member.isBot then
@@ -657,6 +659,28 @@ function SCB_MaintenanceResummonGroupOnClick()
         SCB_Print(string.format(SCB_L("RESUMMON_GROUP_UNAVAILABLE"), unavailableCount))
         return
     end
+
+    -- Anything already in the destination subgroup that is not one of the
+    -- tracked bots we are about to remove must remain there. Refuse before any
+    -- destructive action if those occupants plus the rebuilt tracked
+    -- assignments cannot fit in the five-player subgroup/party capacity.
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if (member.subgroup or member.currentGroup or 1) == group
+            and (not member.isBot or not removedNames[member.name]) then
+            destinationOccupants = destinationOccupants + 1
+        end
+    end
+    if destinationOccupants + destinationAssignments > 5 then
+        SCB_Print(string.format(
+            SCB_L("RESUMMON_GROUP_CAPACITY"),
+            group,
+            destinationOccupants,
+            destinationAssignments
+        ))
+        return
+    end
+
     if table.getn(assignments) == 0 then
         SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
         return

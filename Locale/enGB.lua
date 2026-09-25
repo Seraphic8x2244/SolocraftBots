@@ -147,6 +147,7 @@ T["TIP_RESUMMON_GROUP"] = "Replace tracked bots assigned to Group %d. Human play
 T["RESUMMON_GROUP_TARGET"] = "Target a tracked bot to resummon its Active Roster group."
 T["RESUMMON_GROUP_NONE"] = "No tracked bot assignments are available to resummon for that group."
 T["RESUMMON_GROUP_UNAVAILABLE"] = "%d tracked bot assignment(s) cannot be rebuilt, so the group was left unchanged."
+T["RESUMMON_GROUP_CAPACITY"] = "Group %d cannot be rebuilt: %d existing occupant(s) must remain and %d tracked bot assignment(s) need slots."
 T["RESUMMON_GROUP_LAST_UNSAFE"] = "Kept the last bot to avoid removing you from the instance."
 T["RESUMMON_GROUP_RETRY"] = "Resummon Group can be retried."
 T["KICK_NATIVE_UNAVAILABLE"] = "Native group removal is unavailable on this client."
