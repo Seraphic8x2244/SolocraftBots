@@ -9,8 +9,9 @@
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
-- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.99-dev` Resummon Group remains implemented but untested. `0.8.100-dev` makes requested-preset acceptance own leadership, raid conversion and receiver-side auto-loot setup and is the next runtime candidate.
-- Immediate goal: runtime-validate the 0.8.100 requested-preset ownership flow, then return to the still-untested 0.8.99 Resummon Group gate. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
+- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.100-dev` makes requested-preset acceptance own leadership, raid conversion and receiver-side auto-loot setup and is the next runtime candidate.
+- The 0.8.99 Resummon Group **backend maintenance work is provisional**, but its target-based Command Bots UX was explicitly rejected before runtime testing. Do not ask the user to test that UI. It must be reworked to the agreed per-group header control first.
+- Immediate goal: preserve the 0.8.100 Request runtime gate, then implement the agreed Resummon Group header UX plus the finalized Lucide mini-button artwork pass. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -88,14 +89,50 @@
 - Keep exact burst intent records, reverse send, join-assumption identity, subgroup movement and Active Roster replacement binding.
 - Do not redesign refill into group-by-group bursts; mixed-group refill saves meaningful time.
 - Combat-role validation is an independent watchdog for mistaken mixed-burst identity assumptions, not a reason to remove that optimisation.
-- 0.8.99 adds **Resummon Group** as another `kind="maintenance"` action rather than a new physical-operation path.
-- UX: a full-width `Resummon Group` button sits below Replace Dead/Missing + Kick All in Command Bots. It is enabled only while a friendly bot target is bound to an Active Roster slot.
-- Scope is the target bot's logical Active Roster group (`intendedGroup` preferred over observed `currentGroup`), not arbitrary live occupants.
-- The action rebuilds every expected tracked bot assignment in that logical group, including already-missing tracked assignments. Humans and unbound/manual bots are deliberately left alone.
+- 0.8.99 added **Resummon Group** as another `kind="maintenance"` action rather than a new physical-operation path. The maintenance plumbing may be reused, but the original UI/selection design is **not accepted**.
+- **Authoritative Resummon Group UX:** each visible preset group has its own mini icon button inside the `Group N` title/header, justified right. Clicking that button directly resummons that logical group. No target selection or target-dependent enablement is part of the design.
+- Remove the provisional full-width Resummon Group button from Command Bots and remove target-as-group-selector UX when implementing the correction.
+- The action should rebuild every expected tracked bot assignment in the chosen logical group, including already-missing tracked assignments. Humans and unbound/manual bots remain untouched.
 - If any tracked assignment in the selected group cannot produce a valid replacement record, the action aborts before kicking anything; no partial destructive resummon.
-- Destination capacity is also preflighted before any kick. Humans, manual/unbound bots and other non-removed occupants count against the five-player destination capacity; if the complete tracked group cannot fit, the action refuses unchanged rather than failing mid-rebuild.
-- Live tracked bots in the selected group are removed through the shared paced kick queue, then the existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths are reused unchanged.
-- If the selected group contains every live bot and survivor safety is required, one tracked bot is retained and replaced last through the existing survivor lifecycle. A lone required survivor is left in place rather than risking instance removal.
+- Destination capacity remains preflighted before any kick. Humans, manual/unbound bots and other non-removed occupants count against the five-player destination capacity; if the complete tracked group cannot fit, the action refuses unchanged rather than failing mid-rebuild.
+- Live tracked bots in the selected group remain routed through the shared paced kick queue, existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths.
+- If the selected group contains every live bot and survivor safety is required, preserve the existing retained-survivor lifecycle. A lone required survivor must be left in place rather than risking instance removal.
+
+## Mini-button visual system — finalized design
+Lucide is used only for the **small utility/chrome controls**. This is not a global artwork redesign.
+
+Agreed Lucide mapping:
+- Main Close: `X`.
+- Options / Config: `Cog`.
+- Section expand/collapse: `ChevronDown` / `ChevronUp` (**plain Candidate 1**, separate icon assets).
+- Presets drawer open/close: `ChevronLeft` / `ChevronRight` (separate icon assets).
+- Dropdown indicator: `ChevronDown`.
+- Preset Delete: `Trash`.
+- Preset Rename: `Pencil`.
+- Preset Move Up: `ArrowUp`.
+- Preset Move Down: `ArrowDown`.
+- Resummon Group: `RotateCcw`.
+- Spawn Near/Far: `Telescope`; retain state treatment rather than using different semantic glyphs.
+- Clear Focus/CC assignments: `Eraser`.
+- Assignment mode Focus: `Crosshair`.
+- Assignment mode CC: `WandSparkles` (chosen specifically for WoW sheep/polymorph/magic-CC semantics).
+- Layout Increase: `Plus`.
+- Layout Decrease: `Minus`.
+- Checkbox Off/On: `Square` / `SquareCheckBig`.
+- Debug Close: reuse `X`.
+
+Explicitly **unchanged**:
+- all Command Bots button artwork;
+- preset and Summon Bots class/role icons;
+- player role icons;
+- blessing/totem icons;
+- raid-mark icons;
+- other gameplay/identity artwork.
+
+Implementation intent:
+- use the Lucide pass to unify only the mini-control layer;
+- preserve current tooltips, state semantics and click behaviour unless separately specified;
+- do not substitute Lucide icons into the Command Bots matrix or role/class systems.
 
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
@@ -152,7 +189,7 @@ Exact `0.8.92-dev` baseline:
 - Confirmed humans/unbound bots are not added to the removal-name set.
 - Confirmed invalid/unbuildable selected-group records abort before any kick.
 - Confirmed destination occupancy is checked before removal so an unbound/manual bot cannot make the rebuilt tracked group overfill a party/raid subgroup after destructive work has started.
-- Confirmed target changes refresh the new button through the existing command-row target refresh.
+- Historical note only: 0.8.99 statically confirmed target-driven button refresh, but that UX is now rejected and must be removed during the Resummon Group redesign.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
 
 ## Static validation for 0.8.100
@@ -189,9 +226,11 @@ Test the new `0.8.100-dev` Request flow first. Do not repeat accepted summon/reb
 4. **Existing-raid request**
    - Opportunistic if convenient: when already in a raid, accepting a request should transfer raid leadership to the receiving summoner rather than only granting Assistant, then apply the receiver's Auto Loot setting.
 
-5. **Resummon Group remains untested from 0.8.99**
-   - After the Request flow is accepted, return to the previously documented Resummon Group basic tracked-group test.
-   - Its implementation was not changed by 0.8.100.
+5. **Resummon Group: do not test the provisional 0.8.99 UX**
+   - The target-based Command Bots button was not user-approved and has now been explicitly rejected.
+   - Rework it first to the agreed right-justified mini `RotateCcw` button in each `Group N` preset header.
+   - Preserve/reuse the maintenance backend only where it cleanly supports direct logical-group invocation.
+   - Runtime-test Resummon Group only after that UX correction is implemented.
 
 6. **Remaining opportunistic debt**
    - Cat/energy role confirmation and the genuine mismatch popup remain opportunistic runtime coverage.
