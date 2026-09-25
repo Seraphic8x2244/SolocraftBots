@@ -4,13 +4,13 @@
 
 ## Current
 - Branch: `dev`
-- Version: `0.8.90-dev`
-- Current implementation commit: `261df46b96a124e59ff19abaaf9051cd5468987e` (`0.8.90-dev`)
+- Version: `0.8.91-dev`
+- Current implementation commit: `81b94d372761a8a76a9c8716dcad4f9649e3c7b9` (`0.8.91-dev`)
 - Current runtime-tested implementation: `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` (`0.8.88-dev`, mismatch presentation/summon gate failed)
 - Last runtime-cleared implementation: `ff9725d0336ded2f406661bf9863d88719322124` (`0.8.87-dev`)
 - Stable baseline: `0.8.78` on `main`, promotion commit `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested runtime source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Goal: runtime-validate the focused `0.8.90-dev` correction for the failed raid summon finalization plus live-layout mismatch presentation.
-- Current scope boundary: 0.8.87 remains the last runtime-cleared baseline. 0.8.90 supersedes untested 0.8.89 by fixing the actual hang exposed by the user's 10-man screenshot/chat. Do not begin maintenance changes, visualiser work, or unrelated cleanup until this combined gate passes.
+- Goal: runtime-validate the corrected human subgroup/row model plus mismatch presentation in `0.8.91-dev`.
+- Current scope boundary: 0.8.87 remains the last runtime-cleared baseline. 0.8.91 supersedes untested 0.8.89/0.8.90 after the user corrected the model: raid subgroup is enforceable, row within subgroup is not. Do not begin maintenance changes, visualiser work, or unrelated cleanup until this gate passes.
 
 ## Current Design / Development Contract
 
@@ -31,7 +31,7 @@
 ### Invariants
 - Logical preset identity is independent of Blizzard row ordering. A human owns an exact logical slot and suppresses that underlying bot intent while present; Blizzard party/raid placement is live observation, not logical identity.
 - `size <= 5` is a topology policy: remain a party, never convert to raid, do not manipulate subgroups, keep deterministic remaining-bot order, and reserve exactly one final required bot assignment when a continuity bootstrap occupies a slot.
-- `size > 5` uses raid topology. Bot subgroup/order remains intentionally controlled; a human logical slot must not be treated as an instruction to force that human into a Blizzard row/subgroup.
+- `size > 5` uses raid topology. A human's exact logical slot determines an enforceable Blizzard subgroup (`ceil(slotIndex/5)`) but not an enforceable row inside that subgroup. During preset summon/rebuild, Spawn must move each configured human to the correct subgroup and verify it before bot bursts continue; it must never try to force the human's row/order inside that subgroup.
 - Active Roster covered-slot lifecycle is authoritative: human present -> `expected=false`, `state="covered"`; that human absent before replacement -> same logical slot becomes `expected=true`, `state="missing"`; human returns before replacement -> covered again; once a replacement bot binds, `coveredBy` is cleared and it becomes a normal expected bot slot.
 - After Replace Missing fills a departed human's logical slot, SoloCraftBots must not auto-kick or auto-free a slot when that human returns. The user manually frees capacity if they want the human back.
 - Canonical capacity-reuse rule: removal requested -> observe member absent from Blizzard roster -> wait 3.0 seconds -> permit an add that depends on the freed capacity. Harmless work that does not consume the freed slot may continue during the settle.
@@ -62,18 +62,19 @@
 - 0.8.85 fixes Ctrl-Come modifier normalization at `SCB_RequestCommand`: Vanilla `IsControlKeyDown()` returns a truthy numeric value, so strict `== true` discarded the modifier after the 0.8.76 front-door convergence. The request front door now normalizes any truthy `forceMove` value to real boolean `true`; user confirmed the reported One Ctrl-Come path now works.
 - 0.8.84 item 2.2 is implemented, statically checked and user-tested. Normal inbound requests, existing-bot teardown/rebuild, busy-operation exclusion, local Summon regression, and summoning-client ownership of generated bot identity all passed.
 - 0.8.86 architecture item 2.3 is implemented and user-verified: Save Received retains transmitted exact human `slotIndex` in preset `playerSlots`, while preserving the existing `playerGroups` and `playerRoles` data and protocol-2 wire format.
-- Party and raid presets now use one explicit logical-slot model. `SCB_ArrangePresetPlayers()` / `PRESET_ARRANGE_PLAYERS` are removed so logical human assignment no longer physically arranges humans. The focused 0.8.87 runtime gate is passed, including preset-switch persistence of moved human logical-slot assignment.
+- Party and raid presets use one explicit logical-slot model. The 0.8.87 removal of the old Presets-owned `SCB_ArrangePresetPlayers()` correctly removed row/order assumptions but incorrectly removed subgroup enforcement too. User correction establishes the authoritative split: subgroup is enforceable, row is observational. 0.8.91 restores subgroup-only human placement in Spawn while leaving exact row/order untouched.
 - Saved logical composition must not be silently rewritten to follow transient Blizzard layout. The 0.8.88 live mismatch presentation is implemented as a slow yellow whole-group background pulse:
   - same subgroup/composition but Blizzard row reorder: tooltip `Group composition correct; Blizzard client reordered members.`
   - actual subgroup rearrangement outside SCB: tooltip `Group rearranged in Blizzard Raid tab.`
-- Layout mismatch classification belongs to Roster observation; Presets only renders the returned state. It is intentionally read-only and must never mutate saved logical slots, move humans, or create physical roster work.
+- Layout mismatch classification belongs to Roster observation; Presets only renders the returned state. Presentation is read-only and never mutates saved logical slots. During an active preset summon/rebuild, Spawn may move humans between subgroups to satisfy their logical group; outside that operation, a manual/external subgroup rearrangement is observed and warned about rather than silently rewriting the preset.
 - Maintenance selection should become reusable intent. Replace Missing/Dead and planned Resummon Group N should select logical assignments and feed the same Spawn-owned lifecycle; do not create another scheduler.
 - Continue auditing All-row/server target sensitivity into declarative command metadata rather than button-local conditionals.
 - Only after the logical-slot/maintenance cleanup and runtime gates should proven-dead legacy refill/compatibility runtime be deleted.
 - The future gnomish LCD/pixel visualiser is deliberately dumb. First add a neutral read-only status/activity surface for Command, Bot Operation, Communication and Roster/Layout; the visualiser later consumes it without scheduler/business logic.
 
 ## Recent Relevant Commits
-- `261df46b96a124e59ff19abaaf9051cd5468987e` — `0.8.90-dev`: finalize raid tracker by explicit logical spawn identity so physical human subgroup mismatch cannot strand `PRESET_TRACK_ROSTER`.
+- `81b94d372761a8a76a9c8716dcad4f9649e3c7b9` — `0.8.91-dev`: restore human subgroup-only placement in Spawn and revert the incorrect 0.8.90 acceptance of wrong physical human subgroups.
+- `261df46b96a124e59ff19abaaf9051cd5468987e` — `0.8.90-dev`: attempted to finalize around a wrong physical human subgroup; superseded untested after user corrected that subgroup is enforceable and must be fixed by SCB.
 - `65ee83e659a1015d17b172d305d04376c80b2331` — `0.8.89-dev`: support party row mismatch classification, refresh presentation after preset-operation ownership ends, and hard-guard survivor parking to bot names only; superseded before runtime test by 0.8.90 after the hang root cause was identified.
 - `5a546d30915381be6b922f108ddd82be50ada372` — record failed 0.8.88 runtime gate before diagnosis.
 - `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` — `0.8.88-dev`: add read-only live-layout mismatch classification plus slow yellow preset-group pulse/tooltips.
@@ -106,14 +107,22 @@
 - Stable/released baseline is `0.8.78` on `main` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`.
 
 ## Implemented / Awaiting Runtime Test
-- `0.8.90-dev` / `261df46b96a124e59ff19abaaf9051cd5468987e` supersedes untested 0.8.89.
-- Actual 10-man hang root cause: after 0.8.87 stopped physically moving humans, `SCB_TryFinalizeRaidRoleTracking()` still required each physical Blizzard subgroup to contain the same number of bots as the logical preset group. If a human is logically G2 but Blizzard leaves them physically in G1, physical G1 can only contain four bots while one logical-G1 bot necessarily spills into physical G2. The old finalizer therefore returned false forever at `PRESET_TRACK_ROSTER`, leaving the preset operation active and producing `Preset Summon is already in progress` on normal retries.
-- Raid finalization now prefers the already-established explicit spawn identity (`scbAssumedName` / slotIndex) as logical truth. Once every active logical bot assignment resolves to a live bot name and total roster size matches the preset, the tracker can finalize regardless of Blizzard subgroup placement.
-- The old physical subgroup-ordinal finalizer remains only as a compatibility fallback when explicit spawn identity is unavailable; it still requires physical group composition to match logical composition.
-- 0.8.89's presentation corrections are retained: party row mismatches are classified, presentation refreshes immediately after preset operation ownership ends, and bootstrap parking has an explicit bot-only guard.
-- A human in a different physical raid subgroup than their logical preset group is now expected to produce the yellow `Group rearranged in Blizzard Raid tab.` warning without blocking summon completion or causing SCB to move that human.
+- `0.8.91-dev` / `81b94d372761a8a76a9c8716dcad4f9649e3c7b9` supersedes untested 0.8.89 and 0.8.90.
+- Corrected model: a human's logical slot encodes both subgroup and row intent, but only the subgroup is physically enforceable. The row is comparison/presentation data only.
+- `Spawn.lua` now owns `SCB_ArrangePresetHumanGroups()`. During raid summon/rebuild it resolves every configured human by name, moves them with `SetRaidSubgroup()` when their current subgroup differs from the logical subgroup, re-resolves raid indices before each move, then verifies subgroup membership from fresh raid roster reads.
+- Human subgroup placement runs in the existing `PRESET_PREPARE_RAID_BOTS` stage before deterministic bot bursts. The existing subgroup-move barrier is reused; no second scheduler or Presets-owned physical mutation path was reintroduced.
+- Exact human row/order is deliberately untouched. Blizzard may display the same subgroup members in a different row order; that is the intended `reordered` yellow presentation case.
+- The 0.8.90 logical-identity finalizer workaround is reverted. Raid finalization again requires physical subgroup bot counts to match logical composition, which is correct once SCB has first put humans in the correct subgroup.
+- 0.8.89's presentation fixes remain: party row mismatches can be classified, presentation refreshes after preset-operation ownership ends, and bootstrap parking is explicitly bot-only.
+- After a completed summon, an external/manual Raid-tab subgroup change remains presentation-only: it should show `Group rearranged in Blizzard Raid tab.` until the layout is restored or a later summon/rebuild enforces the configured subgroup again.
 
 ## Static / Automated Checks
+- Focused 0.8.91 diff from 0.8.90 changes only `Spawn.lua` (+68/-3), `Presets.lua` (reverts the 0.8.90 finalizer workaround, +10/-44), and the TOC version bump.
+- Historical check against pre-0.8.87 code confirms the former `SCB_ArrangePresetPlayers()` only called `SetRaidSubgroup(i, wantedGroup)` and verified `currentGroup == wantedGroup`; it never attempted to set a row within the subgroup. 0.8.91 restores that subgroup-only behavior under Spawn ownership.
+- The restored mover resolves the raid index by player name immediately before every move because `SetRaidSubgroup()` can reorder raid indices. Verification also matches by name and checks subgroup only.
+- `PRESET_PREPARE_RAID_BOTS` now sequences: optional bot bootstrap/survivor parking -> human subgroup enforcement -> existing roster-event barrier -> deterministic bot bursts.
+- The strict raid tracker finalizer is restored from 0.8.89: expected and observed bot counts must match per physical subgroup before ordinal bot-name binding. This catches a failed human subgroup move instead of silently accepting it.
+- Container network/DNS cannot reach GitHub, so the canonical Lua 5.0.2 checker in `VanillaTemplate` still cannot be materialized into the execution shell; no compiler pass is claimed.
 - Focused 0.8.90 diff from 0.8.89 changes only `Presets.lua` (+34/-1) and the TOC version bump.
 - Root-cause proof from the reported screenshot: logical preset places Revenga in Group 2 while Blizzard Raid tab shows Revenga physically in Group 1. With one human, the old finalizer expected logical bot counts G1=5/G2=4 but the only possible physical full-raid bot counts are G1=4/G2=5. Its equality check could never pass, exactly matching the observed stuck active summon.
 - Explicit spawn identity already records each generated bot against its logical `slotIndex` before finalization. The 0.8.90 path verifies each active assignment's assumed name exists live and is a bot before binding `botName`, so it does not infer identity from transient subgroup placement.
@@ -137,8 +146,8 @@
 - Item 2.3 protocol behavior remains unchanged: `SCBPRESET` protocol 2 serialization/deserialization was not edited by this slice.
 
 ## Current Issues
-- `0.8.90-dev` is not yet runtime-tested. The focused gate is whether the previously hanging 10-man summon now completes when the human's physical subgroup differs from their logical group, and whether the yellow mismatch presentation appears afterward.
-- The reported "wrong raid group" is a physical Blizzard/layout mismatch, not evidence that SCB moved the human. Under the current design SCB intentionally does not force humans into logical subgroups; it must complete around that layout and warn about it instead.
+- `0.8.91-dev` is not yet runtime-tested. The focused gate is whether a 10-man summon/re-summon now moves the human to the configured subgroup, completes without hanging, and leaves only uncontrollable row/order differences for yellow presentation.
+- 0.8.88 demonstrated the regression caused by removing subgroup enforcement: Revenga was configured in logical Group 2 but remained physically in Blizzard Group 1, and the summon stranded at finalization. That is an addon failure, not an acceptable layout state during summon.
 - No known runtime issue remains in the 0.8.87 unified logical-slot core after the focused gate passed.
 - No remaining known issue from the 0.8.85 Ctrl-Come regression; user confirmed the reported One path works.
 - Item 2.2 has no remaining known runtime issue after the 0.8.84 pass.
@@ -152,20 +161,20 @@
 - Version/implementation: `0.8.88-dev` / `252f6f3acb33f755b0c6d5c34dedc68e0538b15e` plus documentation-only branch updates.
 - Passed: the underlying 0.8.87 logical-slot model remained visible.
 - Failed: no yellow mismatch presentation appeared in the tested 5-man or 10-man case.
-- Crucial 10-man evidence: the Raid tab showed Revenga physically in Group 1 while the preset placed Revenga logically in Group 2, and subsequent normal Summon clicks reported `Preset Summon is already in progress`. Ctrl-click forced replacement/retry.
-- Diagnosis: the summon was genuinely stranded at tracker finalization because old finalization still assumed physical subgroup bot counts matched logical groups after human physical arrangement had been removed.
-- Result: 0.8.88 failed; 0.8.89 was superseded before runtime test; 0.8.90 contains the root-cause correction.
+- Crucial 10-man evidence: preset showed Revenga in logical Group 2 while Blizzard Raid tab showed Revenga physically in Group 1. The resummon then remained active, so normal retries printed `Preset Summon is already in progress`; Ctrl-click forced recovery.
+- Corrected diagnosis: the regression began when 0.8.87 removed human subgroup placement together with the old row-oriented arrangement concept. The finalizer hang was a consequence of the human never being moved to their enforceable logical subgroup.
+- Result: 0.8.88 failed; 0.8.89 and 0.8.90 were superseded untested; 0.8.91 restores the correct subgroup/row split.
 
 ### Next Runtime Test
-- Test exact runtime code `0.8.90-dev` at implementation `261df46b96a124e59ff19abaaf9051cd5468987e` plus documentation-only handoff commits.
-- Reproduce the 10-man preset with Revenga logically in Group 2 while Blizzard leaves Revenga physically in Group 1. The summon must finish without Ctrl-click recovery; after completion, a normal Summon click must no longer say `already in progress`.
-- The physical mismatch should remain untouched by SCB and Groups 1/2 should show the yellow `Group rearranged in Blizzard Raid tab.` presentation.
-- Five-player: player saved away from logical slot 1 should show the yellow row-reorder warning after summon completes.
-- Manually alter/restore Raid-tab layout and confirm warning state updates/clears while logical preset slot assignments remain unchanged.
+- Test exact runtime code `0.8.91-dev` at implementation `81b94d372761a8a76a9c8716dcad4f9649e3c7b9` plus documentation-only handoff commits.
+- Ten-player core: use the same preset with Revenga logically in Group 2. A normal Summon/re-summon must physically move Revenga into Blizzard Group 2 before completion and must finish without Ctrl-click recovery or a lingering `already in progress` state.
+- Do not expect SCB to control Revenga's row inside Group 2. If Blizzard places Revenga on a different row from the saved logical slot, Group 2 should show the yellow `Group composition correct; Blizzard client reordered members.` warning.
+- After summon completes, manually move Revenga to Blizzard Group 1. Groups affected by that external subgroup change should show `Group rearranged in Blizzard Raid tab.`; SCB should not silently rewrite the preset. A subsequent Summon/rebuild should move Revenga back to configured Group 2.
+- Five-player: player saved away from logical slot 1 should show the row-reorder warning; there is no subgroup movement in party topology.
 - Do not begin maintenance changes, visualiser work, or unrelated cleanup until this gate is accepted.
 
 ## Planned / Next Work
-1. Runtime-clear the 0.8.90 raid-finalization + corrected mismatch-presentation gate.
+1. Runtime-clear the 0.8.91 human-subgroup + row-mismatch presentation gate.
 2. Separate maintenance selection from execution and implement Resummon Group through the existing maintenance/bot-operation lifecycle.
 3. Audit remaining All-row/server target sensitivity and keep semantics declarative.
 4. Delete only proven-dead legacy refill/compatibility runtime after call-site audit and runtime proof.
@@ -186,12 +195,12 @@
 - Stable 0.8.78 was promoted from tested runtime `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`; the promotion preserved the previous main history rather than force-pushing.
 - Stable 0.8.78 release tree used the tested dev runtime/assets unchanged. Release-only differences were stable TOC title/version and exclusion of development status files; no `Debug.lua` existed in that release tree.
 - No current main-only runtime/assets are known to require special preservation, but future promotion must still compare `main` and `dev` rather than assuming replacement because main has diverged historically.
-- Do not promote the current dev line yet. Item 2.3 and the 0.8.87 unified logical-slot core are runtime-cleared; 0.8.88 failed, 0.8.89 was superseded untested, and 0.8.90 is awaiting runtime validation. Later architecture work also remains before the intended release gate.
+- Do not promote the current dev line yet. Item 2.3 and the 0.8.87 logical-slot editor/suppression core are runtime-cleared; 0.8.88 failed, 0.8.89/0.8.90 were superseded untested, and 0.8.91 is awaiting runtime validation. Later architecture work also remains before the intended release gate.
 - Current `main` and `dev` have diverged historically, so release preparation must compare and reconcile them rather than overwrite `main`.
-- Known validation debt accepted for current release: none newly accepted here; 0.8.90 remains development-only and untested in runtime.
+- Known validation debt accepted for current release: none newly accepted here; 0.8.91 remains development-only and untested in runtime.
 - External/runtime prerequisites: WoW 1.12.1 / Interface 11200 and a SoloCraft/PartyBot-capable server. Preset communications require a compatible SoloCraftBots protocol-2 peer. pfUI role-state integration is supported observationally but is not the physical-operation owner.
 
 ## Exact Next Step
-Runtime-test `0.8.90-dev` at implementation `261df46b96a124e59ff19abaaf9051cd5468987e`: reproduce the 10-man physical/logical human subgroup mismatch and verify the preset operation now completes normally, then verify the expected yellow subgroup warning; also verify the 5-man row warning.
+Runtime-test `0.8.91-dev` at implementation `81b94d372761a8a76a9c8716dcad4f9649e3c7b9`: verify a 10-man summon/re-summon physically places each human in the configured subgroup and completes normally, while any uncontrollable within-subgroup row difference produces the reorder warning. Then manually move a human to a wrong subgroup after completion and verify the regroup warning plus correction on the next Summon/rebuild.
 
 Do not begin maintenance changes, visualiser work, or unrelated cleanup until this runtime gate is explicitly accepted.
