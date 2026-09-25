@@ -715,9 +715,25 @@ function SCB_SetPresetGroupDragHighlight(groupIndex, alpha)
     end
 end
 
+local function SCB_EnsurePresetLayoutMismatchHighlight(row)
+    local texture
+    if not row then return nil end
+    texture = row.scbLayoutMismatchHighlight
+    if not texture then
+        texture = row:CreateTexture(nil, "BACKGROUND")
+        texture:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
+        texture:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        texture:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        texture:SetVertexColor(1.00, 0.72, 0.05, 1.00)
+        texture:Hide()
+        row.scbLayoutMismatchHighlight = texture
+    end
+    return texture
+end
+
 function SCB_PresetLayoutMismatchPulseOnUpdate()
     local elapsed, pulse, alpha
-    local i, frame
+    local i, row, highlight
     if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
         this:Hide()
         return
@@ -725,23 +741,29 @@ function SCB_PresetLayoutMismatchPulseOnUpdate()
     elapsed = (this.scbElapsed or 0) + (arg1 or 0)
     this.scbElapsed = elapsed
     pulse = 0.5 + (0.5 * math.sin(elapsed * 1.6))
-    alpha = 0.14 + (pulse * 0.20)
+    alpha = 0.25 + (pulse * 0.45)
 
-    for i = 1, 8 do
-        frame = SCB.presetGroupFrames and SCB.presetGroupFrames[i] or nil
-        if frame and frame.scbLayoutMismatchKind then
-            frame:SetBackdropColor(0.55, 0.42, 0.04, alpha)
+    for i = 1, 40 do
+        row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+        if row and row.scbLayoutMismatchKind then
+            highlight = SCB_EnsurePresetLayoutMismatchHighlight(row)
+            if highlight then
+                highlight:SetAlpha(alpha)
+                highlight:Show()
+            end
         end
     end
 end
 
 function SCB_RefreshPresetLayoutMismatchPresentation(observed)
     local mismatches = {}
+    local slots = {}
     local any = false
-    local i, frame, kind
+    local i, frame, row, highlight, kind
 
     if SCB_GetPresetLiveLayoutMismatches then
         mismatches = SCB_GetPresetLiveLayoutMismatches(observed) or {}
+        slots = mismatches.slots or {}
     end
 
     for i = 1, 8 do
@@ -749,18 +771,33 @@ function SCB_RefreshPresetLayoutMismatchPresentation(observed)
         if frame then
             kind = mismatches[i]
             frame.scbLayoutMismatchKind = kind
+            frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
             if kind == "regrouped" then
                 frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REGROUPED")
-                any = true
             else
                 frame.scbTooltip = nil
-                frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
             end
 
             if frame.scbTooltip then
                 SCB_RefreshVisibleTooltip(frame)
             elseif GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(frame) then
                 GameTooltip:Hide()
+            end
+        end
+    end
+
+    for i = 1, 40 do
+        row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+        if row then
+            kind = slots[i]
+            row.scbLayoutMismatchKind = kind
+            highlight = SCB_EnsurePresetLayoutMismatchHighlight(row)
+            if kind == "regrouped" then
+                any = true
+                highlight:SetAlpha(0.70)
+                highlight:Show()
+            else
+                highlight:Hide()
             end
         end
     end

@@ -1193,6 +1193,8 @@ local SCB_ROLE_SPELLS = {
         { "Mortal Strike", "meleedps" },
         { "Bloodthirst", "meleedps" },
         { "Whirlwind", "meleedps" },
+        { "Sweeping Strikes", "meleedps" },
+        { "Death Wish", "meleedps" },
     },
     priest = {
         { "Greater Heal", "healer" },
@@ -1213,10 +1215,22 @@ local SCB_ROLE_SPELLS = {
         { "Maul", "tank" },
         { "Growl", "tank" },
         { "Swipe", "tank" },
+        { "Demoralizing Roar", "tank" },
+        { "Enrage", "tank" },
+        { "Frenzied Regeneration", "tank" },
+        { "Feral Charge", "tank" },
+        { "Bash", "tank" },
         { "Cat Form", "meleedps" },
+        { "Claw", "meleedps" },
         { "Rake", "meleedps" },
         { "Ferocious Bite", "meleedps" },
         { "Shred", "meleedps" },
+        { "Rip", "meleedps" },
+        { "Pounce", "meleedps" },
+        { "Ravage", "meleedps" },
+        { "Tiger's Fury", "meleedps" },
+        -- Faerie Fire (Feral) is intentionally excluded: both bear and cat
+        -- roles can use it, so it cannot independently validate either role.
         { "Healing Touch", "healer" },
         { "Regrowth", "healer" },
         { "Rejuvenation", "healer" },
@@ -1410,6 +1424,24 @@ local function SCB_RoleValidationLabel(role)
     return tostring(role or "?")
 end
 
+local function SCB_ShowRoleMismatchPopup(text)
+    if not text or not StaticPopupDialogs or not StaticPopup_Show then return end
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    if SoloCraftBotsDB.options.hideSCBScreenWarnings then return end
+
+    if not StaticPopupDialogs["SOLOCRAFTBOTS_ROLE_MISMATCH"] then
+        StaticPopupDialogs["SOLOCRAFTBOTS_ROLE_MISMATCH"] = {
+            text = "%s",
+            button1 = OKAY,
+            timeout = 0,
+            whileDead = 1,
+            hideOnEscape = 1,
+        }
+    end
+    StaticPopup_Show("SOLOCRAFTBOTS_ROLE_MISMATCH", text)
+end
+
 local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state)
     local slot, assumption, slotIndex, groupIndex, evidence, key, text
     if not name or not intendedRole or not state or not state.confirmedRole then return false end
@@ -1442,7 +1474,7 @@ local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state
         tostring(evidence)
     )
     if SCB_Print then SCB_Print(text) end
-    if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(text) end
+    SCB_ShowRoleMismatchPopup(text)
     return true
 end
 
@@ -1505,7 +1537,6 @@ end
 -- -------------------------------------------------------------------------
 
 local SCB_CONFIRM_COLORS = {
-    [0] = { 1.00, 0.10, 0.10 },
     [1] = { 1.00, 0.90, 0.00 },
     [2] = { 0.20, 1.00, 0.20 },
 }
@@ -1671,9 +1702,11 @@ function SCB_RefreshPresetRoleIndicators()
                             end
                             if stage < 0 then stage = 0 end
                             if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
-                            color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
-                            row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
-                            row.scbConfirmedTick:Show()
+                            if stage > 0 then
+                                color = SCB_CONFIRM_COLORS[stage]
+                                row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
+                                row.scbConfirmedTick:Show()
+                            end
                         end
                     end
                 end
@@ -2394,7 +2427,7 @@ local function SCB_LiveLayoutSetsMatch(expected, actual)
 end
 
 function SCB_GetPresetLiveLayoutMismatches(observed)
-    local result = {}
+    local result = { slots = {} }
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
     local currentGroup, groupCount
     local expectedByGroup, actualByGroup, completeByGroup = {}, {}, {}
@@ -2436,6 +2469,10 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
             name = assignment.botName
             if g and name and observed.byName and observed.byName[name] then
                 expectedByGroup[g][name] = true
+                member = observed.byName[name]
+                if assignment.slotIndex and member.currentGroup and member.currentGroup ~= g then
+                    result.slots[assignment.slotIndex] = "regrouped"
+                end
             elseif g then
                 completeByGroup[g] = false
             end
@@ -2447,6 +2484,10 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
         name = player and player.name or nil
         if g and name and observed.byName and observed.byName[name] then
             expectedByGroup[g][name] = true
+            member = observed.byName[name]
+            if player.slotIndex and member.currentGroup and member.currentGroup ~= g then
+                result.slots[player.slotIndex] = "regrouped"
+            end
         elseif g then
             completeByGroup[g] = false
         end
