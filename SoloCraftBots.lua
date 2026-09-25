@@ -1211,6 +1211,11 @@ function SCB_LayoutCommandUI()
     layout.kickAll:SetWidth(utilityWidth)
     layout.kickAll:SetPoint("LEFT", layout.replaceDead, "RIGHT", utilityGap, 0)
 
+    layout.resummonGroup:ClearAllPoints()
+    layout.resummonGroup:SetWidth(utilityTotal)
+    layout.resummonGroup:SetPoint("TOPLEFT", layout.replaceDead, "BOTTOMLEFT", 0, -6)
+    y = y - 30
+
     -- Positive spacing can make the command block taller than its original
     -- fixed content area. Grow the section only when needed; negative spacing
     -- can compact the controls without leaving the following section misplaced.
@@ -1377,6 +1382,13 @@ function SCB_CreateCommandUI(frame)
     kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
     kickAll:SetScript("OnLeave", SCB_TooltipOnLeave)
 
+    local resummonGroup = SCB_CreateTextButton(content, "SoloCraftBotsResummonGroup", 198, 24, SCB_L("RESUMMON_GROUP"))
+    resummonGroup.scbTooltip = SCB_L("RESUMMON_GROUP_TARGET")
+    resummonGroup:SetScript("OnClick", SCB_MaintenanceResummonGroupOnClick)
+    resummonGroup:SetScript("OnEnter", SCB_TooltipOnEnter)
+    resummonGroup:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.resummonGroupButton = resummonGroup
+
     SCB.commandLayout = {
         section = section,
         content = content,
@@ -1386,9 +1398,11 @@ function SCB_CreateCommandUI(frame)
         standaloneButtons = standaloneButtons,
         replaceDead = replaceDead,
         kickAll = kickAll,
+        resummonGroup = resummonGroup,
     }
     SCB_LayoutCommandUI()
     SCB_RefreshTargetCommandRow()
+    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
 end
 
 function SCB_CreateRaidmarkUI(frame)

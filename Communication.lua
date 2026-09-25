@@ -1608,6 +1608,7 @@ end
 
 function SCB_RefreshTargetCommandRow()
     SCB_RefreshCommandAvailability()
+    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
 end
 
 function SCB_RefreshSpreadToggle(button)

@@ -313,7 +313,15 @@ local function SCB_0826FinishMaintenance(status, reason, userText)
     if SCB_EndBotOperation then SCB_EndBotOperation(status or "complete", reason) end
     if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
+    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
     if userText and SCB_Print then SCB_Print(userText) end
+end
+
+local function SCB_0826MaintenanceRetryHint(state)
+    if state and state.action == "resummon-group" then
+        return SCB_L("RESUMMON_GROUP_RETRY")
+    end
+    return "Replace Missing can be retried."
 end
 
 local function SCB_0826MaintenanceCombatBlocked(state, now)
@@ -536,6 +544,212 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
 end
 
+function SCB_GetResummonTargetGroup()
+    local name, slot, group
+    if not SCB_IsFriendlyBotTarget or not SCB_IsFriendlyBotTarget() then return nil, nil, nil end
+    name = UnitName and UnitName("target") or nil
+    if not name then return nil, nil, nil end
+    slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
+    if not slot or not slot.expected then return nil, name, nil end
+    group = slot.intendedGroup or slot.currentGroup or 1
+    return group, name, slot
+end
+
+function SCB_CanResummonTargetGroup()
+    local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
+    local group = SCB_GetResummonTargetGroup()
+    local roster, id, slot
+    if operation or not group then return false, group end
+    roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
+    if not roster or not roster.active then return false, group end
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected
+            and (slot.intendedGroup or slot.currentGroup or 1) == group
+            and SCB_BuildActiveReplacementRecord
+            and SCB_BuildActiveReplacementRecord(slot) then
+            return true, group
+        end
+    end
+    return false, group
+end
+
+function SCB_RefreshResummonGroupButton()
+    local button = SCB.resummonGroupButton
+    local available, group
+    if not button then return end
+    available, group = SCB_CanResummonTargetGroup()
+    if available then
+        button:SetAlpha(1)
+        button:Enable()
+        button.scbTooltip = string.format(SCB_L("TIP_RESUMMON_GROUP"), group or 1)
+    else
+        button:SetAlpha(0.5)
+        button:Disable()
+        button.scbTooltip = SCB_L("RESUMMON_GROUP_TARGET")
+    end
+    if SCB_RefreshVisibleTooltip then SCB_RefreshVisibleTooltip(button) end
+end
+
+function SCB_MaintenanceResummonGroupOnClick()
+    local operation, group, targetName, roster, observed, members
+    local assignments, removedNames = {}, {}
+    local survivorName, survivorRecord
+    local botCount, otherHumans, targetedLiveCount, unavailableCount = 0, 0, 0, 0
+    local id, slot, record, member, i, now, readyAt, state
+
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
+    if (SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation())
+        or (SCB_IsKickQueueActive and SCB_IsKickQueueActive())
+        or SCB_0826PendingBotAddsStillActive() then
+        SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
+    group, targetName = SCB_GetResummonTargetGroup()
+    if not group then
+        SCB_Print(SCB_L("RESUMMON_GROUP_TARGET"))
+        return
+    end
+
+    roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
+    observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
+    if not roster or not roster.active then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
+        return
+    end
+
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.isBot then
+            botCount = botCount + 1
+        elseif not member.isSelf then
+            otherHumans = otherHumans + 1
+        end
+    end
+
+    now = GetTime and GetTime() or 0
+    readyAt = now
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected and (slot.intendedGroup or slot.currentGroup or 1) == group then
+            record = SCB_BuildActiveReplacementRecord and SCB_BuildActiveReplacementRecord(slot) or nil
+            if not record then
+                unavailableCount = unavailableCount + 1
+            else
+                record = SCB_0826CopyMaintenanceAssignment(record)
+                record.group = slot.intendedGroup or slot.currentGroup or group
+                table.insert(assignments, record)
+
+                member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
+                if member and member.isBot then
+                    removedNames[slot.currentName] = true
+                    targetedLiveCount = targetedLiveCount + 1
+                elseif record.missingSince then
+                    local missingReadyAt = record.missingSince + (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0)
+                    if missingReadyAt > readyAt then readyAt = missingReadyAt end
+                end
+            end
+        end
+    end
+
+    if unavailableCount > 0 then
+        SCB_Print(string.format(SCB_L("RESUMMON_GROUP_UNAVAILABLE"), unavailableCount))
+        return
+    end
+    if table.getn(assignments) == 0 then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
+        return
+    end
+    if next(removedNames) ~= nil and not UninviteByName then
+        SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
+        return
+    end
+
+    if otherHumans == 0 and targetedLiveCount == botCount and botCount > 0
+        and SCB_SurvivorSafetyRequired and SCB_SurvivorSafetyRequired() then
+        survivorName = SCB_FindGroupOneSurvivor and SCB_FindGroupOneSurvivor(members) or nil
+        if survivorName then
+            for i = 1, table.getn(assignments) do
+                record = assignments[i]
+                if record and record.sourceName == survivorName then
+                    survivorRecord = record
+                    table.remove(assignments, i)
+                    removedNames[survivorName] = nil
+                    break
+                end
+            end
+        end
+    end
+
+    if table.getn(assignments) == 0 and survivorRecord then
+        SCB_Print(SCB_L("RESUMMON_GROUP_LAST_UNSAFE"))
+        return
+    end
+
+    SCB_0826SortMaintenanceAssignments(assignments)
+    operation = SCB_BeginBotOperation and SCB_BeginBotOperation("maintenance", {
+        kind = "maintenance",
+        action = "resummon-group",
+        group = group,
+        target = targetName,
+        assignmentCount = table.getn(assignments) + (survivorRecord and 1 or 0),
+    }) or nil
+    if not operation then
+        SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    state = {
+        action = "resummon-group",
+        targetGroup = group,
+        phase = "nextgroup",
+        remaining = assignments,
+        remainingHead = 1,
+        removedNames = removedNames,
+        survivorAssignment = survivorRecord,
+        survivorName = survivorName,
+        readyAt = readyAt,
+        lastUnsafeTextKey = "RESUMMON_GROUP_LAST_UNSAFE",
+    }
+    operation.maintenance = state
+    SCB_0826SetMaintenanceSentinel(operation, true)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+
+    SCB_0826MaintenanceDebug(
+        "resummon group=" .. tostring(group)
+        .. " assignments=" .. tostring(table.getn(assignments) + (survivorRecord and 1 or 0))
+        .. " liveRemovals=" .. tostring(targetedLiveCount)
+        .. " survivor=" .. tostring(survivorName or "none")
+    )
+
+    if not SCB_KickBots or not SCB_KickBots("all", {
+        names = removedNames,
+        manageSafety = false,
+        preserveName = survivorName,
+        silent = true,
+    }) then
+        SCB_0826FinishMaintenance("failed", "shared resummon removal queue unavailable",
+            SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    if next(removedNames) ~= nil then
+        state.phase = "waitremoved"
+        state.removalStartedAt = now
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-remove") end
+    elseif readyAt > now then
+        state.phase = "settle"
+        state.settleUntil = readyAt
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-settle") end
+    else
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
+    end
+
+    if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
+    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
+end
+
 function SCB_MaintenanceReplaceOnClick()
     local missing, dead, unavailableMissing, unavailableDead
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
@@ -698,7 +912,8 @@ function SCB_MaintenanceReplaceOnUpdate()
             if state.removalStartedAt
                 and (now - state.removalStartedAt) >= SCB.MAINTENANCE_REMOVAL_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "removed bot never left roster",
-                    "Bot maintenance stopped because a removed bot never left the roster. Replace Missing can be retried.")
+                    "Bot maintenance stopped because a removed bot never left the roster. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
@@ -731,7 +946,7 @@ function SCB_MaintenanceReplaceOnUpdate()
             if state.survivorAssignment and state.survivorName then
                 if SCB_CountGroupBots and SCB_CountGroupBots() <= 1 then
                     SCB_0826FinishMaintenance("failed", "last safety bot could not be replaced safely",
-                        SCB_L("REPLACE_DEAD_LAST_UNSAFE"))
+                        SCB_L(state.lastUnsafeTextKey or "REPLACE_DEAD_LAST_UNSAFE"))
                     return
                 end
 
@@ -778,7 +993,8 @@ function SCB_MaintenanceReplaceOnUpdate()
         if table.getn(newBots) < expected then
             if state.burstStartedAt and (now - state.burstStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "replacement burst timed out",
-                    "Bot maintenance stopped because a replacement did not join. Replace Missing can be retried.")
+                    "Bot maintenance stopped because a replacement did not join. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
@@ -795,7 +1011,8 @@ function SCB_MaintenanceReplaceOnUpdate()
         if not resolvedBots then
             if state.burstStartedAt and (now - state.burstStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "replacement identity timed out",
-                    "Bot maintenance stopped because replacement identity could not be confirmed. Replace Missing can be retried.")
+                    "Bot maintenance stopped because replacement identity could not be confirmed. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
