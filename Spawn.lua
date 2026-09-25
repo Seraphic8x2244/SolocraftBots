@@ -191,6 +191,66 @@ SCB.scb072TryParkSurvivorInGroupEight = SCB_TryParkSurvivorInGroupEight
 SCB.scb072TryRemoveParkedSurvivorBase = SCB_TryRemoveParkedSurvivor
 SCB.scb072TryRemoveParkedSurvivor = SCB_TryRemoveParkedSurvivor
 
+function SCB_ArrangePresetHumanGroups()
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    local i, player, wantedGroup, wantedName, raidIndex, name, _, currentGroup
+    local groupCount
+
+    if not tracker or tracker.mode ~= "raid" or (tracker.size or 0) <= 5 then return true end
+    if not SetRaidSubgroup or not GetRaidRosterInfo or not GetNumRaidMembers then return true end
+    if GetNumRaidMembers() == 0 then return false end
+    if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
+
+    groupCount = math.ceil((tracker.size or 0) / 5)
+
+    -- A configured human slot determines the Blizzard subgroup, but never the
+    -- row inside that subgroup. Resolve the raid index again before every move:
+    -- SetRaidSubgroup() can change raid indices as the roster is rearranged.
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        wantedName = player and player.name or nil
+        wantedGroup = player and tonumber(player.group) or nil
+        if wantedName and wantedGroup and wantedGroup >= 1 and wantedGroup <= groupCount then
+            raidIndex = nil
+            currentGroup = nil
+            local r
+            for r = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(r)
+                if name == wantedName then
+                    raidIndex = r
+                    break
+                end
+            end
+            if not raidIndex then return false end
+            if currentGroup ~= wantedGroup then
+                if SCB_RecordPresetSubgroupMoveBarrier then SCB_RecordPresetSubgroupMoveBarrier() end
+                SetRaidSubgroup(raidIndex, wantedGroup)
+            end
+        end
+    end
+
+    -- Verify subgroup only. Blizzard owns the row/order within each subgroup.
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        wantedName = player and player.name or nil
+        wantedGroup = player and tonumber(player.group) or nil
+        if wantedName and wantedGroup and wantedGroup >= 1 and wantedGroup <= groupCount then
+            raidIndex = nil
+            currentGroup = nil
+            local r
+            for r = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(r)
+                if name == wantedName then
+                    raidIndex = r
+                    break
+                end
+            end
+            if not raidIndex or currentGroup ~= wantedGroup then return false end
+        end
+    end
+    return true
+end
+
 -- -------------------------------------------------------------------------
 -- Maintenance coordinator (absorbed from RaidRefill.lua in 0.8.28).
 -- -------------------------------------------------------------------------
@@ -1177,9 +1237,14 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
                 end
                 safety.parkBeforeBotBursts = nil
             end
-            -- Human logical slots never drive SetRaidSubgroup. This stage exists
-            -- only to settle any temporary bot bootstrap/survivor move before the
-            -- deterministic preset bot bursts begin.
+
+            -- Human logical slots determine their raid subgroup, not their row.
+            -- Arrange humans before deterministic bot bursts so each subgroup has
+            -- the correct human capacity while Blizzard remains free to choose
+            -- row/order inside that subgroup.
+            if not SCB_ArrangePresetHumanGroups or not SCB_ArrangePresetHumanGroups() then
+                return
+            end
             if not SCB_PresetSubgroupMoveBarrierPassed() then return end
             SCB_PresetSpawnQueuePop()
             SCB.presetSpawnElapsed = 0
