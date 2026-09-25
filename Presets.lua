@@ -2187,6 +2187,7 @@ end
 function SCB_TryFinalizeRaidRoleTracking(observed)
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
+    local assumedReady, assumedName, assumedMember
     if not tracker or not tracker.assignments then return tracker and tracker.ready end
     if tracker.ready then
         if not tracker.scbRoleIdentityReconciled then
@@ -2217,16 +2218,49 @@ function SCB_TryFinalizeRaidRoleTracking(observed)
         for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
     else
         if not GetNumRaidMembers or GetNumRaidMembers() == 0 then return false end
-        botsByGroup = SCB_GetRaidBotsByGroup(observed)
-        for g = 1, math.ceil((tracker.size or 0) / 5) do
-            expected = expectedByGroup[g]
-            actual = botsByGroup[g] or {}
-            if table.getn(actual) ~= table.getn(expected) then return false end
+        observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+        if not observed or observed.count ~= (tracker.size or 0) then return false end
+
+        -- Explicit spawn identity is the logical truth. Since 0.8.87 humans are
+        -- no longer physically moved to their logical subgroup, Blizzard may put
+        -- a human in G1 even when their logical slot belongs to G2. That forces a
+        -- logical-G1 bot to spill physically into G2. Requiring physical per-group
+        -- bot counts here would then make PRESET_TRACK_ROSTER impossible to finish.
+        if SCB_LinkAssumptionsToTrackerSlots then SCB_LinkAssumptionsToTrackerSlots() end
+        assumedReady = true
+        for i = 1, table.getn(tracker.assignments) do
+            assignment = tracker.assignments[i]
+            if assignment.initialActive then
+                assumedName = assignment.scbAssumedName
+                assumedMember = assumedName and observed.byName and observed.byName[assumedName] or nil
+                if not assumedMember or not assumedMember.isBot then
+                    assumedReady = false
+                    break
+                end
+            end
         end
-        for g = 1, math.ceil((tracker.size or 0) / 5) do
-            expected = expectedByGroup[g]
-            actual = botsByGroup[g] or {}
-            for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
+
+        if assumedReady then
+            for i = 1, table.getn(tracker.assignments) do
+                assignment = tracker.assignments[i]
+                if assignment.initialActive then assignment.botName = assignment.scbAssumedName end
+            end
+            tracker.scbRoleIdentityReconciled = true
+        else
+            -- Compatibility fallback for a client/server path where explicit
+            -- spawn identity was unavailable. This remains valid only when the
+            -- physical subgroup layout already matches logical composition.
+            botsByGroup = SCB_GetRaidBotsByGroup(observed)
+            for g = 1, math.ceil((tracker.size or 0) / 5) do
+                expected = expectedByGroup[g]
+                actual = botsByGroup[g] or {}
+                if table.getn(actual) ~= table.getn(expected) then return false end
+            end
+            for g = 1, math.ceil((tracker.size or 0) / 5) do
+                expected = expectedByGroup[g]
+                actual = botsByGroup[g] or {}
+                for ordinal = 1, table.getn(expected) do expected[ordinal].botName = actual[ordinal].name end
+            end
         end
     end
 
