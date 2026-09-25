@@ -93,6 +93,10 @@ local function SCB_TryParkSurvivorInGroupEight(name)
 
     group, raidIndex = SCB_FindRaidMemberGroup(name)
     if not raidIndex then return false end
+    -- This path is allowed to park only the retained/generated bot bootstrap.
+    -- Never let stale safety state turn a logical human assignment into a
+    -- physical subgroup move.
+    if not SCB_IsBotName or not SCB_IsBotName(name) then return false end
     if group == 8 then
         if SCB.developerDebugEnabled then SCB_BurstDebug("Safety " .. tostring(name) .. " parked in G8") end
         return true
@@ -1520,6 +1524,13 @@ function SCB_EndBotOperation(status, reason)
     }
     SCB.botOperation = nil
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
+    -- Tracker finalization occurs while the preset operation still owns the
+    -- physical roster, so mismatch presentation is deliberately suppressed at
+    -- that moment. Refresh once ownership is released so the final stable
+    -- party/raid layout is immediately classified even if no roster event follows.
+    if operation.kind == "preset" and SCB_RefreshPresetLayoutMismatchPresentation then
+        SCB_RefreshPresetLayoutMismatchPresentation(SCB.liveRoster)
+    end
     return operation
 end
 

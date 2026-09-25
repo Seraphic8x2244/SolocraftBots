@@ -2353,14 +2353,14 @@ end
 function SCB_GetPresetLiveLayoutMismatches(observed)
     local result = {}
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-    local currentGroup, groupCount
+    local currentGroup, groupCount, trackerMode
     local assignmentBySlot, playerBySlot = {}, {}
     local expectedByGroup, actualByGroup, completeByGroup = {}, {}, {}
     local i, g, assignment, player, name, member, expectedRow, actualRow
 
-    if not tracker or not tracker.ready or tracker.mode ~= "raid" or (tracker.size or 0) <= 5 then
-        return result
-    end
+    if not tracker or not tracker.ready then return result end
+    trackerMode = tracker.mode
+    if trackerMode ~= "raid" and trackerMode ~= "party" then return result end
     if SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
         return result
     end
@@ -2378,11 +2378,15 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
     end
 
     observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
-    if not observed or observed.mode ~= "raid" or observed.count ~= tracker.size then
+    if not observed or observed.mode ~= trackerMode or observed.count ~= tracker.size then
         return result
     end
 
-    groupCount = math.ceil((tracker.size or 0) / 5)
+    if trackerMode == "party" then
+        groupCount = 1
+    else
+        groupCount = math.ceil((tracker.size or 0) / 5)
+    end
     for g = 1, groupCount do
         expectedByGroup[g] = {}
         actualByGroup[g] = {}
@@ -2414,7 +2418,11 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
             name = player.name
         end
 
-        g = math.floor((i - 1) / 5) + 1
+        if trackerMode == "party" then
+            g = 1
+        else
+            g = math.floor((i - 1) / 5) + 1
+        end
         if name then
             expectedByGroup[g][name] = math.mod(i - 1, 5) + 1
         else
@@ -2424,16 +2432,24 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
 
     for i = 1, table.getn(observed.members or {}) do
         member = observed.members[i]
-        g = member and member.currentGroup or nil
-        if member and member.name and g and g >= 1 and g <= groupCount then
-            actualByGroup[g][member.name] = member.groupRow
+        if member and member.name then
+            if trackerMode == "party" then
+                actualByGroup[1][member.name] = i
+            else
+                g = member.currentGroup
+                if g and g >= 1 and g <= groupCount then
+                    actualByGroup[g][member.name] = member.groupRow
+                end
+            end
         end
     end
 
     for g = 1, groupCount do
         if completeByGroup[g] then
             if not SCB_LiveLayoutSetsMatch(expectedByGroup[g], actualByGroup[g]) then
-                result[g] = "regrouped"
+                -- A party has no subgroup concept. A membership mismatch there is
+                -- maintenance/tracker state, not a Blizzard row-order warning.
+                if trackerMode == "raid" then result[g] = "regrouped" end
             else
                 for name, expectedRow in pairs(expectedByGroup[g]) do
                     actualRow = actualByGroup[g][name]
