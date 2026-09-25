@@ -2094,6 +2094,11 @@ end
 -- only; observed Blizzard player placement never chooses a logical assignment.
 function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+    -- A full rebuild starts a fresh validation epoch. Evidence and one-shot
+    -- mismatch warnings from the previous roster must not leak into new names.
+    SCB.roleEvidenceByName = {}
+    SCB.roleEvidenceRecent = {}
+    SCB.roleMismatchWarnings = {}
     local tracker = {
         version = 5,
         mode = size <= 5 and "party" or "raid",
