@@ -228,20 +228,19 @@ function SCB_BuildLiveRoster(rawMembers)
 
         -- Former RoleTracking/Detection wrappers now enrich this one snapshot.
         assumption = member.name and SCB.assumedRolesByName and SCB.assumedRolesByName[member.name] or nil
-        slot = nil
-        if assumption then
+        slot = member.isBot and activeSlotsByName[member.name] or nil
+        if slot and (slot.assumedRole or slot.role) then
+            member.assumedRole = slot.assumedRole or slot.role
+            member.assumedExtra = slot.extra
+            member.assumedClass = slot.class or member.assumedClass
+            member.assumedRoleSource = "active"
+            member.spawnKind = assumption and assumption.spawnKind or member.spawnKind
+        elseif assumption then
             member.assumedRole = assumption.role
             member.assumedExtra = assumption.extra
             member.assumedClass = assumption.class or member.assumedClass
             member.assumedRoleSource = "spawn"
             member.spawnKind = assumption.spawnKind
-        elseif member.isBot then
-            slot = activeSlotsByName[member.name]
-            if slot and slot.role then
-                member.assumedRole = slot.role
-                member.assumedExtra = slot.extra
-                member.assumedRoleSource = "active"
-            end
         elseif member.assumedRole then
             member.assumedRoleSource = member.assumedRoleSource or "preset"
         end
@@ -1173,6 +1172,7 @@ local SCB = SoloCraftBots
 
 SCB.roleEvidenceByName = SCB.roleEvidenceByName or {}
 SCB.roleEvidenceRecent = SCB.roleEvidenceRecent or {}
+SCB.roleMismatchWarnings = SCB.roleMismatchWarnings or {}
 SCB.ROLE_CONFIRM_THRESHOLD = 2
 
 -- Vanilla-only subset of FRB's spell/role catalogue. Later-expansion entries
@@ -1246,67 +1246,6 @@ local SCB_ROLE_SPELLS = {
         { "Holy Shield", "tank" },
         { "Seal of Command", "meleedps" },
         { "Judgement of Command", "meleedps" },
-    },
-    mage = {
-        { "Arcane Missiles", "rangedps" },
-        { "Arcane Power", "rangedps" },
-        { "Arcane Explosion", "rangedps" },
-        { "Fireball", "rangedps" },
-        { "Frostbolt", "rangedps" },
-        { "Ice Armor", "rangedps" },
-        { "Blizzard", "rangedps" },
-        { "Pyroblast", "rangedps" },
-        { "Frost Nova", "rangedps" },
-        { "Cone of Cold", "rangedps" },
-        { "Scorch", "rangedps" },
-        { "Flamestrike", "rangedps" },
-        { "Fire Blast", "rangedps" },
-        { "Ice Block", "rangedps" },
-    },
-    warlock = {
-        { "Shadow Bolt", "rangedps" },
-        { "Corruption", "rangedps" },
-        { "Immolate", "rangedps" },
-        { "Siphon Life", "rangedps" },
-        { "Curse of Agony", "rangedps" },
-        { "Curse of Doom", "rangedps" },
-        { "Rain of Fire", "rangedps" },
-        { "Life Tap", "rangedps" },
-        { "Hellfire", "rangedps" },
-        { "Shadowburn", "rangedps" },
-        { "Death Coil", "rangedps" },
-        { "Drain Soul", "rangedps" },
-        { "Drain Life", "rangedps" },
-    },
-    rogue = {
-        { "Stealth", "meleedps" },
-        { "Backstab", "meleedps" },
-        { "Sinister Strike", "meleedps" },
-        { "Eviscerate", "meleedps" },
-        { "Ambush", "meleedps" },
-        { "Slice and Dice", "meleedps" },
-        { "Gouge", "meleedps" },
-        { "Hemorrhage", "meleedps" },
-        { "Rupture", "meleedps" },
-        { "Kidney Shot", "meleedps" },
-        { "Expose Armor", "meleedps" },
-        { "Sprint", "meleedps" },
-        { "Vanish", "meleedps" },
-        { "Distract", "meleedps" },
-        { "Preparation", "meleedps" },
-        { "Blind", "meleedps" },
-    },
-    hunter = {
-        { "Aimed Shot", "rangedps" },
-        { "Multi-Shot", "rangedps" },
-        { "Arcane Shot", "rangedps" },
-        { "Serpent Sting", "rangedps" },
-        { "Scatter Shot", "rangedps" },
-        { "Feign Death", "rangedps" },
-        { "Rapid Fire", "rangedps" },
-        { "Viper Sting", "rangedps" },
-        { "Hunter's Mark", "rangedps" },
-        { "Volley", "rangedps" },
     },
 }
 
@@ -1385,15 +1324,36 @@ local function SCB_CopyRoleScores(scores)
     return copy
 end
 
+function SCB_ClassSupportsRoleValidation(classKey)
+    local classInfo, seen, count, i, role
+    if type(classKey) ~= "string" then return false end
+    classInfo = SCB_FindClass and SCB_FindClass(string.lower(classKey)) or nil
+    if not classInfo or not classInfo.roles then return false end
+
+    seen = {}
+    count = 0
+    for i = 1, table.getn(classInfo.roles) do
+        role = classInfo.roles[i] and classInfo.roles[i].role or nil
+        if role and not seen[role] then
+            seen[role] = true
+            count = count + 1
+            if count > 1 then return true end
+        end
+    end
+    return false
+end
+
 local function SCB_GetAssumedRoleForName(name)
     local assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
     local slot
-    if assumption and assumption.spawnKind ~= "bootstrap" and assumption.role then
-        return assumption.role
-    end
+    -- A settled Active Roster slot is authoritative. Join assumptions are only
+    -- provisional identity while a spawn/replacement has not been bound yet.
     if SCB_GetActiveSlotByName then
         slot = SCB_GetActiveSlotByName(name)
-        if slot then return slot.assumedRole or slot.role end
+        if slot and (slot.assumedRole or slot.role) then return slot.assumedRole or slot.role end
+    end
+    if assumption and assumption.spawnKind ~= "bootstrap" and assumption.role then
+        return assumption.role
     end
     return nil
 end
@@ -1436,9 +1396,54 @@ local function SCB_SyncEvidenceToActiveSlot(name, state)
     if not slot then return end
     slot.roleEvidence = SCB_CopyRoleScores(state.byRole)
     slot.confirmedRole = state.confirmedRole
-    if state.confirmedRole then slot.role = state.confirmedRole end
+    -- slot.role / slot.assumedRole are intended assignment state. Combat evidence
+    -- validates that state; it must never silently rewrite the assignment.
     slot.detected = state.confirmedRole and true or nil
     slot.updatedAt = GetTime and GetTime() or 0
+end
+
+local function SCB_RoleValidationLabel(role)
+    if role == "tank" then return SCB_L("ROLE_TANK") end
+    if role == "healer" then return SCB_L("ROLE_HEALER") end
+    if role == "meleedps" then return SCB_L("ROLE_MELEE") end
+    if role == "rangedps" then return SCB_L("ROLE_RANGED") end
+    return tostring(role or "?")
+end
+
+local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state)
+    local slot, assumption, slotIndex, groupIndex, evidence, key, text
+    if not name or not intendedRole or not state or not state.confirmedRole then return false end
+    if state.confirmedRole == intendedRole then return false end
+    if not SCB_ClassSupportsRoleValidation(classKey) then return false end
+
+    slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
+    assumption = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
+    slotIndex = slot and slot.trackerSlotIndex or nil
+    if not slotIndex and assumption then slotIndex = assumption.slotIndex end
+    if not slotIndex and slot then slotIndex = slot.id end
+    groupIndex = slot and (slot.intendedGroup or slot.currentGroup) or nil
+    if not groupIndex and assumption then groupIndex = assumption.group end
+    if not groupIndex and slotIndex then groupIndex = math.floor((slotIndex - 1) / 5) + 1 end
+    evidence = state.lastSpell or "combat evidence"
+
+    key = tostring(name) .. "\031" .. tostring(slotIndex or "?")
+        .. "\031" .. tostring(intendedRole) .. "\031" .. tostring(state.confirmedRole)
+        .. "\031" .. tostring(assumption and assumption.burstID or "")
+    if SCB.roleMismatchWarnings[key] then return false end
+    SCB.roleMismatchWarnings[key] = true
+
+    text = string.format(
+        SCB_L("ROLE_MISMATCH_WARNING"),
+        tostring(name),
+        tostring(groupIndex or "?"),
+        tostring(slotIndex or "?"),
+        SCB_RoleValidationLabel(intendedRole),
+        SCB_RoleValidationLabel(state.confirmedRole),
+        tostring(evidence)
+    )
+    if SCB_Print then SCB_Print(text) end
+    if SCB_ShowSafetyMessage then SCB_ShowSafetyMessage(text) end
+    return true
 end
 
 local function SCB_IsDuplicateRoleObservation(name, spell)
@@ -1471,7 +1476,6 @@ function SCB_UpdateActiveBotDetection(name, role, extra, extraKnown)
     slot.assumedRole = slot.assumedRole or (assumption and assumption.role) or slot.role
     if role then
         slot.confirmedRole = role
-        slot.role = role
     end
     if extraKnown then slot.extra = extra end
     slot.detected = role and true or slot.detected
@@ -1529,23 +1533,47 @@ local function SCB_UpdatePresetRoleIndicatorGeometry(row)
     row.scbConfirmedTick:SetHeight(tickSize)
     row.scbConfirmedTick:ClearAllPoints()
     row.scbConfirmedTick:SetPoint("BOTTOMRIGHT", row.roleButton, "BOTTOMRIGHT", -confirmedOffset, 0)
+
+    if row.scbRoleMismatchCross then
+        row.scbRoleMismatchCross:SetWidth(tickSize)
+        row.scbRoleMismatchCross:SetHeight(tickSize)
+        row.scbRoleMismatchCross:ClearAllPoints()
+        row.scbRoleMismatchCross:SetPoint("CENTER", row.scbConfirmedTick, "CENTER", 0, 0)
+    end
 end
 
 local function SCB_CreatePresetRoleIndicatorPair(row)
-    local assumed, confirmed
+    local assumed, confirmed, mismatch
     if not row or not row.roleButton then return end
-    if row.scbAssumedTick and row.scbConfirmedTick then return end
+    if row.scbAssumedTick and row.scbConfirmedTick and row.scbRoleMismatchCross then return end
 
-    assumed = row.roleButton:CreateTexture(nil, "OVERLAY")
-    assumed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    assumed:SetVertexColor(0.20, 1.00, 0.20)
-    assumed:Hide()
-    row.scbAssumedTick = assumed
+    assumed = row.scbAssumedTick
+    if not assumed then
+        assumed = row.roleButton:CreateTexture(nil, "OVERLAY")
+        assumed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        assumed:SetVertexColor(0.20, 1.00, 0.20)
+        assumed:Hide()
+        row.scbAssumedTick = assumed
+    end
 
-    confirmed = row.roleButton:CreateTexture(nil, "OVERLAY")
-    confirmed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    confirmed:Hide()
-    row.scbConfirmedTick = confirmed
+    confirmed = row.scbConfirmedTick
+    if not confirmed then
+        confirmed = row.roleButton:CreateTexture(nil, "OVERLAY")
+        confirmed:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        confirmed:Hide()
+        row.scbConfirmedTick = confirmed
+    end
+
+    mismatch = row.scbRoleMismatchCross
+    if not mismatch then
+        mismatch = row.roleButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        mismatch:SetText("X")
+        mismatch:SetTextColor(1.00, 0.10, 0.10, 1.00)
+        mismatch:SetJustifyH("CENTER")
+        mismatch:SetJustifyV("MIDDLE")
+        mismatch:Hide()
+        row.scbRoleMismatchCross = mismatch
+    end
 
     SCB_UpdatePresetRoleIndicatorGeometry(row)
 end
@@ -1575,7 +1603,8 @@ end
 local function SCB_GetIndicatorBotName(assignment)
     local name, intent, member
     if not assignment then return nil end
-    name = assignment.scbAssumedName or assignment.botName
+    -- Settled bot-only ordinal identity outranks provisional join identity.
+    name = assignment.botName or assignment.scbAssumedName
     if not name then return nil end
 
     intent = SCB.assumedRolesByName and SCB.assumedRolesByName[name] or nil
@@ -1599,7 +1628,7 @@ function SCB_RefreshPresetRoleIndicators()
     local size = SCB_CurrentPresetSize and SCB_CurrentPresetSize() or 0
     local assignmentBySlot
     local detectionEnabled = SCB_IsRoleDetectionEnabled()
-    local i, row, assignment, name, stage, color
+    local i, row, assignment, name, stage, color, evidence, slot, scores
 
     if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
         SCB.presetRoleIndicatorsDirty = true
@@ -1615,25 +1644,37 @@ function SCB_RefreshPresetRoleIndicators()
             SCB_UpdatePresetRoleIndicatorGeometry(row)
             if row.scbAssumedTick then row.scbAssumedTick:Hide() end
             if row.scbConfirmedTick then row.scbConfirmedTick:Hide() end
+            if row.scbRoleMismatchCross then row.scbRoleMismatchCross:Hide() end
 
             if i <= size and not row.scbPresentPlayerKey then
                 assignment = SCB_FindTrackerAssignmentForIndicator(i, assignmentBySlot)
                 name = SCB_GetIndicatorBotName(assignment)
                 if assignment and name then
                     row.scbAssumedTick:Show()
-                    if detectionEnabled then
-                        stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
-                        if stage <= 0 then
-                            local slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
-                            local scores = slot and slot.roleEvidence or nil
-                            stage = scores and scores[assignment.role] or 0
-                            if slot and slot.confirmedRole == assignment.role then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                    -- Role validation is meaningful only when the class has more
+                    -- than one distinct SCB role. Mage Fire/Frost are both
+                    -- rangedps, so role-only combat evidence cannot validate spec.
+                    if detectionEnabled and SCB_ClassSupportsRoleValidation(assignment.class) then
+                        evidence = SCB_GetBotRoleEvidence(name)
+                        if evidence and evidence.confirmedRole
+                            and evidence.confirmedRole ~= assignment.role then
+                            row.scbRoleMismatchCross:Show()
+                        else
+                            stage = SCB_GetBotRoleEvidenceStage(name, assignment.role)
+                            if stage <= 0 then
+                                slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
+                                scores = slot and slot.roleEvidence or nil
+                                stage = scores and scores[assignment.role] or 0
+                                if slot and slot.confirmedRole == assignment.role then
+                                    stage = SCB.ROLE_CONFIRM_THRESHOLD
+                                end
+                            end
+                            if stage < 0 then stage = 0 end
+                            if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
+                            color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
+                            row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
+                            row.scbConfirmedTick:Show()
                         end
-                        if stage < 0 then stage = 0 end
-                        if stage > SCB.ROLE_CONFIRM_THRESHOLD then stage = SCB.ROLE_CONFIRM_THRESHOLD end
-                        color = SCB_CONFIRM_COLORS[stage] or SCB_CONFIRM_COLORS[0]
-                        row.scbConfirmedTick:SetVertexColor(color[1], color[2], color[3])
-                        row.scbConfirmedTick:Show()
                     end
                 end
             end
@@ -1688,16 +1729,16 @@ local function SCB_EnsureRoleDetectionOption()
 end
 
 local function SCB_LiveBotNeedsRoleConfirmation(member)
-    local slot
+    local slot, classKey
     if not member or not member.isBot or member.spawnKind == "bootstrap" then return false end
+    slot = SCB_GetActiveSlotByName and member.name and SCB_GetActiveSlotByName(member.name) or nil
+    classKey = member.assumedClass or member.classFile or (slot and slot.class) or nil
+    if not SCB_ClassSupportsRoleValidation(classKey) then return false end
     if member.confirmedRole then return false end
     if member.assumedRole then return true end
 
-    if SCB_GetActiveSlotByName and member.name then
-        slot = SCB_GetActiveSlotByName(member.name)
-        if slot and (slot.assumedRole or slot.role) then
-            return slot.confirmedRole == nil
-        end
+    if slot and (slot.assumedRole or slot.role) then
+        return slot.confirmedRole == nil
     end
     return false
 end
@@ -1794,6 +1835,7 @@ function SCB_HandleRoleCombatText(text, eventName)
     if not source then return false end
     name, classKey = SCB_FindLiveBotForCombatSource(source)
     if not name or not classKey then return false end
+    if not SCB_ClassSupportsRoleValidation(classKey) then return false end
 
     spell, role = SCB_FindRoleSpell(classKey, text)
     if not spell or not role then return false end
@@ -1822,6 +1864,7 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     state.updatedAt = GetTime and GetTime() or 0
     SCB_ResolveEvidenceCandidate(name, state)
     SCB_SyncEvidenceToActiveSlot(name, state)
+    SCB_WarnConfirmedRoleMismatch(name, classKey, SCB_GetAssumedRoleForName(name), state)
 
     score = state.byRole[role] or 0
     if SCB.developerDebugEnabled and SCB_DebugLog then
@@ -2353,17 +2396,12 @@ end
 function SCB_GetPresetLiveLayoutMismatches(observed)
     local result = {}
     local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
-    local currentGroup, groupCount, trackerMode
-    local assignmentBySlot, playerBySlot = {}, {}
+    local currentGroup, groupCount
     local expectedByGroup, actualByGroup, completeByGroup = {}, {}, {}
-    local i, g, assignment, player, name, member, expectedRow, actualRow
+    local i, g, assignment, player, name, member
 
-    if not tracker or not tracker.ready then return result end
-    trackerMode = tracker.mode
-    if trackerMode ~= "raid" and trackerMode ~= "party" then return result end
-    if SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
-        return result
-    end
+    if not tracker or not tracker.ready or tracker.mode ~= "raid" then return result end
+    if SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then return result end
     if tracker.presetGroupIndex and SoloCraftBotsDB
         and SoloCraftBotsDB.currentPresetGroup ~= tracker.presetGroupIndex then
         return result
@@ -2378,87 +2416,54 @@ function SCB_GetPresetLiveLayoutMismatches(observed)
     end
 
     observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
-    if not observed or observed.mode ~= trackerMode or observed.count ~= tracker.size then
+    if not observed or observed.mode ~= "raid" or observed.count ~= tracker.size then
         return result
     end
 
-    if trackerMode == "party" then
-        groupCount = 1
-    else
-        groupCount = math.ceil((tracker.size or 0) / 5)
-    end
+    groupCount = math.ceil((tracker.size or 0) / 5)
     for g = 1, groupCount do
         expectedByGroup[g] = {}
         actualByGroup[g] = {}
         completeByGroup[g] = true
     end
 
+    -- Exact rows are deliberately irrelevant. A completed preset is mismatched
+    -- only when a known member is in the wrong Blizzard raid subgroup.
     for i = 1, table.getn(tracker.assignments or {}) do
         assignment = tracker.assignments[i]
-        if assignment and assignment.slotIndex then
-            assignmentBySlot[assignment.slotIndex] = assignment
+        if assignment and assignment.initialActive then
+            g = assignment.group
+            name = assignment.botName
+            if g and name and observed.byName and observed.byName[name] then
+                expectedByGroup[g][name] = true
+            elseif g then
+                completeByGroup[g] = false
+            end
         end
     end
     for i = 1, table.getn(tracker.players or {}) do
         player = tracker.players[i]
-        if player and player.slotIndex then
-            playerBySlot[player.slotIndex] = player
-        end
-    end
-
-    for i = 1, tracker.size do
-        assignment = assignmentBySlot[i]
-        player = playerBySlot[i]
-        name = nil
-        if assignment and assignment.botName and observed.byName[assignment.botName] then
-            name = assignment.botName
-        elseif assignment and assignment.scbAssumedName and observed.byName[assignment.scbAssumedName] then
-            name = assignment.scbAssumedName
-        elseif player and player.name and observed.byName[player.name] then
-            name = player.name
-        end
-
-        if trackerMode == "party" then
-            g = 1
-        else
-            g = math.floor((i - 1) / 5) + 1
-        end
-        if name then
-            expectedByGroup[g][name] = math.mod(i - 1, 5) + 1
-        else
+        g = player and player.group or nil
+        name = player and player.name or nil
+        if g and name and observed.byName and observed.byName[name] then
+            expectedByGroup[g][name] = true
+        elseif g then
             completeByGroup[g] = false
         end
     end
 
     for i = 1, table.getn(observed.members or {}) do
         member = observed.members[i]
-        if member and member.name then
-            if trackerMode == "party" then
-                actualByGroup[1][member.name] = i
-            else
-                g = member.currentGroup
-                if g and g >= 1 and g <= groupCount then
-                    actualByGroup[g][member.name] = member.groupRow
-                end
-            end
+        g = member and member.currentGroup or nil
+        if member and member.name and g and g >= 1 and g <= groupCount then
+            actualByGroup[g][member.name] = true
         end
     end
 
     for g = 1, groupCount do
-        if completeByGroup[g] then
-            if not SCB_LiveLayoutSetsMatch(expectedByGroup[g], actualByGroup[g]) then
-                -- A party has no subgroup concept. A membership mismatch there is
-                -- maintenance/tracker state, not a Blizzard row-order warning.
-                if trackerMode == "raid" then result[g] = "regrouped" end
-            else
-                for name, expectedRow in pairs(expectedByGroup[g]) do
-                    actualRow = actualByGroup[g][name]
-                    if actualRow ~= expectedRow then
-                        result[g] = "reordered"
-                        break
-                    end
-                end
-            end
+        if completeByGroup[g]
+            and not SCB_LiveLayoutSetsMatch(expectedByGroup[g], actualByGroup[g]) then
+            result[g] = "regrouped"
         end
     end
 
