@@ -1855,7 +1855,7 @@ function SCB_SetMenuDeleteButton(button, show, index, deleteScript)
         del:SetHeight(16)
         del:SetPoint("RIGHT", button, "RIGHT", -2, 0)
         local tex = del:CreateTexture(nil, "ARTWORK")
-        SCB_SetTextureRenderSize(tex, SCB.LUCIDE_ICON_SIZE, del)
+        SCB_SetTextureRenderSize(tex, SCB_GetLayoutValue("preset", "iconSize"), del)
         tex:SetTexture(SCB.assetRoot .. "lucide_trash.tga")
         del.icon = tex
         del:SetScript("OnEnter", function()
@@ -1881,7 +1881,7 @@ function SCB_SetMenuRenameButton(button, show, index)
         rename:SetHeight(16)
         rename:SetPoint("RIGHT", button, "RIGHT", -20, 0)
         local tex = rename:CreateTexture(nil, "ARTWORK")
-        SCB_SetTextureRenderSize(tex, SCB.LUCIDE_ICON_SIZE, rename)
+        SCB_SetTextureRenderSize(tex, SCB_GetLayoutValue("preset", "iconSize"), rename)
         tex:SetTexture(SCB.assetRoot .. "lucide_pencil.tga")
         rename.icon = tex
         rename.scbTooltip = SCB_L("TIP_RENAME_PRESET")
@@ -1924,6 +1924,7 @@ end
 function SCB_SetMenuMoveButtons(button, show, index, count)
     if not button.moveUpButton then
         local up = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_up.tga")
+        SCB_SetArtButtonIconSize(up, SCB_GetLayoutValue("preset", "iconSize"))
         up:SetPoint("RIGHT", button, "RIGHT", -56, 0)
         up.scbPresetMoveDirection = -1
         up.scbTooltip = SCB_L("TIP_MOVE_PRESET_UP")
@@ -1933,6 +1934,7 @@ function SCB_SetMenuMoveButtons(button, show, index, count)
         button.moveUpButton = up
 
         local down = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_down.tga")
+        SCB_SetArtButtonIconSize(down, SCB_GetLayoutValue("preset", "iconSize"))
         down:SetPoint("RIGHT", button, "RIGHT", -38, 0)
         down.scbPresetMoveDirection = 1
         down.scbTooltip = SCB_L("TIP_MOVE_PRESET_DOWN")
@@ -3161,8 +3163,9 @@ function SCB_CreateDropdownArrow(parent)
     arrow:SetPoint("RIGHT", parent, "RIGHT", -2, 0)
     arrow:EnableMouse(false)
     local texture = arrow:CreateTexture(nil, "ARTWORK")
-    SCB_SetTextureRenderSize(texture, SCB.LUCIDE_ICON_SIZE, arrow)
+    SCB_SetTextureRenderSize(texture, SCB_GetLayoutValue("preset", "iconSize"), arrow)
     texture:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
+    arrow.scbArrowTexture = texture
     parent.arrow = arrow
 end
 
@@ -3316,7 +3319,7 @@ SCB_LayoutPresetGroups = function()
     local columns = 2
     local rows, panelWidth, panelHeight, groupFrame, title, resummon
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
-    local headerHeight, twoGroupWidth, contentWidth, menuWidth
+    local headerHeight, twoGroupWidth, contentWidth, menuWidth, iconSize, menuButton
 
     if groupCount == 1 then
         columns = 1
@@ -3327,7 +3330,18 @@ SCB_LayoutPresetGroups = function()
 
     groupWidth = SCB_GetLayoutValue("preset", "groupWidth")
     groupHeight = SCB_GetLayoutValue("preset", "groupHeight")
+    iconSize = SCB_GetLayoutValue("preset", "iconSize")
     SCB_LayoutPresetRowGeometry()
+
+    if SCB.presetToggle and SCB.presetToggle.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetToggle.scbArrowTexture, iconSize, SCB.presetToggle)
+    end
+    if SCB.presetGroupSelector and SCB.presetGroupSelector.arrow and SCB.presetGroupSelector.arrow.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetGroupSelector.arrow.scbArrowTexture, iconSize, SCB.presetGroupSelector.arrow)
+    end
+    if SCB.presetSelector and SCB.presetSelector.arrow and SCB.presetSelector.arrow.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetSelector.arrow.scbArrowTexture, iconSize, SCB.presetSelector.arrow)
+    end
 
     -- Bordered controls use 6 frame units for the intended visible 12px gap.
     -- The Group-title row clearance stays at the existing 20 units.
@@ -3395,14 +3409,31 @@ SCB_LayoutPresetGroups = function()
         SCB.presetMenu:ClearAllPoints()
         SCB.presetMenu:SetPoint("TOPLEFT", SCB.presetGroupSelector, "BOTTOMLEFT", 0, -1)
     end
-    for i = 1, table.getn(SCB.presetGroupMenuButtons or {}) do SCB.presetGroupMenuButtons[i]:SetWidth(menuWidth - 8) end
-    for i = 1, table.getn(SCB.presetNameMenuButtons or {}) do SCB.presetNameMenuButtons[i]:SetWidth(menuWidth - 8) end
+    for i = 1, table.getn(SCB.presetGroupMenuButtons or {}) do
+        menuButton = SCB.presetGroupMenuButtons[i]
+        menuButton:SetWidth(menuWidth - 8)
+        if menuButton.deleteButton and menuButton.deleteButton.icon then
+            SCB_SetTextureRenderSize(menuButton.deleteButton.icon, iconSize, menuButton.deleteButton)
+        end
+    end
+    for i = 1, table.getn(SCB.presetNameMenuButtons or {}) do
+        menuButton = SCB.presetNameMenuButtons[i]
+        menuButton:SetWidth(menuWidth - 8)
+        if menuButton.deleteButton and menuButton.deleteButton.icon then
+            SCB_SetTextureRenderSize(menuButton.deleteButton.icon, iconSize, menuButton.deleteButton)
+        end
+        if menuButton.renameButton and menuButton.renameButton.icon then
+            SCB_SetTextureRenderSize(menuButton.renameButton.icon, iconSize, menuButton.renameButton)
+        end
+        if menuButton.moveUpButton then SCB_SetArtButtonIconSize(menuButton.moveUpButton, iconSize) end
+        if menuButton.moveDownButton then SCB_SetArtButtonIconSize(menuButton.moveDownButton, iconSize) end
+    end
 
     for i = 1, 8 do
         groupFrame = SCB.presetGroupFrames[i]
         title = SCB.presetGroupTitles[i]
         resummon = SCB.presetGroupResummonButtons[i]
-        if resummon then SCB_SetArtButtonIconSize(resummon, SCB_GetLayoutValue("preset", "iconSize")) end
+        if resummon then SCB_SetArtButtonIconSize(resummon, iconSize) end
         if i <= groupCount then
             col = math.mod(i - 1, columns)
             row = math.floor((i - 1) / columns)
@@ -3446,6 +3477,7 @@ SCB_LayoutPresetGroups = function()
 end
 function SCB_CreatePresetUI(frame)
     local toggle = SCB_CreateArrowButton(frame, 18)
+    SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("preset", "iconSize"), toggle)
     toggle:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -41)
     toggle:SetScript("OnClick", SCB_PresetToggleOnClick)
     toggle.scbTooltip = SCB_L("TIP_PRESETS")
