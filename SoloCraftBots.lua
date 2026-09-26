@@ -449,7 +449,7 @@ SCB.commandLayoutDefaults = SCB.commandLayoutDefaults or {
     horizontalSpacing = -3,
     verticalSpacing = -1,
     groupVerticalSpacing = 8,
-    iconSize = 14,
+    iconSize = 12,
 }
 SCB.presetLayoutDefaults = SCB.presetLayoutDefaults or {
     groupWidth = 85,
@@ -461,7 +461,7 @@ SCB.presetLayoutDefaults = SCB.presetLayoutDefaults or {
     borderVertical = 6,
     iconHorizontal = 0,
     iconVertical = 2,
-    iconSize = 14,
+    iconSize = 10,
 }
 
 function SCB_EnsureOptionsDB()
@@ -517,6 +517,29 @@ function SCB_EnsureOptionsDB()
     for key in pairs(SCB.presetLayoutDefaults) do
         if options.presetLayoutDebug[key] == nil then options.presetLayoutDebug[key] = SCB.presetLayoutDefaults[key] end
         if options.presetLayoutUser[key] == nil then options.presetLayoutUser[key] = 0 end
+    end
+
+    -- 0.8.104 changes the shipped Lucide defaults from 14 to 12/10.
+    -- Preserve an explicit user adjustment while migrating untouched 0.8.103
+    -- profiles onto the new defaults.
+    if not options.lucideIconSizeBaselineVersion or options.lucideIconSizeBaselineVersion < 8104 then
+        if options.commandLayoutDebug.iconSize == 14 then
+            if (options.commandLayoutUser.iconSize or 0) == 0 then
+                options.commandLayoutDebug.iconSize = 12
+            else
+                options.commandLayoutDebug.iconSize = 12
+                options.commandLayoutUser.iconSize = (options.commandLayoutUser.iconSize or 0) + 2
+            end
+        end
+        if options.presetLayoutDebug.iconSize == 14 then
+            if (options.presetLayoutUser.iconSize or 0) == 0 then
+                options.presetLayoutDebug.iconSize = 10
+            else
+                options.presetLayoutDebug.iconSize = 10
+                options.presetLayoutUser.iconSize = (options.presetLayoutUser.iconSize or 0) + 4
+            end
+        end
+        options.lucideIconSizeBaselineVersion = 8104
     end
 
     -- 0.4.25 promotes the visually-tuned debug geometry to the shipped
@@ -575,6 +598,9 @@ function SCB_CreateCollapsibleSection(parent, key, titleText, contentHeight)
     section.scbCollapsedHeight = 26
 
     local toggle = SCB_CreateArrowButton(section, 18)
+    if key == "commands" or key == "assignments" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
+    end
     toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
     toggle.scbSectionKey = key
     toggle.scbTooltip = string.format(SCB_L("TIP_COLLAPSE_EXPAND"), titleText)
@@ -1195,6 +1221,12 @@ function SCB_LayoutCommandUI()
     iconSize = SCB_GetLayoutValue("command", "iconSize")
     if SCB.assignmentClearButton then SCB_SetArtButtonIconSize(SCB.assignmentClearButton, iconSize) end
     if SCB.assignmentModeButton then SCB_SetArtButtonIconSize(SCB.assignmentModeButton, iconSize) end
+    if SCB.sections.commands and SCB.sections.commands.scbToggle then
+        SCB_SetTextureRenderSize(SCB.sections.commands.scbToggle.scbArrowTexture, iconSize, SCB.sections.commands.scbToggle)
+    end
+    if SCB.sections.assignments and SCB.sections.assignments.scbToggle then
+        SCB_SetTextureRenderSize(SCB.sections.assignments.scbToggle.scbArrowTexture, iconSize, SCB.sections.assignments.scbToggle)
+    end
     gap = SCB_GetLayoutValue("command", "horizontalSpacing")
     rowGap = SCB_GetLayoutValue("command", "verticalSpacing")
     groupGap = SCB_GetLayoutValue("command", "groupVerticalSpacing")
