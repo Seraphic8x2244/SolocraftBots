@@ -3094,11 +3094,13 @@ function SCB_MaybeStartPresetTutorial()
 end
 
 function SCB_SetPresetToggleDirection(open)
+    local side
     if not SCB.presetToggle or not SCB.presetToggle.scbArrowTexture then return end
-    if open then
-        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, "right")
+    side = SCB_GetDrawerJustification and SCB_GetDrawerJustification() or "right"
+    if side == "left" then
+        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, open and "right" or "left")
     else
-        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, "left")
+        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, open and "left" or "right")
     end
 end
 
@@ -3110,11 +3112,10 @@ function SCB_SetPresetPanelShown(show)
     SCB.presetPanel:SetScript("OnUpdate", nil)
 
     if show then
-        SCB.presetPanel:ClearAllPoints()
-        SCB.presetPanel:SetPoint("TOPRIGHT", SCB.frame, "TOPLEFT", -2, 0)
         SCB_RefreshPresetPlayers()
         SCB_RefreshPresetSummonWarning()
         SCB.presetPanel:Show()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
         if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
         if SCB_RefreshPresetLayoutMismatchPresentation then SCB_RefreshPresetLayoutMismatchPresentation() end
         SCB_SetPresetToggleDirection(true)
@@ -3124,6 +3125,7 @@ function SCB_SetPresetPanelShown(show)
         SCB_CancelPresetPlayerDrag()
         SCB_HidePresetMenus()
         SCB.presetPanel:Hide()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
         SCB_SetPresetToggleDirection(false)
     end
 
@@ -3483,8 +3485,8 @@ function SCB_CreatePresetUI(frame)
     toggle.scbTooltip = SCB_L("TIP_PRESETS")
     toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
     toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB_SetArrowDirection(toggle.scbArrowTexture, "left")
     SCB.presetToggle = toggle
+    SCB_SetPresetToggleDirection(false)
     SCB.presetHeading = SCB_CreateSectionTitle(frame, SCB_L("SECTION_PRESETS"), 36, -42)
 
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", UIParent)
