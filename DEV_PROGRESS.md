@@ -4,17 +4,19 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.108-dev`
-- Current implementation head before this handoff update: `003db9fd83fe07f9acdcc0d260623a1a717f4291`
-- Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so `0.8.107-dev` Request protocol 8 remains runtime-pending.
+- TOC version: `0.8.109-dev`
+- Current implementation head before this handoff update: `c122a4f8231da34b245bfc1f898ac7604182478c`
+- Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so Request protocol 8 remains runtime-pending.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- Receiver-owned location-capacity guardrail is explicitly accepted as correctness/state-integrity protection.
+- Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
-- `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live icon sizing remain implemented.
-- `0.8.108-dev` adds an account-wide side-drawer justification control: a top-left Lucide chevron on the main window shows the **current** justification, defaults to Right, and toggles Left/Right immediately.
-- Preset Manager and Options now share one layout owner. Both appear on the selected side of the main window; when both are open the order is `Main | Preset | Options` on the right or `Options | Preset | Main` on the left. If Preset Manager closes while Options is open, Options moves inward next to Main immediately.
-- The existing Presets drawer open/close chevron now reverses appropriately for the selected side.
-- Immediate goal: runtime-check only the new 0.8.108 drawer justification layout locally; Request protocol 8 testing can wait until a second SCB player is available.
+- `0.8.108-dev` side-drawer justification layout is **runtime-confirmed working** by the user.
+- User then reported the new horizontal justification chevron looked larger than the existing vertical section chevrons and requested a readability hierarchy.
+- `0.8.109-dev` makes the justification chevron use the same live Command icon-size value as the main Command/Assignments vertical chevrons (default 12).
+- `0.8.109-dev` also centralizes the primary UI palette alongside the existing chat blue: SCB blue `88CCFF`, gold `FFD100`, silver `C0C0C0`, white `FFFFFF`.
+- Typography hierarchy now is: main headers (SoloCraft Bots / Preset Manager / Options) = SCB blue; section/subsection headers = gold; ordinary descriptive/value text = silver; button/dropdown content = white.
+- Semantic color exceptions are preserved where color communicates state/identity (class-coloured player names and red/green preset-state pulses).
+- Immediate goal: locally runtime-check only the 0.8.109 visual delta; Request protocol 8 can wait until a second SCB player is available.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -152,7 +154,20 @@ Implementation intent:
 - Preset Manager is always the inner side drawer next to Main when open.
 - Options is always the outer drawer when Preset Manager is open; otherwise Options sits directly beside Main.
 - Opening/closing Preset Manager or Options, or toggling justification, re-anchors visible drawers immediately.
-- This is presentation/layout only; it does not change preset/option state ownership or drawer visibility semantics.
+- `0.8.108-dev` layout behavior is user-confirmed working.
+- `0.8.109-dev` sizes the justification chevron from the live Command icon-size value so it matches the main vertical Command/Assignments section chevrons.
+
+## UI text palette
+- `Locale/Chat.lua` is the single editable source for the shared SCB/UI palette:
+  - `COLOR_SCB = 88CCFF` — existing light-blue chat color and primary UI headers.
+  - `COLOR_UI_GOLD = FFD100` — section/subsection headers.
+  - `COLOR_UI_SILVER = C0C0C0` — ordinary descriptive/value text.
+  - `COLOR_UI_WHITE = FFFFFF` — button and dropdown content.
+- Main headers `SoloCraft Bots`, `Preset Manager`, and `Options` use SCB blue.
+- Main sections and Options subsections (Presets, Command Bots, Assignments, Summon Bots, Misc, Chat Filtering, Layout, Command Buttons, Preset Groups, etc.) use gold.
+- Ordinary text in the three primary windows uses silver.
+- Text-button/dropdown content uses white.
+- Semantic color remains allowed where it communicates state or identity, notably class-colored player names and red/green preset save/risk feedback.
 
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
@@ -233,30 +248,36 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.108 implementation / static validation / next runtime test
-1. **0.8.107 Request/Auto Loot contract remains implemented; runtime deferred.**
-   - Protocol 8 contains no Request loot negotiation.
-   - Friend/test peer is offline, so do not invent a runtime result for this path.
+## 0.8.109 implementation / static validation / next runtime test
+1. **0.8.108 drawer layout: USER TESTED PASS.**
+   - User confirmed the left/right drawer layout works.
+   - No need to repeat basic anchoring/order tests unless the 0.8.109 visual-only change causes a regression.
 
-2. **Drawer justification: IMPLEMENTED; runtime pending.**
-   - Added account-wide `drawerJustification`, default Right.
-   - Added top-left main-window chevron showing current side and toggling Left/Right.
-   - Added shared `SCB_LayoutSidePanels()` ownership for Preset Manager + Options.
-   - Right: Main -> Preset -> Options. Left: Options -> Preset -> Main.
-   - Options moves directly beside Main whenever Preset Manager is closed.
-   - Existing Presets open/close chevron direction is now side-aware.
+2. **Chevron size normalization: IMPLEMENTED; runtime visual check pending.**
+   - The new main justification chevron now uses `SCB_GetLayoutValue("command", "iconSize")` at creation and during live Command layout refresh.
+   - Default therefore matches the Command/Assignments section chevrons at 12px and follows future Command Icon Size edits immediately.
 
-3. **Checks performed.**
-   - Verified starting handoff exactly matched `36225b81f8c1190d3db4cd6b1e271846a5adaba2` / `0.8.107-dev`.
-   - Current implementation head before this handoff update is `003db9fd83fe07f9acdcc0d260623a1a717f4291`; TOC is `0.8.108-dev`.
-   - Static inspection confirms default Right, account-wide storage, current-direction chevron, left/right Preset anchors, Options outer-anchor behavior, and re-layout on Preset/Options visibility changes.
+3. **Shared UI palette + readability hierarchy: IMPLEMENTED; runtime visual check pending.**
+   - Existing `COLOR_SCB = 88CCFF` remains the single SCB blue source used by both chat and UI.
+   - Added adjacent central palette values for gold/silver/white.
+   - Added shared core color-role helpers rather than scattering new RGB literals.
+   - Primary headers are blue; section/subsection headers are gold; ordinary text/value labels are silver; text-button/dropdown content is white.
+   - Preset selector/menu overrides that previously colored default groups gold/custom groups silver were removed so dropdown content stays white as requested.
+   - Base preset text buttons now return to white after status pulses.
+   - Class-color identity and red/green status feedback are intentionally preserved.
+
+4. **Checks performed.**
+   - Verified starting handoff exactly matched `5b85877f6be2e861e27089efc7623e4f5753223f` / `0.8.108-dev`.
+   - Current implementation head before this handoff update is `c122a4f8231da34b245bfc1f898ac7604182478c`; TOC is `0.8.109-dev`.
+   - Static inspection confirms all three requested main headers use the shared header role, shared section-title creation uses gold, text-button creation uses white, Preset dropdown/menus are white, and Options descriptive/value text routes to silver.
+   - Palette helper was namespaced on `SCB` rather than adding another top-level local, avoiding unnecessary Lua 5.0 local-budget pressure.
    - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
-4. **Exact next runtime test.**
-   - With default/right justification: open Preset Manager and Options; confirm `Main | Preset | Options`.
-   - Close Preset Manager while Options remains open; confirm Options moves directly beside Main.
-   - Click the new top-left chevron; confirm it changes to `<` and any open drawers immediately become `Options | Preset | Main` (or `Options | Main` if Preset is closed).
-   - Reload/login another character and confirm the chosen justification persists account-wide.
+5. **Exact next runtime test.**
+   - Confirm the new top-left `< >` justification icon visually matches the Command/Assignments `^ v` chevrons at the current Command Icon Size.
+   - Confirm header hierarchy: SoloCraft Bots / Preset Manager / Options are light blue.
+   - Confirm section/subsection headings are gold, ordinary labels/values are silver, and button/dropdown text is white.
+   - Confirm semantic exceptions still read correctly: player names remain class-colored and preset state feedback still turns red/green where expected.
    - Request protocol 8 tests remain deferred until another SCB player is available.
 
 
