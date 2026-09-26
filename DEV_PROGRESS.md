@@ -4,14 +4,15 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.100-dev`
-- Current implementation head before this handoff update: `bc77a914da0c11e15939216abcb0bf51925d5d94`
+- TOC version: `0.8.101-dev`
+- Current implementation head before this handoff update: `56b7a19a7d9a0df59d23e717112d2e918c233900`
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
-- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. `0.8.100-dev` makes requested-preset acceptance own leadership, raid conversion and receiver-side auto-loot setup and is the next runtime candidate.
-- The 0.8.99 Resummon Group **backend maintenance work is provisional**, but its target-based Command Bots UX was explicitly rejected before runtime testing. Do not ask the user to test that UI. It must be reworked to the agreed per-group header control first.
-- Immediate goal: preserve the 0.8.100 Request runtime gate, then implement the agreed Resummon Group header UX plus the finalized Lucide mini-button artwork pass. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
+- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed. The `0.8.100-dev` requested-preset ownership change remains the **first runtime gate**: leadership transfer, raid conversion and receiver-side auto-loot setup must be tested before the newer UI work.
+- `0.8.101-dev` completes the approved Resummon Group correction: the target-based Command Bots UI is gone, each visible preset `Group N` header owns a direct right-justified `RotateCcw` action, and the existing maintenance backend is invoked with that logical group directly.
+- `0.8.101-dev` also implements the finalized Lucide mini-button artwork pass without changing Command Bots gameplay artwork or class/role/gameplay identity icons.
+- Immediate goal: runtime-test the preserved 0.8.100 Request gate first, then smoke-test the 0.8.101 Resummon Group/header and mini-control visuals. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -89,17 +90,17 @@
 - Keep exact burst intent records, reverse send, join-assumption identity, subgroup movement and Active Roster replacement binding.
 - Do not redesign refill into group-by-group bursts; mixed-group refill saves meaningful time.
 - Combat-role validation is an independent watchdog for mistaken mixed-burst identity assumptions, not a reason to remove that optimisation.
-- 0.8.99 added **Resummon Group** as another `kind="maintenance"` action rather than a new physical-operation path. The maintenance plumbing may be reused, but the original UI/selection design is **not accepted**.
-- **Authoritative Resummon Group UX:** each visible preset group has its own mini icon button inside the `Group N` title/header, justified right. Clicking that button directly resummons that logical group. No target selection or target-dependent enablement is part of the design.
-- Remove the provisional full-width Resummon Group button from Command Bots and remove target-as-group-selector UX when implementing the correction.
+- 0.8.99 added **Resummon Group** as another `kind="maintenance"` action rather than a new physical-operation path; 0.8.101 keeps that physical backend and removes the rejected target-selection presentation layer.
+- **Implemented authoritative Resummon Group UX:** each visible preset group owns a mini `RotateCcw` button inside the `Group N` title/header, justified right. Clicking it passes that logical group directly into the maintenance action. No target selection or target-dependent enablement remains.
+- The provisional full-width Command Bots Resummon Group button, target-as-group-selector helpers and target-driven refresh path are removed.
 - The action should rebuild every expected tracked bot assignment in the chosen logical group, including already-missing tracked assignments. Humans and unbound/manual bots remain untouched.
 - If any tracked assignment in the selected group cannot produce a valid replacement record, the action aborts before kicking anything; no partial destructive resummon.
 - Destination capacity remains preflighted before any kick. Humans, manual/unbound bots and other non-removed occupants count against the five-player destination capacity; if the complete tracked group cannot fit, the action refuses unchanged rather than failing mid-rebuild.
 - Live tracked bots in the selected group remain routed through the shared paced kick queue, existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths.
 - If the selected group contains every live bot and survivor safety is required, preserve the existing retained-survivor lifecycle. A lone required survivor must be left in place rather than risking instance removal.
 
-## Mini-button visual system — finalized design
-Lucide is used only for the **small utility/chrome controls**. This is not a global artwork redesign.
+## Mini-button visual system — finalized design, implemented in 0.8.101
+Lucide is used only for the **small utility/chrome controls**. This is not a global artwork redesign. 0.8.101 adds dedicated 32x32 TGA assets for the agreed glyphs/state variants.
 
 Agreed Lucide mapping:
 - Main Close: `X`.
@@ -203,6 +204,16 @@ Exact `0.8.92-dev` baseline:
 - Confirmed communication protocol is 3 on both serialized snapshots and offer handshakes.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment.
 
+## Static validation for 0.8.101
+- Verified `dev` was exactly at handoff `8f344391dfcb68cf2e5ba13549de82ff49e4e3fa` before the implementation write; the update was fast-forward only.
+- Reviewed implementation diff `56b7a19a7d9a0df59d23e717112d2e918c233900`.
+- Confirmed the provisional full-width Command Bots Resummon button and all target-as-group-selector helpers/refresh identifiers are absent.
+- Confirmed each visible preset group creates a right-justified `RotateCcw` mini button carrying `scbGroupIndex`, and the maintenance backend now accepts the logical group directly.
+- Confirmed the existing maintenance preflight/capacity/survivor/removal/spawn plumbing remains the physical execution path.
+- Confirmed all 20 Lucide TGA assets are present as 32x32 32-bit assets; the Telescope keeps separate near/far state treatment while using the same semantic glyph.
+- Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
+- Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
+
 ## Focused runtime gate
 Test the new `0.8.100-dev` Request flow first. Do not repeat accepted summon/rebuild identity tests.
 
@@ -226,11 +237,11 @@ Test the new `0.8.100-dev` Request flow first. Do not repeat accepted summon/reb
 4. **Existing-raid request**
    - Opportunistic if convenient: when already in a raid, accepting a request should transfer raid leadership to the receiving summoner rather than only granting Assistant, then apply the receiver's Auto Loot setting.
 
-5. **Resummon Group: do not test the provisional 0.8.99 UX**
-   - The target-based Command Bots button was not user-approved and has now been explicitly rejected.
-   - Rework it first to the agreed right-justified mini `RotateCcw` button in each `Group N` preset header.
-   - Preserve/reuse the maintenance backend only where it cleanly supports direct logical-group invocation.
-   - Runtime-test Resummon Group only after that UX correction is implemented.
+5. **0.8.101 Resummon Group + mini-control smoke — after the Request gate above**
+   - Do not target a bot first; target state must be irrelevant.
+   - Confirm every visible `Group N` preset header has the right-justified mini `RotateCcw` button and Command Bots has no Resummon Group button.
+   - Click one group header action and confirm only that logical group's tracked bot assignments are rebuilt; configured humans and unbound/manual bots remain untouched. An already-missing tracked assignment in that group should still be rebuilt when available.
+   - Confirm the mini-control glyph pass visually matches the documented mapping, especially Candidate-1 up/down section chevrons, drawer left/right chevrons, Telescope near/far state, Crosshair/WandSparkles assignment mode and Square/SquareCheckBig checkboxes.
 
 6. **Remaining opportunistic debt**
    - Cat/energy role confirmation and the genuine mismatch popup remain opportunistic runtime coverage.
