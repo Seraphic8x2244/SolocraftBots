@@ -19,6 +19,39 @@ SoloCraftBotsCharDB.helpers = SoloCraftBotsCharDB.helpers or {}
 SCB.version = (GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")) or SCB_L("UNKNOWN")
 SCB.prefix = SCB_L("CHAT_PREFIX")
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
+
+SCB.UI_COLOR_KEYS = {
+    header = "COLOR_SCB",
+    subheader = "COLOR_UI_GOLD",
+    text = "COLOR_UI_SILVER",
+    content = "COLOR_UI_WHITE",
+}
+
+local function SCB_UIHexToRGB(hex, fallback)
+    local value = type(hex) == "string" and string.upper(hex) or fallback
+    if not value or string.len(value) ~= 6 or string.find(value, "[^0-9A-F]") then
+        value = fallback or "FFFFFF"
+    end
+    return (tonumber(string.sub(value, 1, 2), 16) or 255) / 255,
+        (tonumber(string.sub(value, 3, 4), 16) or 255) / 255,
+        (tonumber(string.sub(value, 5, 6), 16) or 255) / 255
+end
+
+function SCB_GetUIColor(role)
+    local key = SCB.UI_COLOR_KEYS[role] or SCB.UI_COLOR_KEYS.text
+    local fallback = role == "header" and "88CCFF"
+        or role == "subheader" and "FFD100"
+        or role == "content" and "FFFFFF"
+        or "C0C0C0"
+    return SCB_UIHexToRGB(SCB_L(key, fallback), fallback)
+end
+
+function SCB_SetFontColor(fontString, role)
+    local r, g, b
+    if not fontString then return end
+    r, g, b = SCB_GetUIColor(role)
+    fontString:SetTextColor(r, g, b, 1)
+end
 SCB.commandButtons = {}
 SCB.manualAddButtons = {}
 SCB.presetSlotButtons = {}
@@ -223,7 +256,7 @@ function SCB_CreateTextButton(parent, name, width, height, text, allowRightClick
     local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("CENTER", button, "CENTER", 0, 0)
     label:SetText(text)
-    label:SetTextColor(1, 1, 1, 1)
+    SCB_SetFontColor(label, "content")
     button.label = label
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
@@ -394,7 +427,7 @@ function SCB_CreateSectionTitle(parent, text, x, y)
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     title:SetText(text)
-    title:SetTextColor(0.82, 0.82, 0.82, 1)
+    SCB_SetFontColor(title, "subheader")
     return title
 end
 
@@ -1290,6 +1323,9 @@ function SCB_LayoutCommandUI()
     if SCB.sections.assignments and SCB.sections.assignments.scbToggle then
         SCB_SetTextureRenderSize(SCB.sections.assignments.scbToggle.scbArrowTexture, iconSize, SCB.sections.assignments.scbToggle)
     end
+    if SCB.drawerJustificationToggle and SCB.drawerJustificationToggle.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.drawerJustificationToggle.scbArrowTexture, iconSize, SCB.drawerJustificationToggle)
+    end
     gap = SCB_GetLayoutValue("command", "horizontalSpacing")
     rowGap = SCB_GetLayoutValue("command", "verticalSpacing")
     groupGap = SCB_GetLayoutValue("command", "groupVerticalSpacing")
@@ -1659,8 +1695,10 @@ function SCB_CreateUI()
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", frame, "TOP", 0, -13)
     title:SetText(SCB_L("ADDON_TITLE") .. (string.find(SCB.version or "", "%-dev$") and SCB_L("DEV_SUFFIX") or ""))
+    SCB_SetFontColor(title, "header")
 
     local justification = SCB_CreateArrowButton(frame, 18)
+    SCB_SetTextureRenderSize(justification.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), justification)
     justification:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -9)
     justification:SetScript("OnClick", SCB_DrawerJustificationOnClick)
     justification:SetScript("OnEnter", SCB_TooltipOnEnter)
