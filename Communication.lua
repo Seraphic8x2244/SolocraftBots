@@ -717,6 +717,15 @@ local function SCB_CommsContinueAcceptedRequest(incoming)
 
     method = CurrentAutoLootMethod()
     if not incoming.lootApplied and method ~= "off" then
+        -- First ask the receiver's own client whether the desired loot state is
+        -- already active. SCB_ApplyAutoLootMethod() is intentionally
+        -- idempotent for non-master modes, so a non-leader receiver can accept
+        -- an already-correct FFA/Group/Round Robin/etc. state without sending a
+        -- needless leader-control message during post-conversion roster churn.
+        if SCB_ApplyAutoLootMethod and SCB_ApplyAutoLootMethod(method) then
+            incoming.lootApplied = true
+            return SCB_CommsStartAcceptedRequest(incoming)
+        end
         if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
             return SCB_CommsStartAcceptedRequest(incoming)
         end
