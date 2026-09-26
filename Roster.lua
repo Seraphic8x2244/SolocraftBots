@@ -921,8 +921,17 @@ function SCB_ApplyAutoLootMethod(methodOverride, masterName)
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if partyCount <= 0 and raidCount <= 0 then return false end
+
+    -- Applying an already-active non-master loot mode is idempotent and does
+    -- not require a fresh authority check. This matters immediately after
+    -- party->raid conversion while leader-rank propagation can briefly lag
+    -- even though the desired loot mode is already authoritative.
+    if GetLootMethod then
+        current = GetLootMethod()
+        if current == method and method ~= "master" then return true end
+    end
+
     if not SCB_IsLocalGroupLeader() then return false end
-    if GetLootMethod then current = GetLootMethod(); if current == method and method ~= "master" then return true end end
     if method == "master" then
         masterTarget = masterName or (UnitName and UnitName("player")) or nil
         if masterTarget and masterTarget ~= "" then SetLootMethod("master", masterTarget) else return false end
