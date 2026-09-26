@@ -64,6 +64,7 @@ function SCB_CreateAutoLootOption(parent)
 
     arrow = selector:CreateTexture(nil, "ARTWORK")
     SCB_SetTextureRenderSize(arrow, SCB.LUCIDE_ICON_SIZE, selector)
+    arrow:ClearAllPoints()
     arrow:SetPoint("RIGHT", selector, "RIGHT", -2, 0)
     arrow:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
 
@@ -540,7 +541,7 @@ function SCB_CreateOptionsUI(frame)
     control = SCB_CreateLayoutControl(commandContent, "command", "groupVerticalSpacing", "OPTION_COMMAND_GROUP_SPACING", -54, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "iconSize", "OPTION_ICON_SIZE", -80, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
-    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 312)
+    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 320)
     presetContent = SCB.optionPresetSection.scbContent
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupWidth", "OPTION_GROUP_WIDTH", -2, 60, 160, -30, 30); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupHeight", "OPTION_GROUP_HEIGHT", -26, 100, 240, -50, 50); table.insert(SCB.optionLayoutControls, control)
