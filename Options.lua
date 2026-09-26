@@ -517,9 +517,16 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionLayoutControls = {}
 
     heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -12)
+    heading:SetPoint("TOP", panel, "TOP", 0, -13)
     heading:SetText(SCB_L("OPTIONS_TITLE"))
     SCB_SetFontColor(heading, "header")
+
+    SCB.optionsCloseButton = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_x.tga")
+    SCB.optionsCloseButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -9)
+    SCB.optionsCloseButton.scbTooltip = SCB_L("TIP_CLOSE")
+    SCB.optionsCloseButton:SetScript("OnClick", function() SCB_SetOptionsPanelShown(false) end)
+    SCB.optionsCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.optionsCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
     miscContent = SCB.optionMiscSection.scbContent
