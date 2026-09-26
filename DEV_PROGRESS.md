@@ -7,7 +7,7 @@
 - TOC version: `0.8.111-dev`
 - Current implementation head: `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`
 - Current handoff/status head before this final handoff commit: `1cb8e1201ce093bbb2f885874ea22af9790c740a`
-- Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so Request protocol 8 remains runtime-pending.
+- Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: no local UI regression remains from the 0.8.108-0.8.111 drawer/header/readability slice. When a second SCB player is available, resume **Request protocol 8 runtime validation first**: receiver-owned location-capacity refusal, automatic leader-owned party→raid conversion, no leadership transfer/assistant requirement, and no Request-owned loot behavior.
+- Immediate goal / exact next step: Request protocol 8 runtime validation is complete. Investigate/fix the separate addon-level Auto Loot trigger gap without reintroducing Request ownership: the current leader's own configured Auto Loot method must be what applies, including when another SCB client performs the summon/conversion.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -182,6 +182,20 @@ Implementation intent:
 - Never use `UnitHealth()==0` as a dead-state fallback.
 - Preset protocol is now `SCBPRESET` protocol 8. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 8 keeps leadership fixed, enforces receiver-local execution capacity, uses leader-directed party->raid conversion where required, never gates summoning on assistant rank, and carries **no loot-setting behavior**.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
+
+## Request protocol 8 runtime result — 0.8.111-dev / dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b
+1. **Receiver-owned location capacity: PASS.**
+   - Receiver produced the correct capacity error.
+   - No bot summon and no party→raid conversion occurred.
+2. **Automatic leader-owned party→raid conversion: PASS.**
+3. **No leadership / assistant requirement for the receiving summoner: PASS.**
+4. **No Request-owned loot behavior: PASS, with separate Auto Loot trigger issue discovered.**
+   - Request did not change loot method itself.
+   - Test settings: user's Auto Loot = Free For All; Gaia's Auto Loot = Round Robin; actual party/raid loot method remained Group Loot.
+   - Current implementation only changes loot when the local client is the actual group/raid leader, which is correct ownership.
+   - However, automatic apply is only triggered by that client's own Auto Loot option change, locally-recognised SCB bot-add events, and specific local add/adoption paths. A leader observing bots summoned by another SCB client can therefore receive roster changes without running its own Auto Loot apply path.
+   - `PARTY_LEADER_CHANGED`, generic raid conversion/roster change, and Request completion do not currently guarantee that the leader re-applies its configured Auto Loot method.
+   - Fix must remain addon-level/leader-owned; do not put loot state back into Request protocol data or Request completion semantics.
 
 ## Runtime results
 Exact `0.8.92-dev` baseline:
