@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 5
+local COMM_PROTOCOL = 6
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -61,18 +61,6 @@ local function CurrentGroupLeaderName()
                 end
             end
         end
-    end
-    return nil
-end
-
-local function LocalRaidRank()
-    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    local selfName = SelfName()
-    local i, name, rank
-    if raidCount <= 0 or selfName == "" or not GetRaidRosterInfo then return nil end
-    for i = 1, raidCount do
-        name, rank = GetRaidRosterInfo(i)
-        if name == selfName then return rank or 0 end
     end
     return nil
 end
@@ -628,7 +616,7 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
 }
 
 local function SCB_CommsStartAcceptedRequest(incoming)
-    local ok, errorText, raidCount, partyCount, localRank, method
+    local ok, errorText, raidCount, partyCount, method
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
@@ -645,16 +633,6 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         ConvertToRaid()
         if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
         return true
-    end
-
-    if raidCount > 0 then
-        localRank = LocalRaidRank()
-        if localRank == nil or localRank <= 0 then return false end
-    elseif partyCount > 0 and (not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader()) then
-        -- Vanilla parties have no assistant rank. Never transfer leadership
-        -- just to execute a Request; a non-leader receiver cannot own a
-        -- destructive 5-player rebuild safely.
-        return false
     end
 
     method = CurrentAutoLootMethod()
@@ -690,8 +668,6 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
     incoming.controlLeader = leaderName
     if action == "CONVERT" then
         incoming.phase = "await-convert"
-    elseif action == "ASSIST" then
-        incoming.phase = "await-assist"
     elseif string.find(action or "", "^LOOT_") then
         incoming.phase = "await-loot"
     else
@@ -705,15 +681,13 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
 
     if action == "CONVERT" then
         SCB_Print(SCB_L("COMM_REQUEST_WAIT_CONVERT"))
-    elseif action == "ASSIST" then
-        SCB_Print(SCB_L("COMM_REQUEST_WAIT_LEADER"))
     end
     if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     return true
 end
 
 local function SCB_CommsContinueAcceptedRequest(incoming)
-    local raidCount, partyCount, localRank, method
+    local raidCount, partyCount, method
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
@@ -731,40 +705,21 @@ local function SCB_CommsContinueAcceptedRequest(incoming)
         return true
     end
 
-    if raidCount > 0 then
-        localRank = LocalRaidRank()
-        if localRank == nil then
-            SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-            FinishIncoming(incoming, "ERROR")
-            return false
+    method = CurrentAutoLootMethod()
+    if not incoming.lootApplied and method ~= "off" then
+        if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+            return SCB_CommsStartAcceptedRequest(incoming)
         end
-        if localRank <= 0 then
-            if not SCB_CommsRequestLeaderAction(incoming, "ASSIST") then
-                SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-                FinishIncoming(incoming, "ERROR")
-                return false
-            end
+        if (raidCount > 0 or partyCount > 0)
+            and SCB_CommsRequestLeaderAction(incoming, "LOOT_" .. method) then
             return true
         end
-
-        method = CurrentAutoLootMethod()
-        if not incoming.lootApplied and method ~= "off" and localRank < 2 then
-            if not SCB_CommsRequestLeaderAction(incoming, "LOOT_" .. method) then
-                SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-                FinishIncoming(incoming, "ERROR")
-                return false
-            end
-            return true
-        end
-        if method == "off" then incoming.lootApplied = true end
-        return SCB_CommsStartAcceptedRequest(incoming)
-    end
-
-    if partyCount > 0 and (not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader()) then
         SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
         FinishIncoming(incoming, "ERROR")
         return false
     end
+
+    if method == "off" then incoming.lootApplied = true end
     return SCB_CommsStartAcceptedRequest(incoming)
 end
 
@@ -924,18 +879,6 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             return
         end
 
-        if parts[4] == "ASSIST" then
-            local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-            if GroupHasName(sender) and raidCount > 0
-                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and PromoteToAssistant then
-                PromoteToAssistant(sender)
-                SendControl("L", tx, sender, "ASSISTING")
-            else
-                SendControl("L", tx, sender, "ERROR")
-            end
-            return
-        end
-
         local _, _, lootMethod = string.find(parts[4] or "", "^LOOT_(.+)$")
         if lootMethod then
             local info = SCB_GetAutoLootInfo and SCB_GetAutoLootInfo(lootMethod) or nil
@@ -1049,12 +992,6 @@ commFrame:SetScript("OnUpdate", function()
                 and GetNumRaidMembers and GetNumRaidMembers() > 0 then
                 incoming.controlLeader = nil
                 SCB_CommsContinueAcceptedRequest(incoming)
-            elseif incoming.phase == "await-assist" then
-                local localRank = LocalRaidRank()
-                if localRank and localRank > 0 then
-                    incoming.controlLeader = nil
-                    SCB_CommsContinueAcceptedRequest(incoming)
-                end
             end
         end
     end
