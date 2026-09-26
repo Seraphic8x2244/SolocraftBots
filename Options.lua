@@ -325,6 +325,11 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     section.scbExpandedHeight = expandedHeight
 
     toggle = SCB_CreateArrowButton(section, 18)
+    if sectionKey == "command" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
+    elseif sectionKey == "preset" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("preset", "iconSize"), toggle)
+    end
     toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
     toggle.scbOptionsSection = section
     toggle:SetScript("OnClick", SCB_OptionsSubsectionToggleOnClick)
@@ -417,6 +422,20 @@ function SCB_RefreshOptionsUI()
     end
     if SCB.optionPresetSection and SCB.optionPresetSection.scbDebugCheck then
         SCB.optionPresetSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.preset and 1 or nil)
+    end
+    if SCB.optionCommandSection and SCB.optionCommandSection.scbToggle then
+        SCB_SetTextureRenderSize(
+            SCB.optionCommandSection.scbToggle.scbArrowTexture,
+            SCB_GetLayoutValue("command", "iconSize"),
+            SCB.optionCommandSection.scbToggle
+        )
+    end
+    if SCB.optionPresetSection and SCB.optionPresetSection.scbToggle then
+        SCB_SetTextureRenderSize(
+            SCB.optionPresetSection.scbToggle.scbArrowTexture,
+            SCB_GetLayoutValue("preset", "iconSize"),
+            SCB.optionPresetSection.scbToggle
+        )
     end
     local debugControlsShown = SCB.developerDebugEnabled and true or false
     local sections = { SCB.optionCommandSection, SCB.optionPresetSection }
