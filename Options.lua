@@ -66,7 +66,7 @@ function SCB_CreateAutoLootOption(parent)
     arrow:SetWidth(18)
     arrow:SetHeight(18)
     arrow:SetPoint("RIGHT", selector, "RIGHT", -2, 0)
-    arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    arrow:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
 
     menu = CreateFrame("Frame", "SoloCraftBotsAutoLootMenu", parent)
     menu:SetWidth(118)
@@ -114,7 +114,7 @@ function SCB_OptionCheckOnClick()
 end
 
 function SCB_CreateOptionCheck(parent, key, labelKey, y)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local check = SCB_CreateMiniCheckButton(parent, 24)
     check:SetWidth(24)
     check:SetHeight(24)
     check:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, y)
@@ -224,7 +224,8 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     label:SetText(SCB_L(labelKey))
     label:SetTextColor(0.82, 0.82, 0.82, 1)
 
-    minus = SCB_CreateTextButton(parent, nil, 22, 20, "-")
+    minus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_minus.tga")
+    minus:SetWidth(22)
     minus:SetPoint("LEFT", label, "RIGHT", 2, 0)
     minus.scbLayoutSection = sectionKey
     minus.scbLayoutKey = valueKey
@@ -241,7 +242,8 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     value:SetJustifyH("CENTER")
     value:SetTextColor(1, 0.82, 0, 1)
 
-    plus = SCB_CreateTextButton(parent, nil, 22, 20, "+")
+    plus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_plus.tga")
+    plus:SetWidth(22)
     plus:SetPoint("LEFT", value, "RIGHT", 3, 0)
     plus.scbLayoutSection = sectionKey
     plus.scbLayoutKey = valueKey
@@ -326,7 +328,7 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     if sectionKey then
-        debugCheck = CreateFrame("CheckButton", nil, section, "UICheckButtonTemplate")
+        debugCheck = SCB_CreateMiniCheckButton(section, 20)
         debugCheck:SetWidth(20)
         debugCheck:SetHeight(20)
         debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
@@ -352,10 +354,10 @@ end
 function SCB_RefreshOptionsSectionArrow(section)
     if not section or not section.scbToggle or not section.scbToggle.scbArrowTexture then return end
     if section.scbExpanded then
-        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "down")
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "up")
         section.scbContent:Show()
     else
-        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "right")
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "down")
         section.scbContent:Hide()
     end
 end
@@ -1129,7 +1131,7 @@ function SCB_DebugOnUpdate()
 end
 
 function SCB_DebugMakeCheck(parent, label)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local check = SCB_CreateMiniCheckButton(parent, 22)
     check:SetWidth(22)
     check:SetHeight(22)
     check:SetChecked(1)
@@ -1164,9 +1166,12 @@ function SCB_CreateDebugUI()
     title:SetText(SCB_L("DEBUG_TITLE"))
     title:SetTextColor(1, 0.82, 0, 1)
 
-    local close = SCB_CreateTextButton(frame, nil, 24, 22, SCB_L("DEBUG_CLOSE"))
+    local close = SCB_CreateArtButton(frame, nil, 22, SCB.assetRoot .. "lucide_x.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
+    close.scbTooltip = SCB_L("DEBUG_CLOSE")
     close:SetScript("OnClick", function() frame:Hide() end)
+    close:SetScript("OnEnter", SCB_TooltipOnEnter)
+    close:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     inputLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -42)

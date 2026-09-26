@@ -13,6 +13,7 @@ SCB.presetNameMenuButtons = SCB.presetNameMenuButtons or {}
 SCB.presetEditorPlayerRoles = SCB.presetEditorPlayerRoles or {}
 SCB.presetGroupFrames = SCB.presetGroupFrames or {}
 SCB.presetGroupTitles = SCB.presetGroupTitles or {}
+SCB.presetGroupResummonButtons = SCB.presetGroupResummonButtons or {}
 SCB.dragGhost = SCB.dragGhost or nil
 
 local SCB_DEFAULT_PRESET_GROUPS = {
@@ -1855,7 +1856,7 @@ function SCB_SetMenuDeleteButton(button, show, index, deleteScript)
         del:SetPoint("RIGHT", button, "RIGHT", -2, 0)
         local tex = del:CreateTexture(nil, "ARTWORK")
         tex:SetAllPoints(del)
-        tex:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        tex:SetTexture(SCB.assetRoot .. "lucide_trash.tga")
         del.icon = tex
         del:SetScript("OnEnter", function()
             GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -1881,7 +1882,7 @@ function SCB_SetMenuRenameButton(button, show, index)
         rename:SetPoint("RIGHT", button, "RIGHT", -20, 0)
         local tex = rename:CreateTexture(nil, "ARTWORK")
         tex:SetAllPoints(rename)
-        tex:SetTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+        tex:SetTexture(SCB.assetRoot .. "lucide_pencil.tga")
         rename.icon = tex
         rename.scbTooltip = SCB_L("TIP_RENAME_PRESET")
         rename:SetScript("OnClick", SCB_PresetRenameOnClick)
@@ -1922,9 +1923,8 @@ end
 
 function SCB_SetMenuMoveButtons(button, show, index, count)
     if not button.moveUpButton then
-        local up = SCB_CreateArrowButton(button, 14)
+        local up = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_up.tga")
         up:SetPoint("RIGHT", button, "RIGHT", -56, 0)
-        SCB_SetArrowDirection(up.scbArrowTexture, "up")
         up.scbPresetMoveDirection = -1
         up.scbTooltip = SCB_L("TIP_MOVE_PRESET_UP")
         up:SetScript("OnClick", SCB_MovePresetOnClick)
@@ -1932,9 +1932,8 @@ function SCB_SetMenuMoveButtons(button, show, index, count)
         up:SetScript("OnLeave", SCB_TooltipOnLeave)
         button.moveUpButton = up
 
-        local down = SCB_CreateArrowButton(button, 14)
+        local down = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_down.tga")
         down:SetPoint("RIGHT", button, "RIGHT", -38, 0)
-        SCB_SetArrowDirection(down.scbArrowTexture, "down")
         down.scbPresetMoveDirection = 1
         down.scbTooltip = SCB_L("TIP_MOVE_PRESET_DOWN")
         down:SetScript("OnClick", SCB_MovePresetOnClick)
@@ -3163,7 +3162,7 @@ function SCB_CreateDropdownArrow(parent)
     arrow:EnableMouse(false)
     local texture = arrow:CreateTexture(nil, "ARTWORK")
     texture:SetAllPoints(arrow)
-    texture:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    texture:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
     parent.arrow = arrow
 end
 
@@ -3315,7 +3314,7 @@ SCB_LayoutPresetGroups = function()
     local size = SCB_CurrentPresetSize()
     local groupCount = math.floor((size + 4) / 5)
     local columns = 2
-    local rows, panelWidth, panelHeight, groupFrame, title
+    local rows, panelWidth, panelHeight, groupFrame, title, resummon
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
     local headerHeight, twoGroupWidth, contentWidth, menuWidth
 
@@ -3402,6 +3401,7 @@ SCB_LayoutPresetGroups = function()
     for i = 1, 8 do
         groupFrame = SCB.presetGroupFrames[i]
         title = SCB.presetGroupTitles[i]
+        resummon = SCB.presetGroupResummonButtons[i]
         if i <= groupCount then
             col = math.mod(i - 1, columns)
             row = math.floor((i - 1) / columns)
@@ -3419,9 +3419,15 @@ SCB_LayoutPresetGroups = function()
             title:ClearAllPoints()
             title:SetPoint("BOTTOMLEFT", groupFrame, "TOPLEFT", 8, 2)
             title:Show()
+            if resummon then
+                resummon:ClearAllPoints()
+                resummon:SetPoint("BOTTOMRIGHT", groupFrame, "TOPRIGHT", -6, 1)
+                resummon:Show()
+            end
         else
             groupFrame:Hide()
             title:Hide()
+            if resummon then resummon:Hide() end
         end
     end
 
@@ -3575,6 +3581,15 @@ function SCB_CreatePresetUI(frame)
         groupFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
         groupFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.presetGroupFrames[g] = groupFrame
+
+        local resummonButton = SCB_CreateArtButton(panel, nil, 16, SCB.assetRoot .. "lucide_rotate_ccw.tga")
+        resummonButton.scbGroupIndex = g
+        resummonButton.scbTooltip = string.format(SCB_L("TIP_RESUMMON_GROUP"), g)
+        resummonButton:SetScript("OnClick", SCB_MaintenanceResummonGroupOnClick)
+        resummonButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+        resummonButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+        resummonButton:Hide()
+        SCB.presetGroupResummonButtons[g] = resummonButton
 
         for localIndex = 1, 5 do
             i = ((g - 1) * 5) + localIndex

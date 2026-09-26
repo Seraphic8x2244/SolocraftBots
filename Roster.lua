@@ -812,10 +812,10 @@ function SCB_RefreshDistanceButtons()
     SCB_EnsureSessionDB()
     local state = SoloCraftBotsDB.session.state.distance
     if state == "far" then
-        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance.tga", nil)
+        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "lucide_telescope_on.tga", nil)
         SCB.distanceButton.scbTooltip = SCB_L("TIP_SPAWN_FAR")
     else
-        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "distance_off.tga", nil)
+        SCB_SetArtButtonTexture(SCB.distanceButton, SCB.assetRoot .. "lucide_telescope_off.tga", nil)
         SCB.distanceButton.scbTooltip = SCB_L("TIP_SPAWN_NEAR")
     end
     SCB_RefreshVisibleTooltip(SCB.distanceButton)

@@ -356,20 +356,17 @@ function SCB_CreateSectionTitle(parent, text, x, y)
     return title
 end
 
-local SCB_ARROW_TEXTURE = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
+local SCB_ARROW_TEXTURES = {
+    left = SCB.assetRoot .. "lucide_chevron_left.tga",
+    right = SCB.assetRoot .. "lucide_chevron_right.tga",
+    down = SCB.assetRoot .. "lucide_chevron_down.tga",
+    up = SCB.assetRoot .. "lucide_chevron_up.tga",
+}
 
 function SCB_SetArrowDirection(texture, direction)
     if not texture then return end
-    texture:SetTexture(SCB_ARROW_TEXTURE)
-    if direction == "left" then
-        texture:SetTexCoord(0, 1, 0, 1)
-    elseif direction == "right" then
-        texture:SetTexCoord(1, 0, 0, 1)
-    elseif direction == "down" then
-        texture:SetTexCoord(1, 1, 0, 1, 1, 0, 0, 0)
-    else -- up
-        texture:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
-    end
+    texture:SetTexCoord(0, 1, 0, 1)
+    texture:SetTexture(SCB_ARROW_TEXTURES[direction] or SCB_ARROW_TEXTURES.down)
 end
 
 function SCB_CreateArrowButton(parent, size)
@@ -380,6 +377,20 @@ function SCB_CreateArrowButton(parent, size)
     texture:SetAllPoints(button)
     button.scbArrowTexture = texture
     return button
+end
+
+function SCB_CreateMiniCheckButton(parent, size)
+    local check = CreateFrame("CheckButton", nil, parent)
+    check:SetWidth(size or 20)
+    check:SetHeight(size or 20)
+    check:SetNormalTexture(SCB.assetRoot .. "lucide_square.tga")
+    check:SetCheckedTexture(SCB.assetRoot .. "lucide_square_check_big.tga")
+    local highlight = check:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints(check)
+    highlight:SetTexture(SCB.assetRoot .. "lucide_square_check_big.tga")
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.20)
+    return check
 end
 
 SCB.sections = SCB.sections or {}
@@ -1042,7 +1053,7 @@ function SCB_CreateSummonUI(frame)
 
     -- One state button: silver binoculars = Spawn Near (distance off, default),
     -- gold binoculars = Spawn Far (distance on).
-    local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "distance_off.tga")
+    local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "lucide_telescope_off.tga")
     distance:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     distance:SetScript("OnClick", SCB_DistanceOnClick)
     distance:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1211,11 +1222,6 @@ function SCB_LayoutCommandUI()
     layout.kickAll:SetWidth(utilityWidth)
     layout.kickAll:SetPoint("LEFT", layout.replaceDead, "RIGHT", utilityGap, 0)
 
-    layout.resummonGroup:ClearAllPoints()
-    layout.resummonGroup:SetWidth(utilityTotal)
-    layout.resummonGroup:SetPoint("TOPLEFT", layout.replaceDead, "BOTTOMLEFT", 0, -6)
-    y = y - 30
-
     -- Positive spacing can make the command block taller than its original
     -- fixed content area. Grow the section only when needed; negative spacing
     -- can compact the controls without leaving the following section misplaced.
@@ -1382,13 +1388,6 @@ function SCB_CreateCommandUI(frame)
     kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
     kickAll:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    local resummonGroup = SCB_CreateTextButton(content, "SoloCraftBotsResummonGroup", 198, 24, SCB_L("RESUMMON_GROUP"))
-    resummonGroup.scbTooltip = SCB_L("RESUMMON_GROUP_TARGET")
-    resummonGroup:SetScript("OnClick", SCB_MaintenanceResummonGroupOnClick)
-    resummonGroup:SetScript("OnEnter", SCB_TooltipOnEnter)
-    resummonGroup:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB.resummonGroupButton = resummonGroup
-
     SCB.commandLayout = {
         section = section,
         content = content,
@@ -1398,11 +1397,9 @@ function SCB_CreateCommandUI(frame)
         standaloneButtons = standaloneButtons,
         replaceDead = replaceDead,
         kickAll = kickAll,
-        resummonGroup = resummonGroup,
     }
     SCB_LayoutCommandUI()
     SCB_RefreshTargetCommandRow()
-    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
 end
 
 function SCB_CreateRaidmarkUI(frame)
@@ -1411,7 +1408,7 @@ function SCB_CreateRaidmarkUI(frame)
 
     -- One always-highlighted state button. Focus is the default; clicking it
     -- swaps between Focus and CC assignment modes.
-    local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
+    local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "lucide_eraser.tga")
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
     clearMarks:SetScript("OnClick", function()
@@ -1515,14 +1512,14 @@ function SCB_CreateUI()
     title:SetPoint("TOP", frame, "TOP", 0, -13)
     title:SetText(SCB_L("ADDON_TITLE") .. (string.find(SCB.version or "", "%-dev$") and SCB_L("DEV_SUFFIX") or ""))
 
-    local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "close.tga")
+    local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "lucide_x.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -9)
     close.scbTooltip = SCB_L("TIP_CLOSE")
     close:SetScript("OnClick", SCB_CloseOnClick)
     close:SetScript("OnEnter", SCB_TooltipOnEnter)
     close:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    local config = SCB_CreateArtButton(frame, "SoloCraftBotsConfigButton", 18, SCB.assetRoot .. "config.tga")
+    local config = SCB_CreateArtButton(frame, "SoloCraftBotsConfigButton", 18, SCB.assetRoot .. "lucide_cog.tga")
     config:SetPoint("RIGHT", close, "LEFT", -2, 0)
     config.scbTooltip = SCB_L("TIP_CONFIG")
     config:SetScript("OnClick", SCB_ConfigOnClick)

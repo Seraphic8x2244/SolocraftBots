@@ -313,7 +313,6 @@ local function SCB_0826FinishMaintenance(status, reason, userText)
     if SCB_EndBotOperation then SCB_EndBotOperation(status or "complete", reason) end
     if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
-    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
     if userText and SCB_Print then SCB_Print(userText) end
 end
 
@@ -544,54 +543,8 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
 end
 
-function SCB_GetResummonTargetGroup()
-    local name, slot, group
-    if not SCB_IsFriendlyBotTarget or not SCB_IsFriendlyBotTarget() then return nil, nil, nil end
-    name = UnitName and UnitName("target") or nil
-    if not name then return nil, nil, nil end
-    slot = SCB_GetActiveSlotByName and SCB_GetActiveSlotByName(name) or nil
-    if not slot or not slot.expected then return nil, name, nil end
-    group = slot.intendedGroup or slot.currentGroup or 1
-    return group, name, slot
-end
-
-function SCB_CanResummonTargetGroup()
-    local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
-    local group = SCB_GetResummonTargetGroup()
-    local roster, id, slot
-    if operation or not group then return false, group end
-    roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
-    if not roster or not roster.active then return false, group end
-    for id, slot in pairs(roster.slots or {}) do
-        if slot and slot.expected
-            and (slot.intendedGroup or slot.currentGroup or 1) == group
-            and SCB_BuildActiveReplacementRecord
-            and SCB_BuildActiveReplacementRecord(slot) then
-            return true, group
-        end
-    end
-    return false, group
-end
-
-function SCB_RefreshResummonGroupButton()
-    local button = SCB.resummonGroupButton
-    local available, group
-    if not button then return end
-    available, group = SCB_CanResummonTargetGroup()
-    if available then
-        button:SetAlpha(1)
-        button:Enable()
-        button.scbTooltip = string.format(SCB_L("TIP_RESUMMON_GROUP"), group or 1)
-    else
-        button:SetAlpha(0.5)
-        button:Disable()
-        button.scbTooltip = SCB_L("RESUMMON_GROUP_TARGET")
-    end
-    if SCB_RefreshVisibleTooltip then SCB_RefreshVisibleTooltip(button) end
-end
-
-function SCB_MaintenanceResummonGroupOnClick()
-    local operation, group, targetName, roster, observed, members
+function SCB_MaintenanceResummonGroup(group)
+    local operation, roster, observed, members
     local assignments, removedNames = {}, {}
     local survivorName, survivorRecord
     local botCount, otherHumans, targetedLiveCount, unavailableCount = 0, 0, 0, 0
@@ -606,13 +559,13 @@ function SCB_MaintenanceResummonGroupOnClick()
         return
     end
 
-    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
-    group, targetName = SCB_GetResummonTargetGroup()
-    if not group then
-        SCB_Print(SCB_L("RESUMMON_GROUP_TARGET"))
+    group = tonumber(group)
+    if not group or group < 1 or group > 8 then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
         return
     end
 
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
     roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
     observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
     members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
@@ -716,7 +669,6 @@ function SCB_MaintenanceResummonGroupOnClick()
         kind = "maintenance",
         action = "resummon-group",
         group = group,
-        target = targetName,
         assignmentCount = table.getn(assignments) + (survivorRecord and 1 or 0),
     }) or nil
     if not operation then
@@ -771,7 +723,11 @@ function SCB_MaintenanceResummonGroupOnClick()
     end
 
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
-    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
+end
+
+function SCB_MaintenanceResummonGroupOnClick()
+    local group = this and this.scbGroupIndex or nil
+    SCB_MaintenanceResummonGroup(group)
 end
 
 function SCB_MaintenanceReplaceOnClick()

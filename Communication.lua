@@ -1667,7 +1667,6 @@ end
 
 function SCB_RefreshTargetCommandRow()
     SCB_RefreshCommandAvailability()
-    if SCB_RefreshResummonGroupButton then SCB_RefreshResummonGroupButton() end
 end
 
 function SCB_RefreshSpreadToggle(button)
@@ -1715,11 +1714,11 @@ function SCB_RefreshRaidmarkModeButton()
         return
     end
     if SCB.raidMarkMode == "cc" then
-        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "cc_h.tga", nil)
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "lucide_wand_sparkles.tga", nil)
         SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_CC")
     else
         SCB.raidMarkMode = "focus"
-        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "focus_h.tga", nil)
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "lucide_crosshair.tga", nil)
         SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_FOCUS")
     end
     SCB_RefreshVisibleTooltip(SCB.assignmentModeButton)
