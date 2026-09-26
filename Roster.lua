@@ -911,10 +911,12 @@ function SCB_IsLocalGroupLeader()
     return false
 end
 
-function SCB_ApplyAutoLootMethod()
-    local method, current, partyCount, raidCount
+function SCB_ApplyAutoLootMethod(methodOverride, masterName)
+    local method, current, partyCount, raidCount, info, masterTarget
     SCB_EnsureOptionsDB()
-    method = SoloCraftBotsDB.options.autoLootMethod or "off"
+    method = methodOverride or SoloCraftBotsDB.options.autoLootMethod or "off"
+    info = SCB_GetAutoLootInfo(method)
+    if not info or info.key ~= method then return false end
     if method == "off" or not SetLootMethod then return true end
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
@@ -922,7 +924,8 @@ function SCB_ApplyAutoLootMethod()
     if not SCB_IsLocalGroupLeader() then return false end
     if GetLootMethod then current = GetLootMethod(); if current == method and method ~= "master" then return true end end
     if method == "master" then
-        if UnitName and UnitName("player") then SetLootMethod("master", UnitName("player")) else return false end
+        masterTarget = masterName or (UnitName and UnitName("player")) or nil
+        if masterTarget and masterTarget ~= "" then SetLootMethod("master", masterTarget) else return false end
     else
         SetLootMethod(method)
     end
