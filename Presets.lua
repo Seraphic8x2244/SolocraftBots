@@ -3964,6 +3964,22 @@ function SCB_GetLocationMaxCapacity(context)
     return tiers[table.getn(tiers)] or 5
 end
 
+-- Requested preset execution is owned by the receiving summoner's client.
+-- The requester's location is irrelevant: validate the requested maintained
+-- group size against the receiver's current local capacity before any
+-- conversion or destructive work begins.
+function SCB_ValidateRequestedPresetLocalCapacity(snapshot)
+    local size = snapshot and tonumber(snapshot.size) or 0
+    local context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    local maximum = SCB_GetLocationMaxCapacity and SCB_GetLocationMaxCapacity(context) or 5
+
+    if size <= 0 then return false, SCB_L("ERR_SNAPSHOT_SIZE") end
+    if size > maximum then
+        return false, string.format(SCB_L("ERR_REQUEST_LOCATION_CAPACITY"), size, maximum)
+    end
+    return true
+end
+
 -- previousCap makes normal observation sticky upward. explicitSize is the one
 -- deliberate shrink path: pressing Summon with a smaller preset is the user's
 -- authoritative statement that the maintained roster should become smaller.
