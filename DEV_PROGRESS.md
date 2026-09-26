@@ -4,18 +4,21 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.105-dev`
-- Current implementation head before this handoff update: `602d8b766aecb23bffdf8348c59ba5ea7ee48169`
-- Runtime-tested baseline for this slice: `0.8.104-dev` at handoff `89fd7e26d6a61d8ff490f1ac16dfb763039cf8ad`, with the exact result below.
+- TOC version: `0.8.106-dev`
+- Current implementation head before this handoff update: `a3c819d0b26cf6e52bbd83470f9c27da8f342dc5`
+- Runtime-tested baseline for this slice: `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test.
 - `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed.
 - `0.8.103-dev`: delegated receiver-selected Auto Loot, existing-raid Request with leadership unchanged, human-containing Resummon role-validation ticks, and the original live icon-size controls passed.
-- `0.8.104-dev` runtime: accepted >5 Request passed automatic party->raid conversion and no longer hit the rejected assistant gate, but then falsely failed with "Couldn't apply the requested loot settings through the current group leader" even though FFA was already visibly active after conversion.
-- New design correction: Request execution limits belong to the **requestee's current location**, never the requester. Example: a requester in UBRS must not be able to make a requestee in Stormwind execute a 15-player preset merely because the requester is in a 15-player-capable location.
-- `0.8.105-dev` adds requestee-local capacity preflight before any conversion and rechecks immediately before execution; protocol is now 7 so older Request peers cannot bypass that receiver-owned safety contract.
-- `0.8.105-dev` also makes already-active non-master loot modes idempotent success before leader-authority checks, fixing the observed FFA false failure during post-conversion authority propagation.
-- The `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live chevron/dropdown icon sizing remain implemented; their newly added coverage is still runtime-pending unless separately reported.
+- `0.8.104-dev`: automatic >5 party->raid conversion passed and the rejected assistant gate was removed; FFA Request still produced a false leader-authority error.
+- `0.8.105-dev`: receiver-owned location-capacity guardrail implemented and accepted as intentional correctness/state-integrity protection. This is consistent with the rulebook's “enforce correctness, not preference” rule because a bad raid size can cause instance-full failures or dissolve/boot the group rather than representing a valid supported choice.
+- `0.8.105-dev` runtime still reproduced the loot-setting error on the second/requestee player, proving the prior leader-side idempotence fix was insufficient.
+- Root cause found: the requestee's continuation path delegated every non-Off loot preference before first checking whether that state was already active locally.
+- `0.8.106-dev` fixes that remaining path: the requestee first calls the idempotent local loot apply/check; if FFA/Group/Round Robin/etc. is already active, Request proceeds with no leader control message. Only a genuine loot change is delegated.
+- Protocol remains 7; the wire contract did not change in 0.8.106.
+- The `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live chevron/dropdown icon sizing remain implemented; newly added coverage is still runtime-pending unless separately reported.
+- Immediate goal: runtime-confirm the `0.8.106` FFA Request fix and, if not already done, the receiver-local capacity guardrail plus new icon-size coverage.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -158,7 +161,7 @@ Implementation intent:
 - Raw user-typed `.partybot add ...` remains outside SCB coordinator ownership.
 - Taxi safety remains action-time only through `SCB_CanOperateBots(showError)`.
 - Never use `UnitHealth()==0` as a dead-state fallback.
-- Preset protocol is now `SCBPRESET` protocol 6. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 6 keeps leadership fixed, uses leader-directed party->raid conversion where required, never gates summoning on assistant rank, and delegates only genuinely leader-owned loot setup.
+- Preset protocol is now `SCBPRESET` protocol 7. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 7 keeps leadership fixed, enforces receiver-local execution capacity, uses leader-directed party->raid conversion where required, never gates summoning on assistant rank, and delegates only genuinely leader-owned loot changes.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
 
 ## Runtime results
@@ -227,37 +230,36 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.105 implementation / static validation / next runtime test
-1. **0.8.104 runtime result.**
-   - >5 Request: automatic conversion **PASS**; rejected assistant gate no longer blocked execution.
-   - Post-conversion delegated loot: **FAIL** with the authority error even though FFA was already visibly active.
-   - Root cause: `SCB_ApplyAutoLootMethod()` checked local leader authority before recognizing that the desired non-master loot mode was already active.
-   - Newly expanded 0.8.104 icon-size coverage was not reported as runtime-tested in this result.
+## 0.8.106 implementation / static validation / next runtime test
+1. **0.8.105 runtime result.**
+   - The second/requestee player still received the loot authority error during the FFA Request path.
+   - Therefore the 0.8.105 leader-side “already active” shortcut was not sufficient.
+   - Receiver-local capacity guardrail remains the intended design; it protects group-state correctness rather than restricting a supported user choice.
 
-2. **Receiver-local Request capacity: IMPLEMENTED; runtime pending.**
-   - Added `SCB_ValidateRequestedPresetLocalCapacity(snapshot)` using the receiving client's live `SCB_GetLocationContext()` and canonical `SCB_GetLocationMaxCapacity()`.
-   - Validation runs on Accept before conversion and again in `SCB_CommsStartAcceptedRequest()` before execution.
-   - Requester location is not consulted for execution eligibility.
-   - Protocol bumped 6 -> 7 so old receivers cannot silently execute under the superseded contract.
+2. **Remaining FFA false failure: IMPLEMENTED; runtime pending.**
+   - Root cause: `SCB_CommsContinueAcceptedRequest()` delegated every non-Off loot preference whenever the requestee was not leader, without first asking whether the desired mode was already active on the requestee.
+   - The requestee now calls `SCB_ApplyAutoLootMethod(method)` first.
+   - For already-active non-master modes, that function succeeds before authority checks, marks `incoming.lootApplied = true`, and Request proceeds without any leader-control packet.
+   - If the mode is not already active, normal leader delegation remains unchanged.
+   - Master Looter remains excluded from the no-op shortcut because the specific master target matters.
 
-3. **FFA/loot false failure: IMPLEMENTED; runtime pending.**
-   - For non-master modes, `GetLootMethod() == requestedMethod` now returns success before `SCB_IsLocalGroupLeader()`.
-   - True loot changes still require/delegate leader authority exactly as before.
-   - Master Looter remains excluded from the idempotent shortcut because the specific master target matters.
+3. **Receiver-local capacity guardrail: IMPLEMENTED; runtime status pending unless separately reported.**
+   - Validation remains requestee-owned at Accept and immediately before execution.
+   - Canonical capacity model remains world 5 / dungeon 10 / BRS 15 / 20-man 20 / 40-man 40.
+   - This guardrail is intentional state-integrity protection: unsupported sizes can cause server-side instance/full-group failures or group dissolution/solo ejection.
 
 4. **Checks performed.**
-   - Verified starting handoff exactly matched `89fd7e26d6a61d8ff490f1ac16dfb763039cf8ad` / `0.8.104-dev`.
-   - Current implementation head before this handoff update is `602d8b766aecb23bffdf8348c59ba5ea7ee48169`; TOC is `0.8.105-dev`; protocol is 7.
-   - Static inspection confirms receiver-local capacity checks are present at both Accept and execution.
-   - Static inspection confirms the already-active non-master loot check occurs before the leader-authority check.
-   - Preset communications still contain zero `PromoteToLeader` and zero `ASSIST` paths.
+   - Verified starting handoff exactly matched `7999592220cc3893153f1226513c6110058a6c6e` / `0.8.105-dev`.
+   - Current implementation head before this handoff update is `a3c819d0b26cf6e52bbd83470f9c27da8f342dc5`; TOC is `0.8.106-dev`.
+   - Static inspection confirms the requestee-local idempotent loot check occurs before `LOOT_<method>` delegation.
+   - Protocol remains 7; preset communications still contain zero `PromoteToLeader` and zero `ASSIST` paths.
    - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
 5. **Exact next runtime test.**
-   - Capacity ownership: put requester in a higher-cap location (e.g. UBRS) and requestee in world/Stormwind, request a >5 preset, Accept on the requestee. It must refuse **before raid conversion** with the requestee-local capacity message.
-   - Valid >5 Request with receiver Auto Loot = FFA: automatic conversion should occur, already-correct FFA must not produce the authority error, and preset summoning should continue.
-   - If not already checked, confirm the 0.8.104 Command 12px / Preset 10px defaults and newly covered chevrons/dropdown utility icons resize live.
-   - Do not repeat already-passed existing-raid Request, human-containing Resummon, delegated-loot-change, or old stuck-summon tests unless a new regression appears.
+   - Valid >5 Request with requestee Auto Loot = FFA and FFA already active after conversion: no loot-authority error should appear and preset summoning should continue.
+   - If receiver-local capacity has not yet been exercised: requester in UBRS/high-cap area, requestee in Stormwind/world, >5 Request must refuse before conversion using the requestee's capacity.
+   - If not already checked, confirm Command 12px / Preset 10px defaults and newly covered chevrons/dropdown utility icons resize live.
+   - Do not repeat already-passed existing-raid Request, human-containing Resummon, delegated real loot-change, or old stuck-summon tests unless a new regression appears.
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
