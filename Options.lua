@@ -482,11 +482,11 @@ function SCB_SetOptionsPanelShown(show)
     if show then
         SCB_RefreshOptionsUI()
         SCB_LayoutOptionsUI()
-        SCB.optionsPanel:ClearAllPoints()
-        SCB.optionsPanel:SetPoint("TOPLEFT", SCB.frame, "TOPRIGHT", 2, 0)
         SCB.optionsPanel:Show()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
     else
         SCB.optionsPanel:Hide()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
     end
 end
 
