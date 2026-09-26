@@ -4,20 +4,17 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.107-dev`
-- Current implementation head before this handoff update: `0f323630cb6a6676a5b6ff53085e06636469c9e9`
-- Runtime-tested baseline for this slice: `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; `0.8.106-dev` was superseded before runtime validation.
+- TOC version: `0.8.108-dev`
+- Current implementation head before this handoff update: `003db9fd83fe07f9acdcc0d260623a1a717f4291`
+- Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so `0.8.107-dev` Request protocol 8 remains runtime-pending.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test.
-- `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed.
-- `0.8.103-dev`: existing-raid Request with leadership unchanged, human-containing Resummon role-validation ticks, and the original live icon-size controls passed.
-- `0.8.104-dev`: automatic >5 party->raid conversion passed and the rejected assistant gate was removed.
-- Receiver-owned location-capacity guardrail is explicitly accepted as correctness/state-integrity protection despite the normal anti-guardrail philosophy: unsupported raid sizes can cause instance-full failure or group dissolution/solo ejection.
-- User clarified the key Auto Loot contract: **loot type is not part of preset Request at all. Auto Loot is addon-level state owned solely by the current party/raid leader's SCB.**
-- `0.8.106-dev` still pursued Request-specific loot state and is therefore superseded.
-- `0.8.107-dev` removes the entire Request loot negotiation/delegation path and restores `SCB_ApplyAutoLootMethod()` to no-argument leader-owned addon semantics. Protocol is now 8 to prevent older Request peers from using the superseded loot-control contract.
-- The `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live chevron/dropdown icon sizing remain implemented; newly added coverage is still runtime-pending unless separately reported.
-- Immediate goal: runtime-confirm a valid >5 Request now proceeds after conversion with no Request-related loot message, while the current group leader's own Auto Loot setting continues to operate independently.
+- Receiver-owned location-capacity guardrail is explicitly accepted as correctness/state-integrity protection.
+- Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
+- `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live icon sizing remain implemented.
+- `0.8.108-dev` adds an account-wide side-drawer justification control: a top-left Lucide chevron on the main window shows the **current** justification, defaults to Right, and toggles Left/Right immediately.
+- Preset Manager and Options now share one layout owner. Both appear on the selected side of the main window; when both are open the order is `Main | Preset | Options` on the right or `Options | Preset | Main` on the left. If Preset Manager closes while Options is open, Options moves inward next to Main immediately.
+- The existing Presets drawer open/close chevron now reverses appropriately for the selected side.
+- Immediate goal: runtime-check only the new 0.8.108 drawer justification layout locally; Request protocol 8 testing can wait until a second SCB player is available.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -149,6 +146,14 @@ Implementation intent:
 - Lucide chrome outside those two scoped areas remains fixed at the global 14px default. Non-Lucide Command Bots/gameplay/class/role artwork is unchanged.
 - `artwork/LUCIDE_LICENSE.txt` carries the upstream Lucide/Feather license notice for the distributed artwork.
 
+## Side-drawer justification
+- Account-wide option: `SoloCraftBotsDB.options.drawerJustification` = `"left"` or `"right"`; invalid/missing values default to `"right"`.
+- Main-window top-left chevron displays the **current** justification: `<` for Left, `>` for Right.
+- Preset Manager is always the inner side drawer next to Main when open.
+- Options is always the outer drawer when Preset Manager is open; otherwise Options sits directly beside Main.
+- Opening/closing Preset Manager or Options, or toggling justification, re-anchors visible drawers immediately.
+- This is presentation/layout only; it does not change preset/option state ownership or drawer visibility semantics.
+
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
 - After a missing human slot has been replaced by a bot, do not auto-kick/free capacity when the human returns.
@@ -228,41 +233,32 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.107 implementation / static validation / next runtime test
-1. **Design correction: Request must not own loot.**
-   - User clarified that Auto Loot is addon-level state based on the current party/raid leader.
-   - The requestee's loot preference must never be sent, delegated, applied or validated as part of preset Request.
-   - The previous 0.8.104-0.8.106 Request-specific loot work was conceptually wrong even where individual mechanics were functioning.
+## 0.8.108 implementation / static validation / next runtime test
+1. **0.8.107 Request/Auto Loot contract remains implemented; runtime deferred.**
+   - Protocol 8 contains no Request loot negotiation.
+   - Friend/test peer is offline, so do not invent a runtime result for this path.
 
-2. **Request loot path removal: IMPLEMENTED; runtime pending.**
-   - Removed `CurrentAutoLootMethod()` from preset communications.
-   - Removed `incoming.lootApplied`, `await-loot`, `LOOT_<method>` controls and `LOOTED` responses.
-   - Request start/continuation now concerns only receiver-local capacity, required party->raid conversion, and starting the preset rebuild.
-   - Protocol bumped 7 -> 8 to prevent cross-version Request peers from mixing the obsolete loot-control semantics.
+2. **Drawer justification: IMPLEMENTED; runtime pending.**
+   - Added account-wide `drawerJustification`, default Right.
+   - Added top-left main-window chevron showing current side and toggling Left/Right.
+   - Added shared `SCB_LayoutSidePanels()` ownership for Preset Manager + Options.
+   - Right: Main -> Preset -> Options. Left: Options -> Preset -> Main.
+   - Options moves directly beside Main whenever Preset Manager is closed.
+   - Existing Presets open/close chevron direction is now side-aware.
 
-3. **Leader-owned Auto Loot restored: IMPLEMENTED.**
-   - `SCB_ApplyAutoLootMethod()` is again a no-argument function that reads only the local addon's configured Auto Loot Method.
-   - It may be called by shared roster/UI/spawn lifecycles on any client, but only the current party/raid leader can actually change loot.
-   - Master Looter therefore targets the local leader, consistent with addon-level leader ownership; no requestee/master-name override remains.
-   - The obsolete Request loot failure locale string was removed.
-
-4. **Receiver-local capacity guardrail remains implemented.**
-   - Accept and execution both use the requestee's live location capacity.
-   - This is explicitly accepted as a correctness/state-integrity guard because invalid raid sizes can cause severe server/group failure modes.
-
-5. **Checks performed.**
-   - Verified starting handoff exactly matched `a631020674c2fc4dc9e6555fc8eaad52915bd240` / `0.8.106-dev`.
-   - Current implementation head before this handoff update is `0f323630cb6a6676a5b6ff53085e06636469c9e9`; TOC is `0.8.107-dev`.
-   - Static search confirms preset communications contain zero `LOOT_`, zero `await-loot`, zero `lootApplied`, zero `CurrentAutoLootMethod`, zero `PromoteToLeader`, and zero `ASSIST` references.
-   - Static search confirms `SCB_ApplyAutoLootMethod()` has no override/master-name arguments and existing general call sites use no arguments.
+3. **Checks performed.**
+   - Verified starting handoff exactly matched `36225b81f8c1190d3db4cd6b1e271846a5adaba2` / `0.8.107-dev`.
+   - Current implementation head before this handoff update is `003db9fd83fe07f9acdcc0d260623a1a717f4291`; TOC is `0.8.108-dev`.
+   - Static inspection confirms default Right, account-wide storage, current-direction chevron, left/right Preset anchors, Options outer-anchor behavior, and re-layout on Preset/Options visibility changes.
    - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
-6. **Exact next runtime test.**
-   - Valid >5 Request: Accept -> current leader auto-converts -> requestee starts summoning. There must be **no Request-related loot-setting message or failure**.
-   - Change the requestee's Auto Loot preference to something different from the leader's before Request; Request must still ignore it. The current leader's own Auto Loot setting remains the only one that can control group loot.
-   - If receiver-local capacity has not yet been exercised: requester in UBRS/high-cap area, requestee in Stormwind/world, >5 Request must refuse before conversion using the requestee's capacity.
-   - If not already checked, confirm Command 12px / Preset 10px defaults and newly covered chevrons/dropdown utility icons resize live.
-   - Do not repeat already-passed existing-raid Request, human-containing Resummon or old stuck-summon tests unless a new regression appears.
+4. **Exact next runtime test.**
+   - With default/right justification: open Preset Manager and Options; confirm `Main | Preset | Options`.
+   - Close Preset Manager while Options remains open; confirm Options moves directly beside Main.
+   - Click the new top-left chevron; confirm it changes to `<` and any open drawers immediately become `Options | Preset | Main` (or `Options | Main` if Preset is closed).
+   - Reload/login another character and confirm the chosen justification persists account-wide.
+   - Request protocol 8 tests remain deferred until another SCB player is available.
+
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
