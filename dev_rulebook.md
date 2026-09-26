@@ -4,7 +4,7 @@ This document is the canonical development workflow for Vanilla WoW 1.12.1 addon
 
 It supersedes `DEV_GUIDE.md` once adopted.
 
-Project-specific development state, architecture decisions, invariants, protocols, test plans, deferred scope and feature decisions belong in `DEV_PROGRESS.md`. If a project intentionally needs an exception to this rulebook, record the exception there explicitly.
+Project-specific development state, architecture decisions, invariants, protocols, testing state, deferred scope and exceptions belong in `DEV_PROGRESS.md`.
 
 Permanent product or user documentation may exist where useful, but it is not a competing development source of truth.
 
@@ -15,13 +15,17 @@ Permanent product or user documentation may exist where useful, but it is not a 
 Use these sources for different kinds of truth:
 
 - `dev_rulebook.md` — canonical development workflow and engineering rules.
-- `DEV_PROGRESS.md` — current project state, live development contract and fresh-chat recovery source.
+- `DEV_PROGRESS.md` — current project state, project-specific development contract and fresh-chat recovery source.
 - Git history and current code — historical implementation record and implemented reality.
 - The addon `.toc` — version source of truth.
 
-Do not maintain multiple competing live handoff documents.
+Development branches using this workflow must carry the canonical VanillaTemplate `dev_rulebook.md` unchanged.
 
-Legacy `HANDOFF.md` files are predecessors to the `DEV_PROGRESS.md` workflow. Once their still-relevant information has been migrated into `DEV_PROGRESS.md`, delete them rather than keeping a second mutable project-status document.
+Addon-development chats must treat `dev_rulebook.md` as read-only and authoritative. They follow it; they do not modify it.
+
+Project-specific requirements or exceptions belong in `DEV_PROGRESS.md`, not in a modified local rulebook.
+
+Do not maintain competing live handoff documents. Once still-relevant information from a legacy `HANDOFF.md` has been migrated into `DEV_PROGRESS.md`, delete the legacy handoff.
 
 Git history carries history. `DEV_PROGRESS.md` carries current state.
 
@@ -38,8 +42,8 @@ AddonName/
     locales/
         enUS.lua
         [optional translations]
-    artwork/
-        [flat assets]
+    assets/
+        [artwork, sounds and other static assets]
     dev_rulebook.md
     DEV_PROGRESS.md
     Debug.lua       # dev only, when needed
@@ -47,12 +51,12 @@ AddonName/
 
 Defaults:
 
-- Prefer one main Lua file unless the existing project architecture or an explicitly agreed design calls for more.
-- `Debug.lua` is the normal development-only exception for small addons.
-- Preserve an established multi-file architecture in existing addons; do not collapse it to fit this template.
+- Prefer one main Lua file unless the established architecture or an explicitly agreed design calls for more.
+- Preserve established multi-file architectures in existing addons.
+- `Debug.lua` is the normal development-only exception.
 - Put user-facing strings in the project's localization system. For new template addons, use `locales/enUS.lua`.
 - Put translations in the corresponding locale file.
-- Put artwork under `artwork/`, flattened unless there is a concrete reason not to.
+- Put addon-owned artwork, sounds and other static assets under `assets/`, flattened unless there is a concrete reason for subdirectories.
 - Avoid bundled libraries, frameworks or dependencies unless they solve a concrete requirement.
 
 ---
@@ -63,31 +67,34 @@ Default target:
 
 - World of Warcraft 1.12.1.
 - `## Interface: 11200`.
-- Lua 5.0.
+- Lua 5.0.3.
 - Native WoW 1.12.1 API unless an explicitly supported client extension supplies additional capability.
 
-Do not use later Lua syntax or later WoW APIs by assumption.
+Do not use later Lua syntax or later WoW APIs.
 
-### Lua 5.0 implementation limits
+### Lua 5.0.3 implementation limits
 
-Vanilla Lua limits are part of the target environment, not an afterthought.
+Lua 5.0.3 has a parser/compiler limit of 200 local variables in a function.
 
-In particular:
+The top-level addon chunk is compiled as a function, so large single-file addons can also hit this limit through top-level locals.
 
-- Lua 5.0 has a parser/compiler limit of 200 local variables in a function.
-- The top-level addon chunk is compiled as a function, so large single-file addons can hit this limit through top-level locals.
-- Watch local counts when a file grows substantially.
-- Do not solve a local-limit failure by blindly globalizing internal state. Prefer a deliberate structural fix consistent with the addon architecture.
+Watch local counts as files grow. Do not solve a local-limit failure by blindly globalizing internal state; use a deliberate structural fix consistent with the addon architecture.
 
-Static compatibility checks should look for accidentally introduced modern APIs/syntax where practical, but static inspection is not an in-game test.
+Static compatibility inspection is useful but is not an in-game test.
 
-### Canonical Lua 5.0 compiler check
+### Canonical Lua 5.0.3 compiler check
 
-VanillaTemplate provides the canonical reproducible Lua 5.0.2 checker under `tools/lua50/`. It vendors the Lua 5.0.2 compiler source and builds `luac` with the host C compiler, so development chats must not depend on a system-installed Lua executable being present.
+VanillaTemplate provides the canonical reproducible Lua 5.0.3 checker under `tools/lua50/`. It vendors the Lua 5.0.3 compiler source and builds a temporary `luac` with the host C compiler. A system-installed `lua` or `luac` is neither required nor expected.
 
-When the checker is available, run it before claiming that changed Lua files received a Lua 5.0 compiler pass. A successful compiler pass proves Lua 5.0.2 parsing/compiler-limit compatibility for the checked files; it does not prove WoW API correctness or in-game behaviour.
+Repository access and executable-environment access are different. Being able to read the checker through GitHub does not necessarily mean its files are available to the chat's shell/container.
 
-If the checker cannot run because the execution environment lacks a usable C compiler or the tool cannot be retrieved, record that limitation explicitly and do not claim a compiler pass.
+When the checker files are accessible from the executable environment and a usable C compiler is available, run the canonical checker before claiming that changed Lua files received a Lua 5.0.3 compiler pass. The checker may be run from VanillaTemplate against another addon checkout; it does not need to be copied into every addon repository.
+
+Do not treat the absence of a system-installed `lua` or `luac` as proof that the compiler check cannot be performed. First determine whether the vendored checker can be used.
+
+If the checker cannot actually be run, record the concrete limitation and do not claim a compiler pass.
+
+A successful compiler pass proves Lua 5.0.3 parsing and compiler-limit compatibility for the files actually checked. It does not prove WoW API correctness or in-game behaviour.
 
 ---
 
@@ -103,7 +110,7 @@ Rules:
 - Preserve a native/non-DLL path where reasonably possible.
 - Do not make existing native functionality DLL-dependent without an explicit reason.
 - If a feature cannot reasonably preserve a native fallback, flag that dependency before treating it as required.
-- When an extension is an explicit project prerequisite, use its real capabilities directly rather than duplicating weaker fallback implementations without a reason.
+- When an extension is an explicit prerequisite, use its real capabilities rather than duplicating weaker fallback implementations without a reason.
 
 ---
 
@@ -160,7 +167,7 @@ The development branch:
 - may contain dev-only debug/test helpers;
 - may contain clearly documented incomplete or experimental work.
 
-Existing repositories may use a dedicated feature/design branch instead of `dev` when that is already their established workflow. The same rules apply to whichever branch owns the current development work.
+Existing repositories may use an established development or feature branch instead. The same development rules apply to whichever branch owns the current work.
 
 ### `main`
 
@@ -172,9 +179,9 @@ For template addons, stable releases must:
 - exclude `DEV_PROGRESS.md`;
 - exclude dev-only debug/test helpers;
 - exclude development-only loader entries;
-- exclude knowingly speculative work unless the user explicitly authorizes that release with the remaining validation debt documented.
+- exclude knowingly speculative work unless the user explicitly authorizes release with the remaining validation debt documented.
 
-Do not assume that `main` is byte-for-byte derivable from `dev`. Main may contain legitimate release-only or presentation-only files. Release preparation must inspect and preserve intended main-only content.
+Project-specific release exceptions belong in `DEV_PROGRESS.md`.
 
 ---
 
@@ -184,19 +191,16 @@ Before substantial code changes:
 
 1. Read `dev_rulebook.md`.
 2. Read `DEV_PROGRESS.md`.
-3. Resolve the documented branch and exact handoff/head commit.
-4. Verify that the actual remote branch head still matches the documented handoff before editing.
-5. Identify the latest stable runtime/release baseline separately from the current development head.
+3. Resolve the documented development branch and handoff/head.
+4. Verify that the actual remote branch head still matches the state being resumed.
+5. Identify the latest stable runtime/release baseline separately from the current development state.
 6. Confirm the requested work does not silently cross a documented deferred boundary or contradict the current development contract.
 
-If the remote branch moved since the handoff:
+If the branch has moved since the recorded handoff, inspect and reconcile the new state before writing.
 
-- do not force-update it;
-- inspect the new commits;
-- reconcile the current state before continuing;
-- update the status document if the old handoff is stale.
+Do not force-update over concurrent work.
 
-A casual interpretation of a chat request must not silently override the written contract. If the new request intentionally changes the contract, make that change explicit.
+A casual chat request must not silently override the written project contract. If the request intentionally changes that contract, make the change explicit in `DEV_PROGRESS.md`.
 
 ---
 
@@ -207,7 +211,7 @@ General rules:
 - Preserve existing architecture unless deliberately changing it.
 - Do not silently broaden scope.
 - Do not perform unrelated refactors during a targeted fix.
-- Structural changes require an explicit reason and agreement appropriate to the project.
+- Structural changes require an explicit reason.
 - Do not add systems, abstractions, modules or dependencies without a concrete need.
 - Fix underlying causes rather than layering accidental bandages over them.
 - Temporary workarounds require explicit agreement and must remain identified as temporary.
@@ -216,58 +220,30 @@ General rules:
 
 When a domain already has an authoritative request path, coordinator, state owner or lifecycle front door:
 
-- new entry points should route through that owner;
-- do not bypass it by calling a lower-level implementation directly unless the bypass is intentional and documented;
-- do not create a parallel scheduler/state machine for work already owned elsewhere;
+- route new entry points through that owner;
+- do not bypass it unintentionally;
+- do not create a parallel scheduler or state machine for work already owned elsewhere;
 - preserve clear ownership of identity, state mutation and lifecycle transitions.
 
-Before adding a new execution path, check whether the project already has a proven owner for the same kind of operation.
+Before adding a new execution path, check whether the project already has an owner for that operation.
 
 ---
 
-## 9. User agency and tool design
+## 9. User agency and addon design
 
-Design for capable users, not hypothetical misuse.
+Design for capable users.
 
-A tool should restrict the user only where unrestricted behaviour would make the tool incorrect, corrupt state, violate a required invariant, or exceed a genuine external constraint. It should not restrict behaviour merely because a value is unusual, a workflow is uncommon, or the developer believes the user probably should not do it.
+Valid behaviour should remain available even when it is unusual, extreme or inconvenient.
 
-Prefer capability over paternalism.
+Restrict behaviour only when necessary to preserve correctness, state integrity, an architectural invariant or a genuine external/API constraint.
 
-- Distinguish **invalid** from merely **unwise, unusual or inconvenient**.
-- If an operation is valid, allow it even when the result may be extreme, inefficient, visually awkward or easy to misuse.
-- Do not silently replace user intent with developer judgement.
-- Prefer clear feedback, warnings and documentation over prevention.
-- Do not add arbitrary caps, clamps, cooldowns, retry limits, disabled states or forced workflows for convenience or presumed safety.
-- Every imposed constraint should have a concrete technical justification.
-- Scope necessary constraints as narrowly as possible to the invariant or external limitation that requires them.
-- Preserve advanced and unexpected uses when the underlying system can support them correctly.
-- Treat robustness as a way to support a wider range of valid behaviour, not as a reason to narrow what the user is allowed to do.
-- Keep behaviour predictable: accept the user's choice faithfully, expose its consequences clearly, and avoid hidden normalization or correction.
+Use the narrowest constraint that solves the real problem. Prefer clear feedback over silently replacing user intent with developer judgement.
 
-When an unusual input exposes weakness in the implementation, first ask whether the implementation can be made robust enough to support it. Do not default to forbidding the input.
+When unusual input exposes an implementation weakness, first determine whether the implementation can be made robust enough to support it rather than forbidding the input.
 
-**Enforce correctness, not preference. Trust the user with every capability the system can reliably provide.**
+Timing, throttling, locking, cooldowns and retry behaviour are product behaviour. Do not introduce or tune them by guesswork; base them on concrete protocol, integrity or runtime requirements.
 
-### Genuine constraints and invalid operations
-
-Some limits are part of making the tool correct rather than restricting user choice.
-
-A constraint is appropriate when it is required to:
-
-- preserve data or state integrity;
-- satisfy a real API, protocol, server or client limit;
-- prevent an operation whose required preconditions are not met;
-- preserve an architectural invariant necessary for correct execution;
-- prevent one operation from corrupting or invalidating another operation already in progress.
-
-When such a constraint is necessary:
-
-- enforce the narrowest constraint that solves the real problem;
-- make the reason visible when useful;
-- do not extend it to adjacent valid behaviour for convenience;
-- prefer removing the constraint later if the underlying technical limitation can be eliminated.
-
-Timing, throttling, locking, cooldowns and retry behaviour are real product behaviour, not harmless implementation details. Do not introduce or tune them by guesswork. Use concrete protocol requirements, integrity requirements, or focused runtime evidence to establish the minimum constraint actually needed.
+**Enforce correctness, not preference.**
 
 ---
 
@@ -280,91 +256,85 @@ Keep these states distinct:
 Definitions:
 
 - **Implemented** — code exists.
-- **Checked** — static review, diff inspection, syntax/build checks, automated tests or CI passed as applicable.
-- **User tested** — the relevant runtime behaviour was actually exercised by the user in the target environment.
+- **Checked** — relevant static review, compiler/build checks, automated tests or CI actually ran and passed.
+- **User tested** — the relevant runtime behaviour was exercised by the user in the target environment.
 - **Stable** — the behaviour/build has been accepted as a known-good baseline.
 - **Released** — the stable build has been promoted/published through the project's release mechanism.
 
 Rules:
 
 - Implemented does not mean tested.
-- Static/code inspection does not count as an in-game test.
-- CI does not count as user runtime validation.
+- Static inspection or CI does not count as an in-game test.
 - A successful adjacent test does not prove an untested path.
-- Record partial tests accurately.
 - Bind runtime results to the exact tested version/commit.
-- When later work builds on a tested baseline, state explicitly what remains inherited/known-good and what new delta is still untested.
-- Never rewrite validation history by describing released-but-untested behaviour as though release itself tested it.
+- Record partial tests accurately.
+- When later work builds on a tested baseline, distinguish inherited known-good behaviour from the new untested delta.
+- Never rewrite validation history by treating release itself as a runtime test.
+- A check counts as performed only when the relevant tool actually ran against the stated files or build. Distinguish **passed**, **failed**, and **not run/unavailable**.
 
-When a user explicitly authorizes promotion despite known untested work, record that validation debt clearly before release.
+When runtime testing is required, present the test steps in chat as a numbered list, with one concrete check per item, so the user can reply point by point.
+
+If the user authorizes promotion despite known untested work, record that validation debt clearly.
 
 ---
 
 ## 11. `DEV_PROGRESS.md`
 
-`DEV_PROGRESS.md` is the sole live project-development document.
+`DEV_PROGRESS.md` is the sole live project-development status and contract document.
 
-It carries the current state **and** the project-specific development context needed to make the next correct decision: active architecture, invariants, protocols, feature decisions, testing state, deferred boundaries and exact next step.
-
-It is not the whole project history. Keep it concise enough that a fresh chat can resume immediately.
+Keep it concise enough that a fresh chat can resume immediately.
 
 At minimum track:
 
 - current branch;
 - current dev version;
-- exact current/handoff branch-head commit;
-- latest stable release/runtime version and exact commit;
-- current goal/scope;
-- active architecture/design decisions and invariants that still constrain future work;
-- current protocol/data-model decisions where relevant;
+- current/handoff branch-head commit;
+- latest stable release/runtime version and commit;
+- current goal and scope boundary;
+- active architecture/design decisions and invariants;
+- protocol/data-model decisions where relevant;
 - recent relevant commits;
 - completed and user-verified work;
 - implemented but untested work;
-- static/automated checks already performed;
+- static/automated checks performed;
 - current issues;
 - last runtime test and exact tested version/commit;
 - next runtime test;
-- planned/to-do work;
+- planned work;
 - deferred/out-of-scope work;
 - exact next step.
 
 Where relevant, also record:
 
-- known release-only/main-only files that must be preserved;
-- explicit design invariants;
-- known validation debt accepted for a release;
+- project-specific workflow or release exceptions;
+- accepted validation debt;
 - external/runtime prerequisites.
 
-Do not turn `DEV_PROGRESS.md` into a chronological diary.
-
-Remove or compress superseded implementation narratives once they no longer affect the current state, next test, architecture or recovery path.
+Do not turn `DEV_PROGRESS.md` into a chronological diary. Remove or compress superseded implementation narrative once it no longer affects current decisions, testing or recovery.
 
 ---
 
 ## 12. Long-chat and handoff discipline
 
-Development chats can become tool-heavy and state-heavy. Do not push them until context becomes unreliable.
+Do not push development chats until context becomes unreliable.
 
 Before context loss becomes likely:
 
-1. finish or stop at a coherent checkpoint;
-2. update `DEV_PROGRESS.md`;
-3. record the current branch/version/head;
-4. distinguish user-tested, statically checked and untested work;
-5. record deferred work and the exact next step;
-6. commit the handoff/status update;
-7. provide a short copy-paste resume prompt for a fresh chat.
+1. stop at a coherent checkpoint;
+2. bring `DEV_PROGRESS.md` fully up to date;
+3. commit the status/handoff update;
+4. provide a short copy-paste resume prompt for a fresh chat.
 
-The resume prompt should name:
+The resume prompt should identify:
 
 - repository;
+- development branch;
 - `DEV_PROGRESS.md` as the recovery source;
-- branch;
-- exact handoff commit;
+- current handoff commit;
 - exact next step;
-- any critical "do not start yet" boundary.
+- any critical scope boundary.
 
-A new chat should verify that handoff against the actual branch head before doing new work.
+A new chat must verify the recorded handoff against the actual repository state before continuing.
 
 ---
 
@@ -372,41 +342,35 @@ A new chat should verify that handoff against the actual branch head before doin
 
 Prefer coherent commits that identify meaningful development states.
 
-Before writing to an active shared development branch:
-
-- verify the branch head is still the one you inspected;
-- do not force-push over concurrent work;
-- if the branch moved, reconcile first.
-
 Before release/promotion:
 
-1. identify the exact tested/accepted development commit;
-2. identify the current `main` head separately;
-3. compare development and main rather than assuming one can blindly replace the other;
-4. preserve legitimate main-only/release-only content;
-5. remove dev-only files and debug hooks;
-6. apply stable Title/Version metadata;
-7. verify the release tree contains the intended runtime delta and no unintended development material;
-8. run all available static/build/automated checks;
-9. record any runtime validation debt honestly;
-10. promote through the project's established release mechanism.
+1. identify the exact tested/accepted development state;
+2. identify the current `main` state;
+3. remove development-only files, debug hooks and development-only loader entries;
+4. apply stable Title/Version metadata;
+5. verify the release tree contains the intended runtime delta and no unintended development material;
+6. run all available relevant static/build/automated checks;
+7. record any runtime validation debt honestly;
+8. promote through the project's established release mechanism.
 
 After promotion:
 
 - record the stable version and exact stable commit;
-- distinguish the promotion/release commit from the previously tested development commit if they differ;
-- do not claim the stable tree received a runtime test unless that exact stable build was actually exercised, though a metadata/dev-file-only promotion may inherit the explicitly documented runtime behaviour of its tested source.
+- distinguish the promotion/release commit from the tested development commit if they differ;
+- do not claim that the exact stable tree received a runtime test unless it actually did.
 
-For projects with CI/release workflows, a temporary build artifact is not automatically a product release. Use the project's real publishing path when the released product depends on tags, checksums, GitHub Releases, updater discovery or similar release metadata.
+For projects with CI/release workflows, a temporary build artifact is not automatically a product release. Use the project's actual publishing path when releases depend on tags, checksums, GitHub Releases, updater discovery or similar metadata.
 
 ---
 
 ## 14. Development contract changes
 
-This rulebook is a workflow contract.
+This rulebook is the canonical shared development standard.
 
-Do not casually edit it during ordinary feature work.
+Ordinary addon-development work must not modify it.
 
-Change it when the development standard itself is intentionally being revised.
+A rulebook change is appropriate only when the user explicitly opens work to review or revise the development standard itself.
 
-Project-specific exceptions belong in `DEV_PROGRESS.md` unless they are meant to become the general standard for future addons.
+When the canonical rulebook changes, development branches using it should be synchronized to the canonical VanillaTemplate copy without introducing local edits.
+
+Project-specific exceptions belong in `DEV_PROGRESS.md`.
