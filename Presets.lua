@@ -481,7 +481,7 @@ local SCB_RefreshPresetSummonWarning
 
 function SCB_SetPresetButtonGrey(button)
     if not button or not button.label then return end
-    button.label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(button.label, "content")
     button:SetBackdropBorderColor(0.45, 0.45, 0.45, 1)
 end
 
@@ -592,13 +592,9 @@ function SCB_UpdatePresetSelectorText()
     group = SCB_CurrentPresetGroup()
     preset = SCB_CurrentPreset()
     SCB.presetGroupSelector.label:SetText(group and group.name or SCB_L("NO_GROUP"))
-    if group and group.isDefault then
-        SCB.presetGroupSelector.label:SetTextColor(1, 0.82, 0, 1)
-    else
-        SCB.presetGroupSelector.label:SetTextColor(0.82, 0.82, 0.82, 1)
-    end
+    SCB_SetFontColor(SCB.presetGroupSelector.label, "content")
     SCB.presetSelector.label:SetText(preset and preset.name or SCB_L("NO_PRESET"))
-    SCB.presetSelector.label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(SCB.presetSelector.label, "content")
 end
 
 function SCB_RefreshPresetSlots()
@@ -1969,7 +1965,7 @@ function SCB_RebuildPresetGroupMenu()
         end
         if i == 1 then
             button.label:SetText(SCB_L("ADD_NEW_GROUP"))
-            button.label:SetTextColor(0.82, 0.82, 0.82, 1)
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = true
             button.scbGroupIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetGroupOnClick)
@@ -1977,11 +1973,7 @@ function SCB_RebuildPresetGroupMenu()
         else
             group = SoloCraftBotsDB.presetGroups[i - 1]
             button.label:SetText(group.name)
-            if group.isDefault then
-                button.label:SetTextColor(1, 0.82, 0, 1)
-            else
-                button.label:SetTextColor(0.82, 0.82, 0.82, 1)
-            end
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = nil
             button.scbGroupIndex = i - 1
             SCB_SetMenuDeleteButton(button, not group.isDefault, i - 1, SCB_DeletePresetGroupOnClick)
@@ -2014,6 +2006,7 @@ SCB_RebuildPresetMenu = function()
         end
         if i == 1 then
             button.label:SetText(SCB_L("ADD_NEW_PRESET"))
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = true
             button.scbPresetIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetOnClick)
@@ -2022,6 +2015,7 @@ SCB_RebuildPresetMenu = function()
         else
             preset = group.presets[i - 1]
             button.label:SetText(preset.name or string.format(SCB_L("PRESET_NUMBER"), i - 1))
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = nil
             button.scbPresetIndex = i - 1
             SCB_SetMenuDeleteButton(button, true, i - 1, SCB_DeletePresetOnClick)
@@ -3509,7 +3503,7 @@ function SCB_CreatePresetUI(frame)
     local presetHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     presetHeader:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -12)
     presetHeader:SetText(SCB_L("PRESET_CONFIGURATION"))
-    presetHeader:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(presetHeader, "header")
     SCB.presetConfigurationHeading = presetHeader
 
     -- Per-character preset identity: actual class is read-only; role is this
@@ -3598,7 +3592,7 @@ function SCB_CreatePresetUI(frame)
     for g = 1, 8 do
         groupTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         groupTitle:SetText(string.format(SCB_L("GROUP_NUMBER"), g))
-        groupTitle:SetTextColor(1, 0.82, 0, 1)
+        SCB_SetFontColor(groupTitle, "subheader")
         SCB.presetGroupTitles[g] = groupTitle
 
         groupFrame = CreateFrame("Frame", nil, panel)
@@ -3718,7 +3712,7 @@ function SCB_CreatePresetUI(frame)
     local playerPoolLabel = playerPool:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 2, 0)
     playerPoolLabel:SetText(SCB_L("PLAYERS"))
-    playerPoolLabel:SetTextColor(0.72, 0.72, 0.72, 1)
+    SCB_SetFontColor(playerPoolLabel, "text")
     playerPoolLabel:Hide()
     SCB.presetPlayerPoolLabel = playerPoolLabel
 
@@ -3786,6 +3780,7 @@ function SCB_CreatePresetUI(frame)
         counterText:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX + 26, 0)
         counterText:SetJustifyH("CENTER")
         counterText:SetText("0")
+        SCB_SetFontColor(counterText, "text")
         SCB.presetCounterLabels[counterInfo.key] = counterText
 
         counterX = counterX + 44
