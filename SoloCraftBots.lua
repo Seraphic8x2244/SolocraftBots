@@ -1051,8 +1051,8 @@ function SCB_CreateSummonUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "summon", SCB_L("SECTION_SUMMON"), 196)
     SCB.manualAddButtons = {}
 
-    -- One state button: silver binoculars = Spawn Near (distance off, default),
-    -- gold binoculars = Spawn Far (distance on).
+    -- One state button: silver telescope = Spawn Near (distance off, default),
+    -- gold telescope = Spawn Far (distance on).
     local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "lucide_telescope_off.tga")
     distance:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     distance:SetScript("OnClick", SCB_DistanceOnClick)

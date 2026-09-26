@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 3
+local COMM_PROTOCOL = 4
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -20,6 +20,49 @@ end
 
 local function SelfName()
     return (UnitName and UnitName("player")) or ""
+end
+
+local function GroupHasName(name)
+    local members, i
+    if not name or name == "" then return false end
+    members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
+    for i = 1, table.getn(members) do
+        if members[i] and members[i].name == name then return true end
+    end
+    return false
+end
+
+local function CurrentGroupLeaderName()
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local i, name, rank, leaderIndex
+
+    if raidCount > 0 and GetRaidRosterInfo then
+        for i = 1, raidCount do
+            name, rank = GetRaidRosterInfo(i)
+            if name and rank == 2 then return name end
+        end
+        return nil
+    end
+
+    if partyCount > 0 then
+        if IsPartyLeader and IsPartyLeader() then return SelfName() end
+        if GetPartyLeaderIndex and UnitName then
+            leaderIndex = GetPartyLeaderIndex()
+            if leaderIndex and leaderIndex > 0 then
+                name = UnitName("party" .. leaderIndex)
+                if name then return name end
+            end
+        end
+        if UnitIsPartyLeader and UnitName then
+            for i = 1, partyCount do
+                if UnitIsPartyLeader("party" .. i) then
+                    return UnitName("party" .. i)
+                end
+            end
+        end
+    end
+    return nil
 end
 
 local function Escape(value)
@@ -242,9 +285,9 @@ local function BeginOutgoing(mode, target, snapshot)
     if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     SCB_CommsSetButtonPending(mode, true)
 
-    -- A preset request no longer requires the requester to pre-build a raid
-    -- or pre-promote the receiver. Acceptance owns the leadership handoff so
-    -- the receiver can convert to raid and apply its own loot policy itself.
+    -- A preset request does not require the requester to pre-build a raid.
+    -- After acceptance, the current group leader owns any required party->raid
+    -- conversion; raid leadership moves to the receiver only after raid exists.
     BeginHandshake(out)
 end
 
@@ -581,6 +624,7 @@ local function SCB_CommsStartAcceptedRequest(incoming)
             FinishIncoming(incoming, "ERROR")
             return false
         end
+        incoming.controlLeader = nil
         incoming.phase = "converting"
         incoming.deadline = Now() + COMM_TIMEOUT
         ConvertToRaid()
@@ -588,6 +632,7 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         return true
     end
 
+    incoming.controlLeader = nil
     if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
     if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
 
@@ -598,6 +643,53 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         return false
     end
     FinishIncoming(incoming, "SUMMONED")
+    return true
+end
+
+local function SCB_CommsRequestLeaderAction(incoming, action)
+    local leaderName
+    if not incoming or incoming.done then return false end
+    leaderName = CurrentGroupLeaderName()
+    if not leaderName or leaderName == SelfName() then return false end
+
+    incoming.controlLeader = leaderName
+    incoming.phase = action == "CONVERT" and "await-convert" or "await-leader"
+    incoming.deadline = Now() + COMM_TIMEOUT
+    if not SendControl("L", incoming.tx, leaderName, action) then
+        incoming.controlLeader = nil
+        return false
+    end
+
+    SCB_Print(SCB_L(action == "CONVERT" and "COMM_REQUEST_WAIT_CONVERT" or "COMM_REQUEST_WAIT_LEADER"))
+    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+    return true
+end
+
+local function SCB_CommsContinueAcceptedRequest(incoming)
+    local raidCount
+    if not incoming or incoming.done or incoming.mode ~= "R" then return false end
+
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if (incoming.snapshot.size or 0) > 5 and raidCount == 0 then
+        if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+            return SCB_CommsStartAcceptedRequest(incoming)
+        end
+        if not SCB_CommsRequestLeaderAction(incoming, "CONVERT") then
+            SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
+            FinishIncoming(incoming, "ERROR")
+            return false
+        end
+        return true
+    end
+
+    if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+        return SCB_CommsStartAcceptedRequest(incoming)
+    end
+    if not SCB_CommsRequestLeaderAction(incoming, "REQUEST") then
+        SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+        FinishIncoming(incoming, "ERROR")
+        return false
+    end
     return true
 end
 
@@ -622,20 +714,7 @@ function SCB_CommsPromptAccept()
     incoming.requestAccepted = true
     incoming.deadline = Now() + COMM_TIMEOUT
     if SCB.commPromptFrame then SCB.commPromptFrame:Hide() end
-
-    if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-        SCB_CommsStartAcceptedRequest(incoming)
-        return
-    end
-
-    incoming.phase = "await-leader"
-    if not SendControl("L", incoming.tx, incoming.sender, "REQUEST") then
-        SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-        FinishIncoming(incoming, "ERROR")
-        return
-    end
-    SCB_Print(SCB_L("COMM_REQUEST_WAIT_LEADER"))
-    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+    SCB_CommsContinueAcceptedRequest(incoming)
 end
 
 function SCB_CommsPromptRefuse()
@@ -757,29 +836,39 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
     end
 
     if kind == "L" and table.getn(parts) == 4 then
-        if parts[4] == "REQUEST" then
-            for mode, out in pairs(SCB.commOutgoing) do
-                if mode == "R" and out and out.tx == tx and out.target == sender then
-                    if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and PromoteToLeader then
-                        PromoteToLeader(sender)
-                        out.deadline = Now() + COMM_TIMEOUT
-                        SendControl("L", tx, sender, "PROMOTED")
-                    else
-                        SendControl("L", tx, sender, "ERROR")
-                    end
-                    return
-                end
+        if parts[4] == "CONVERT" then
+            local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+            local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            if GroupHasName(sender) and raidCount == 0 and partyCount > 0
+                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and ConvertToRaid then
+                ConvertToRaid()
+                SendControl("L", tx, sender, "CONVERTING")
+            else
+                SendControl("L", tx, sender, "ERROR")
             end
-            SendControl("L", tx, sender, "ERROR")
+            return
+        end
+
+        if parts[4] == "REQUEST" then
+            if GroupHasName(sender) and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and PromoteToLeader then
+                PromoteToLeader(sender)
+                SendControl("L", tx, sender, "PROMOTED")
+            else
+                SendControl("L", tx, sender, "ERROR")
+            end
             return
         end
 
         local incoming = SCB.commPromptTransaction
-        if incoming and not incoming.done and incoming.tx == tx and incoming.sender == sender
+        if incoming and not incoming.done and incoming.tx == tx and incoming.controlLeader == sender
             and incoming.mode == "R" and incoming.requestAccepted then
             incoming.deadline = Now() + COMM_TIMEOUT
             if parts[4] == "ERROR" then
-                SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+                if incoming.phase == "await-convert" then
+                    SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
+                else
+                    SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+                end
                 FinishIncoming(incoming, "ERROR")
             end
             return
@@ -859,10 +948,13 @@ commFrame:SetScript("OnUpdate", function()
             if incoming.phase == "await-leader"
                 and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
                 SCB_CommsStartAcceptedRequest(incoming)
-            elseif incoming.phase == "converting"
-                and GetNumRaidMembers and GetNumRaidMembers() > 0
-                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-                SCB_CommsStartAcceptedRequest(incoming)
+            elseif (incoming.phase == "await-convert" or incoming.phase == "converting")
+                and GetNumRaidMembers and GetNumRaidMembers() > 0 then
+                if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+                    SCB_CommsStartAcceptedRequest(incoming)
+                else
+                    SCB_CommsRequestLeaderAction(incoming, "REQUEST")
+                end
             end
         end
     end

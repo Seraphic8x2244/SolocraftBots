@@ -603,8 +603,9 @@ end
 function SCB_BindReplacementToActiveSlot(slotID, newName, group)
     local roster = SCB_EnsureActiveRosterDB()
     local slot = roster.slots and roster.slots[slotID]
-    local tracker, i, assignment, assumption
+    local tracker, i, assignment, assumption, previousName, liveMember
     if not slot or not newName then return false end
+    previousName = slot.currentName
     slot.expected = true
     slot.currentName = newName
     slot.currentGroup = group or slot.currentGroup or 1
@@ -630,6 +631,29 @@ function SCB_BindReplacementToActiveSlot(slotID, newName, group)
     slot.confirmedRole = nil
     slot.roleEvidence = nil
     slot.detected = nil
+
+    -- A replacement name starts a fresh validation epoch for this logical slot.
+    -- Clear any recycled name evidence before lifecycle/indicator refreshes run.
+    if SCB.roleEvidenceByName then
+        if previousName then SCB.roleEvidenceByName[previousName] = nil end
+        SCB.roleEvidenceByName[newName] = nil
+    end
+    liveMember = SCB.liveRoster and SCB.liveRoster.byName and SCB.liveRoster.byName[newName] or nil
+    if liveMember then
+        liveMember.assumedClass = slot.class or liveMember.assumedClass
+        liveMember.assumedRole = slot.assumedRole or slot.role
+        liveMember.roleEvidence = nil
+        liveMember.confirmedRole = nil
+        liveMember.roleCandidate = nil
+        liveMember.resolvedRole = liveMember.assumedRole
+    end
+
+    if SCB_QueuePresetRoleIndicatorsRefresh then
+        SCB_QueuePresetRoleIndicatorsRefresh(0.05)
+    elseif SCB_RefreshPresetRoleIndicators then
+        SCB_RefreshPresetRoleIndicators()
+    end
+    if SCB_QueueRoleDetectionLifecycleRefresh then SCB_QueueRoleDetectionLifecycleRefresh(0.05) end
     return true
 end
 
