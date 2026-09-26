@@ -4,17 +4,17 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.101-dev`
-- Current implementation head before this handoff update: `56b7a19a7d9a0df59d23e717112d2e918c233900`
+- TOC version: `0.8.102-dev`
+- Current implementation head before this handoff update: `001a816eeb99ef8e52d713dedc8f11bd76c1c275`
 - Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
 - `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed.
-- `0.8.101-dev` Request runtime is **partial**: receiver Auto Loot, refusal side effects, existing-raid transfer and already-leader paths passed, but party requester -> receiver leadership transfer failed. A third-party/non-SCB leader path was not testable.
-- Revised Request contract: for an accepted >5-player request while still in a party, **the current party leader** should perform `ConvertToRaid()` via SCB communication; only after the raid exists should normal raid-leadership ownership move to the receiving summoner. Do not transfer party leadership merely to perform conversion. Existing SCB auto-promote-human behaviour remains unchanged. If the current party leader is not an SCB peer able to receive the control request, fail cleanly.
-- `0.8.101-dev` Resummon Group header UX/backend is runtime-confirmed, but one role-validation regression remains: after resummoning a group containing humans, combat-role ticks do not reappear; a fresh resummon after Kick All/oversummon does restore mixed-group ticks correctly.
-- `0.8.101-dev` mini-control artwork is **rejected**: the assets were reinterpretations rather than the exact free Lucide glyphs. Replace them with direct rasterizations of the official Lucide source; no redraw/stylization. Keep the existing rendered control sizes rather than treating the 32x32 texture canvas as a 32px UI size. Also rename `Preset Configuration` to `Preset Manager`.
-- Immediate goal: audit and implement the corrected Request conversion ownership, fix the human-group Resummon role-validation reset/binding issue, then replace the mini-control assets with exact Lucide glyphs at the established UI scale and apply the Preset Manager label change. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
+- `0.8.101-dev` remains the latest Request/Resummon runtime result: receiver Auto Loot, refusal side effects, existing-raid transfer and already-leader Request paths passed; the old party requester -> receiver leadership transfer failed; Resummon Group worked but human-containing groups could lose combat-role ticks.
+- `0.8.102-dev` implements the revised Request contract: protocol 4 resolves the actual current group leader, asks the current party leader to `ConvertToRaid()` for >5 requests, waits for authoritative raid formation, then asks the current raid leader to hand execution leadership to the receiving summoner. It no longer transfers party leadership merely to convert.
+- `0.8.102-dev` also resets replacement-slot role evidence/live confirmation at authoritative bind and queues the existing role-indicator/detection lifecycle refresh; this is the targeted fix for the human-group Resummon validation regression and is not runtime-confirmed yet.
+- `0.8.102-dev` replaces all 20 mini-control TGAs with direct rasterizations of the official Lucide glyph source while keeping existing rendered control sizes and Telescope silver/gold state treatment, and renames `Preset Configuration` to `Preset Manager`.
+- Immediate goal: runtime-test the 0.8.102 Request authority delta, the human-containing Resummon validation fix, and the Lucide/Preset Manager visual pass. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -85,7 +85,7 @@
 - Immediately before starting the accepted rebuild, the receiver applies **its own** configured Auto Loot Method and starts the existing short retry queue. `off` still means no automatic change.
 - `SCB_ApplyAutoLootMethod()` now uses explicit local group-leader authority: party leader in parties; rank 2 from `GetRaidRosterInfo()` in raids. This removes the previous raid ambiguity from relying only on `IsPartyLeader()`.
 - No leadership/conversion side effect occurs before Accept. If the current party leader cannot participate in the SCB control handoff, or raid/leadership authority cannot be established, fail without starting the preset.
-- Request communications are currently protocol 3. Audit the wire/control message before implementation; bump only if the revised leader-directed conversion flow changes protocol compatibility.
+- Request communications are protocol 4 because the leader-directed conversion control changes compatibility. v3 sender/receiver peers fail the normal offer handshake rather than mixing ownership semantics; an older/non-SCB third-party leader cannot satisfy the new conversion control, so the accepted request times out/fails without starting the preset.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -100,9 +100,9 @@
 - Destination capacity remains preflighted before any kick. Humans, manual/unbound bots and other non-removed occupants count against the five-player destination capacity; if the complete tracked group cannot fit, the action refuses unchanged rather than failing mid-rebuild.
 - Live tracked bots in the selected group remain routed through the shared paced kick queue, existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths.
 - If the selected group contains every live bot and survivor safety is required, preserve the existing retained-survivor lifecycle. A lone required survivor must be left in place rather than risking instance removal.
-- Runtime 0.8.101: direct group rebuild works and humans remain untouched, but a group containing humans can return without combat-role validation ticks. Fresh resummon after Kick All/oversummon restores mixed-group ticks, so investigate the maintenance rebuild's validation epoch/binding refresh rather than redesigning Resummon Group.
+- Runtime 0.8.101: direct group rebuild works and humans remain untouched, but a group containing humans can return without combat-role validation ticks. 0.8.102 targets the identified post-bind refresh gap: replacement binding now clears recycled per-name role evidence/live confirmation and queues the existing preset-indicator + role-detection lifecycle refresh. Runtime confirmation is pending; Resummon Group itself remains the same maintenance operation.
 
-## Mini-button visual system — finalized design; 0.8.101 artwork rejected
+## Mini-button visual system — finalized design; 0.8.102 exact artwork implemented
 Lucide is used only for the **small utility/chrome controls**. This is not a global artwork redesign. Use the exact official/free Lucide glyph geometry, rasterized directly to Vanilla-compatible TGA; do not redraw, stylize or AI-reinterpret it. A 32x32 source texture canvas is acceptable, but the icons must render at the existing control sizes (roughly 14-24 UI units depending on control), not as blanket 32px controls.
 
 Agreed Lucide mapping:
@@ -137,6 +137,8 @@ Implementation intent:
 - use the Lucide pass to unify only the mini-control layer;
 - preserve current tooltips, state semantics and click behaviour unless separately specified;
 - do not substitute Lucide icons into the Command Bots matrix or role/class systems.
+- 0.8.102 uses direct rasterizations of the official Lucide SVG geometry for all 20 existing `artwork/lucide_*.tga` files; texture dimensions/formats and existing rendered control sizes are unchanged. Telescope retains separate silver/off and gold/on state treatment.
+- `artwork/LUCIDE_LICENSE.txt` carries the upstream Lucide/Feather license notice for the distributed artwork.
 
 ## Other preserved invariants
 - Active Roster keeps logical identity/expected state separate from observation. Human-covered bot slots remain dormant intents; if the human leaves before replacement they become missing; if the human returns before replacement they become covered again.
@@ -148,7 +150,7 @@ Implementation intent:
 - Raw user-typed `.partybot add ...` remains outside SCB coordinator ownership.
 - Taxi safety remains action-time only through `SCB_CanOperateBots(showError)`.
 - Never use `UnitHealth()==0` as a dead-state fallback.
-- Preset protocol is now `SCBPRESET` protocol 3. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 3 adds the accepted-request leadership handoff control flow.
+- Preset protocol is now `SCBPRESET` protocol 4. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 4 adds leader-directed party->raid conversion before post-conversion receiver leadership handoff.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
 
 ## Runtime results
@@ -217,32 +219,35 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.101 runtime results and next step
-1. **Requested preset flow: PARTIAL.**
-   - Party requester -> receiver leadership handoff failed.
-   - Receiver Auto Loot: PASS.
-   - Refusal produced no unwanted side effects: PASS.
-   - Existing-raid request leadership/ownership path: PASS.
-   - Receiver already leader path: PASS.
-   - Third-party/non-SCB leader case: not tested.
-   - Next design: current party leader converts first; receiver takes raid ownership after conversion.
+## 0.8.102 implementation / static validation / next runtime test
+1. **Requested preset ownership: IMPLEMENTED; runtime pending.**
+   - Audit found 0.8.101 still sent the post-Accept leader control back to the original requester and asked that client to promote the receiver before conversion; that was the rejected ownership path and could not use an unrelated SCB-capable party leader.
+   - Protocol 4 now resolves the actual current group leader. For accepted >5-player requests in a party, `CONVERT` is sent to the current party leader; after raid formation becomes authoritative, `REQUEST` is sent to the current raid leader if the receiver is not already leader.
+   - A third SCB-capable leader no longer needs to own the original outgoing Request transaction to perform the leader action. Leader actions still require the sender to be a current group member and the receiving client to hold group-leader authority.
+   - Existing receiver Auto Loot/rebuild ownership remains after leadership is established.
 
-2. **Resummon Group: PASS with one validation regression.**
-   - Per-group header button exists and works; no Command Bots Resummon button remains.
-   - Correct logical group's bots rebuild; humans are not kicked.
-   - Group with no humans: combat-role ticks return.
-   - Group with humans: combat-role ticks do not return after the resummon.
-   - Fresh resummon after Kick All plus oversummon restores mixed-group combat ticks correctly.
+2. **Resummon Group validation: IMPLEMENTED; runtime pending.**
+   - Audit found the maintenance replacement bind reset slot validation fields after the final authoritative name bind but did not force the indicator/detection lifecycle to refresh from that final identity.
+   - `SCB_BindReplacementToActiveSlot()` now starts a fresh replacement validation epoch for the bound name, clears stale live confirmation, and queues the existing role-indicator and role-detection lifecycle refreshes.
+   - The per-group header `RotateCcw` UX and shared `kind="maintenance"` physical backend are unchanged. No target-based Command Bots Resummon UI was reintroduced.
 
-3. **Lucide mini-control pass: FAIL.**
-   - 0.8.101 artwork was reinterpreted rather than using the exact Lucide assets.
-   - Replace with direct official Lucide rasterizations while preserving established UI control sizes.
-   - Rename `Preset Configuration` -> `Preset Manager`.
+3. **Lucide / Preset Manager: IMPLEMENTED; runtime visual check pending.**
+   - All 20 existing Lucide TGA files are direct 32x32 rasterizations of the agreed official Lucide SVG geometry. Static binary inspection confirms uncompressed type-2 TGA, 32x32, 32-bit alpha, top-left origin for every file.
+   - Neutral icons remain RGB 230; Telescope off remains silver RGB 168 and on remains gold RGB 255/209/0. Existing rendered control sizes/layout code were not changed.
+   - `Preset Configuration` is now `Preset Manager`.
+   - Upstream Lucide/Feather license notice is included in `artwork/LUCIDE_LICENSE.txt`.
 
-4. **Exact next step.**
-   - Audit the current Request control-message/authority path and Resummon role-validation refresh path before editing.
-   - Then implement one coherent next dev revision: leader-owned party->raid conversion for >5 requests, the human-group Resummon validation fix, exact Lucide asset replacement at existing UI scale, and the Preset Manager label change.
-   - Do not reintroduce the rejected target-based Command Bots Resummon UI.
+4. **Checks performed.**
+   - Verified the implementation write was a fast-forward from handoff `e77b4b0f5e458c2279e044e93c1a09222f19c791`; implementation commit is `001a816eeb99ef8e52d713dedc8f11bd76c1c275`.
+   - Reviewed the full implementation diff and re-checked Resummon references: only the per-group header control and logical-group maintenance backend remain; no target-as-group-selector path returned.
+   - Verified all 20 committed TGA headers/dimensions/state colours after the write.
+   - Canonical Lua 5.0.3 compiler check is **not run/unavailable**: this repository does not contain `tools/lua50/`, and the executable environment has a C compiler but no mounted VanillaTemplate checker (nor a system Lua/luac). Do not claim a compiler pass.
+
+5. **Exact next runtime test.**
+   - On `0.8.102-dev`, re-test an accepted >5-player Request beginning in a party: the current party leader should convert to raid first, then the receiver should become raid leader and start the requested preset.
+   - Re-test the existing-raid Request leadership path once because the `L:...:REQUEST` handler was generalized.
+   - Resummon a preset group containing at least one human and confirm the rebuilt bots' combat-role ticks return normally.
+   - Visually confirm the exact Lucide mini-control glyphs at the established sizes and the `Preset Manager` title. If a third SCB-capable human leader is available, also exercise that path; otherwise keep it explicitly untested.
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
