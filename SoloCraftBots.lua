@@ -489,6 +489,9 @@ function SCB_EnsureOptionsDB()
     if options.hideBotAttackMessages == nil then options.hideBotAttackMessages = false end
     if options.autoPromotePlayers == nil then options.autoPromotePlayers = false end
     if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
+    if options.drawerJustification ~= "left" and options.drawerJustification ~= "right" then
+        options.drawerJustification = "right"
+    end
 
     -- Debug layout values are the raw internal baseline.  Seed command values
     -- from the old spacing settings so existing test profiles keep their exact
@@ -576,6 +579,66 @@ function SCB_GetLayoutValue(sectionKey, valueKey)
     -- Debug mode deliberately shows the raw baseline without personal offsets.
     if SCB.optionsDebugMode and SCB.optionsDebugMode[sectionKey] then return baseline end
     return baseline + user
+end
+
+function SCB_GetDrawerJustification()
+    SCB_EnsureOptionsDB()
+    return SoloCraftBotsDB.options.drawerJustification == "left" and "left" or "right"
+end
+
+function SCB_RefreshDrawerJustificationToggle()
+    local side = SCB_GetDrawerJustification()
+    local button = SCB.drawerJustificationToggle
+    if not button then return end
+    if button.scbArrowTexture then
+        SCB_SetArrowDirection(button.scbArrowTexture, side)
+    end
+    button.scbTooltip = string.format(
+        SCB_L("TIP_DRAWER_JUSTIFICATION"),
+        SCB_L(side == "left" and "JUSTIFICATION_LEFT" or "JUSTIFICATION_RIGHT")
+    )
+end
+
+function SCB_LayoutSidePanels()
+    local side, presetShown, outerAnchor
+    if not SCB.frame then return end
+
+    side = SCB_GetDrawerJustification()
+    presetShown = SCB.presetPanel and SCB.presetPanel:IsShown() and true or false
+
+    if SCB.presetPanel then
+        SCB.presetPanel:ClearAllPoints()
+        if side == "left" then
+            SCB.presetPanel:SetPoint("TOPRIGHT", SCB.frame, "TOPLEFT", -2, 0)
+        else
+            SCB.presetPanel:SetPoint("TOPLEFT", SCB.frame, "TOPRIGHT", 2, 0)
+        end
+    end
+
+    if SCB.optionsPanel then
+        outerAnchor = presetShown and SCB.presetPanel or SCB.frame
+        SCB.optionsPanel:ClearAllPoints()
+        if side == "left" then
+            SCB.optionsPanel:SetPoint("TOPRIGHT", outerAnchor, "TOPLEFT", -2, 0)
+        else
+            SCB.optionsPanel:SetPoint("TOPLEFT", outerAnchor, "TOPRIGHT", 2, 0)
+        end
+    end
+
+    SCB_RefreshDrawerJustificationToggle()
+    if SCB_SetPresetToggleDirection then
+        SCB_SetPresetToggleDirection(presetShown)
+    end
+end
+
+function SCB_DrawerJustificationOnClick()
+    SCB_EnsureOptionsDB()
+    if SCB_GetDrawerJustification() == "left" then
+        SoloCraftBotsDB.options.drawerJustification = "right"
+    else
+        SoloCraftBotsDB.options.drawerJustification = "left"
+    end
+    SCB_LayoutSidePanels()
 end
 
 function SCB_SectionToggleOnClick()
@@ -1597,6 +1660,14 @@ function SCB_CreateUI()
     title:SetPoint("TOP", frame, "TOP", 0, -13)
     title:SetText(SCB_L("ADDON_TITLE") .. (string.find(SCB.version or "", "%-dev$") and SCB_L("DEV_SUFFIX") or ""))
 
+    local justification = SCB_CreateArrowButton(frame, 18)
+    justification:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -9)
+    justification:SetScript("OnClick", SCB_DrawerJustificationOnClick)
+    justification:SetScript("OnEnter", SCB_TooltipOnEnter)
+    justification:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.drawerJustificationToggle = justification
+    SCB_RefreshDrawerJustificationToggle()
+
     local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "lucide_x.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -9)
     close.scbTooltip = SCB_L("TIP_CLOSE")
@@ -1618,6 +1689,7 @@ function SCB_CreateUI()
     SCB_CreateSummonUI(frame)
     SCB_CreatePresetUI(frame)
     SCB_CreateOptionsUI(frame)
+    SCB_LayoutSidePanels()
     SCB_LayoutSections()
 
     local safety = CreateFrame("Frame", "SoloCraftBotsSafetyMessage", UIParent)
