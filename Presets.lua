@@ -3373,7 +3373,15 @@ SCB_LayoutPresetGroups = function()
     -- Header furniture follows the group geometry. Selectors/actions remain a
     -- two-column strip; the role counter expands to the live group-grid width.
     if SCB.presetGroupSelector then SCB.presetGroupSelector:SetWidth(groupWidth) end
-    if SCB.presetSelector then SCB.presetSelector:SetWidth(groupWidth) end
+    if SCB.presetSelector then
+        SCB.presetSelector:SetWidth(groupWidth)
+        SCB.presetSelector:ClearAllPoints()
+        SCB.presetSelector:SetPoint("TOPRIGHT", SCB.presetPanel, "TOPRIGHT", -12, -(24 + headerHeight))
+    end
+    if SCB.presetGroupSelector and SCB.presetSelector then
+        SCB.presetGroupSelector:ClearAllPoints()
+        SCB.presetGroupSelector:SetPoint("RIGHT", SCB.presetSelector, "LEFT", -6, 0)
+    end
     local actionGap = 3
     local actionWidth = (twoGroupWidth - (3 * actionGap)) / 4
     if SCB.presetSaveButton then SCB.presetSaveButton:SetWidth(actionWidth) end
@@ -3549,7 +3557,7 @@ function SCB_CreatePresetUI(frame)
     selector:SetScript("OnEnter", SCB_TooltipOnEnter)
     selector:SetScript("OnLeave", SCB_TooltipOnLeave)
     selector:ClearAllPoints()
-    selector:SetPoint("TOPRIGHT", presetHeader, "BOTTOMRIGHT", 0, -12)
+    selector:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -44)
     SCB.presetSelector = selector
 
     -- Group selector depends on the Preset selector, so anchor it only after
