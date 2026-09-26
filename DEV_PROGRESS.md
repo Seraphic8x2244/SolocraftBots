@@ -4,17 +4,17 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.103-dev`
-- Current implementation head before this handoff update: `c6c7deaed2b5b06664add387ece257681d336764`
-- Runtime-tested baseline for this slice: `f9760a20c176f5d0123b9f7829fbc5b32e6b93c6` (`0.8.92-dev`; runtime files correspond to implementation `8bd3b38f64a17372b884bf5d58a6a701e45ec84b`)
+- TOC version: `0.8.104-dev`
+- Current implementation head before this handoff update: `a88dc3d7e0e26fb113c6bf5772fcf5d7d567e002`
+- Runtime-tested baseline for this slice: `0.8.103-dev` at handoff `eb9dc5218804fd4c20ca1135c89d05f823c6a6f9`, with the exact partial/pass results recorded below.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
 - `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed.
-- `0.8.101-dev` remains the latest Request/Resummon runtime result: receiver Auto Loot, refusal side effects, existing-raid transfer and already-leader Request paths passed; the old party requester -> receiver leadership transfer failed; Resummon Group worked but human-containing groups could lose combat-role ticks.
-- `0.8.102-dev` contains the targeted human-group Resummon role-validation refresh fix, exact official Lucide raster artwork and the `Preset Manager` rename; those deltas remain runtime-pending.
-- `0.8.103-dev` corrects the Request contract again: preset Request **never transfers party or raid leadership**. For >5 requests in a party, the actual party leader's SCB automatically calls `ConvertToRaid()`; after conversion the receiver proceeds as Raid Assistant, asking the actual raid leader to promote it only if assistant authority is missing. Receiver Auto Loot is delegated to the actual leader when leader-only authority is required, including assigning the receiver as Master Looter for the `master` setting.
-- `0.8.103-dev` also formalizes Lucide rendering at a 14px default while preserving existing control hitboxes. Options -> Command Buttons and Options -> Preset Groups each have an `Icon Size` control (effective range 8-24, default 14) with immediate live updates for their scoped Lucide controls.
-- Immediate goal: runtime-test the 0.8.103 no-leadership-transfer Request flow, the 0.8.102 human-containing Resummon validation fix, and the 14px/live Lucide sizing pass. Combat mismatch popup and Cat/energy validation remain opportunistic coverage, not blockers.
+- `0.8.103-dev` runtime: accepted >5 Request successfully triggered automatic party->raid conversion, but then incorrectly stopped on a receiver-authority/assistant gate. User clarified that summoning bots does not require assistant authority. Delegated receiver-selected Auto Loot passed; existing-raid Request with leadership unchanged passed; human-containing Resummon role-validation ticks passed.
+- `0.8.103-dev` Lucide runtime: live Command/Preset Icon Size adjustment worked for the already-scoped controls, but expand/collapse chevrons and preset dropdown-menu utility icons did not follow the live size.
+- `0.8.104-dev` removes the unnecessary Request assistant gate entirely and bumps preset protocol to 6. Automatic leader-owned conversion and delegated leader-only loot setup remain; Request never transfers leadership.
+- `0.8.104-dev` changes shipped scoped defaults to Command 12px / Preset 10px, preserves explicit existing custom sizes during migration, and extends live sizing to Command/Assignments chevrons, the Command/Preset options subsection chevrons, the Preset drawer/selector chevrons, and preset dropdown Delete/Rename/Move icons.
+- Immediate goal: runtime-confirm only the 0.8.104 deltas: accepted >5 Request proceeds after conversion without assistant authority, and the newly covered chevrons/dropdown icons resize live at the new defaults.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -76,18 +76,16 @@
 - Power evidence remains `Rage power` or `Energy power`; no intended-role value is consulted.
 - Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
-## Requested preset ownership — current protocol 5
+## Requested preset ownership — current protocol 6
 - A Request no longer requires the requester to create a raid before sending a >5-player preset.
 - No Request path may transfer party or raid leadership. `PromoteToLeader` is not part of the protocol.
 - No leadership/conversion side effect occurs before Accept.
 - For an accepted >5-player snapshot while still in a party, the **actual current party leader** receives the SCB `CONVERT` control action and automatically calls `ConvertToRaid()`. There is no popup or manual confirmation.
-- After raid formation is authoritative, the receiver continues as its existing raid rank. If it is still rank 0, it sends `ASSIST` to the actual current raid leader; that leader calls `PromoteToAssistant(receiver)`. Existing Auto Promote Humans may make this unnecessary.
-- Subgroup movement/removal authority is therefore obtained through Raid Assistant, never raid leadership.
-- The receiver's configured Auto Loot Method remains authoritative for a Request. If the receiver is not raid leader and the method is not `off`, it sends `LOOT_<method>` to the actual raid leader; the leader applies that method. `master` assigns the receiving summoner as Master Looter.
-- `SCB_ApplyAutoLootMethod(methodOverride, masterName)` supports this delegated leader execution while preserving existing no-argument local behaviour.
-- Vanilla parties have no assistant rank. For a <=5 Request that remains a party, a non-leader receiver is refused rather than transferring leadership; supporting that case later would require explicit delegation of party-leader-only destructive operations.
-- If the required current leader is not running compatible SCB, the accepted operation fails/times out safely rather than changing leadership.
-- Request communications are protocol 5. Older protocol peers fail the normal offer handshake rather than mixing authority semantics.
+- **The receiving summoner does not require Raid Assistant or raid-leader authority to summon bots.** Do not gate Request execution on raid rank and do not request assistant promotion merely to summon.
+- The receiver's configured Auto Loot Method remains authoritative for a Request. If that method requires leader-only WoW authority and the receiver is not leader, it sends `LOOT_<method>` to the actual current group leader; the leader applies the receiver-selected method. `master` assigns the receiving summoner as Master Looter.
+- `SCB_ApplyAutoLootMethod(methodOverride, masterName)` supports delegated leader execution while preserving existing no-argument local behaviour.
+- If leader-owned conversion or delegated loot setup is required and the current leader is not running compatible SCB, fail/time out safely rather than changing leadership.
+- Request communications are protocol 6. Protocol 5 is intentionally incompatible because it contained the now-rejected assistant-authority handoff/gate. Older peers fail the normal offer handshake rather than mixing authority semantics.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -140,9 +138,11 @@ Implementation intent:
 - preserve current tooltips, state semantics and click behaviour unless separately specified;
 - do not substitute Lucide icons into the Command Bots matrix or role/class systems.
 - 0.8.102 uses direct rasterizations of the official Lucide SVG geometry for all 20 existing `artwork/lucide_*.tga` files. Telescope retains separate silver/off and gold/on state treatment.
-- 0.8.103 separates Lucide texture size from button-frame size: all Lucide controls default to 14px without shrinking their existing hitboxes.
-- Options -> Command Buttons -> `Icon Size` live-controls the scoped Assignment utility Lucides (Focus/CC and Clear); Options -> Preset Groups -> `Icon Size` live-controls the per-group Resummon Lucide. Both default to 14 and update immediately.
-- Other Lucide chrome remains fixed at 14px. Non-Lucide Command Bots/gameplay/class/role artwork is unchanged.
+- 0.8.103 separated Lucide texture size from button-frame size while preserving existing hitboxes.
+- 0.8.104 shipped defaults are **12px for Command Buttons** and **10px for Preset Groups**. Existing profiles migrate untouched 14px baselines to those defaults; explicit user adjustments are preserved.
+- Command Buttons -> `Icon Size` live-controls Focus/CC/Clear plus the Command/Assignments section chevrons and the Command Buttons options-subsection chevron.
+- Preset Groups -> `Icon Size` live-controls Resummon Group, the Presets drawer and selector chevrons, the Preset Groups options-subsection chevron, and preset dropdown Delete/Rename/Move icons.
+- Lucide chrome outside those two scoped areas remains fixed at the global 14px default. Non-Lucide Command Bots/gameplay/class/role artwork is unchanged.
 - `artwork/LUCIDE_LICENSE.txt` carries the upstream Lucide/Feather license notice for the distributed artwork.
 
 ## Other preserved invariants
@@ -155,7 +155,7 @@ Implementation intent:
 - Raw user-typed `.partybot add ...` remains outside SCB coordinator ownership.
 - Taxi safety remains action-time only through `SCB_CanOperateBots(showError)`.
 - Never use `UnitHealth()==0` as a dead-state fallback.
-- Preset protocol is now `SCBPRESET` protocol 5. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 5 keeps leadership fixed while adding leader-directed party->raid conversion, assistant promotion when required and delegated receiver-selected loot setup.
+- Preset protocol is now `SCBPRESET` protocol 6. Snapshot payload contents are unchanged and still carry logical composition/human slot intent, never generated bot names; protocol 6 keeps leadership fixed, uses leader-directed party->raid conversion where required, never gates summoning on assistant rank, and delegates only genuinely leader-owned loot setup.
 - Command semantics and tested Ctrl-Come/Move/Stay behaviour are unchanged.
 
 ## Runtime results
@@ -224,40 +224,40 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.103 implementation / static validation / next runtime test
-1. **Requested preset authority: IMPLEMENTED; runtime pending.**
-   - Protocol bumped to 5.
-   - Removed all `PromoteToLeader` use from preset communications. A legacy `L:...:REQUEST` control action is explicitly rejected rather than transferring leadership.
-   - Accepted >5 party Requests send `CONVERT` to the actual current party leader; that leader automatically calls `ConvertToRaid()`.
-   - Once the raid exists, the receiver uses Raid Assistant authority. If its rank is still 0, `ASSIST` is sent to the actual current raid leader, who calls `PromoteToAssistant(receiver)`.
-   - If receiver Auto Loot is not `off` and the receiver is not raid leader, `LOOT_<method>` is sent to the actual leader. For Master Looter, the receiver's name is passed as the master target.
-   - <=5 non-leader party Requests now fail safely instead of transferring leadership; no party-assistant equivalent exists.
+## 0.8.104 implementation / static validation / next runtime test
+1. **0.8.103 runtime results.**
+   - Accepted >5 Request: automatic party->raid conversion **PASS**, then receiver authority/assistant gate **FAIL**. The user confirmed this gate is invalid because any player may summon bots.
+   - Delegated receiver-selected Auto Loot: **PASS**.
+   - Existing-raid Request with leadership unchanged: **PASS**.
+   - Human-containing Resummon Group role-validation ticks: **PASS**.
+   - Existing live Command/Preset icon-size controls: **PASS**, but expand/collapse chevrons and preset dropdown-menu utility icons were not resized.
 
-2. **Lucide sizing: IMPLEMENTED; runtime visual check pending.**
-   - All Lucide textures use a shared 14px default renderer while button/check hitboxes retain their existing dimensions.
-   - Direct-texture Lucides (dropdowns, preset delete/rename, check states and arrows) were moved onto the same 14px geometry.
-   - Command Buttons -> `Icon Size` and Preset Groups -> `Icon Size` were added with effective values 8-24 and default 14.
-   - Changes apply immediately through the existing layout refresh path. Command scope updates Focus/CC/Clear; Preset scope updates Resummon Group.
-   - The 32x32 source TGA assets are unchanged.
+2. **Request authority correction: IMPLEMENTED; delta runtime pending.**
+   - Protocol bumped 5 -> 6.
+   - Removed the `ASSIST` control action, `await-assist` state, local raid-rank gate and all Request-specific assistant promotion.
+   - After automatic conversion becomes authoritative, the receiver may start the existing preset rebuild regardless of raid rank.
+   - Leader delegation remains only for genuinely leader-owned Auto Loot changes. The already runtime-passed delegated loot path is otherwise unchanged.
+   - `PromoteToLeader` remains absent.
 
-3. **Resummon Group validation: still implemented from 0.8.102; runtime pending.**
-   - Replacement binding starts a fresh role-validation epoch for the final bound name and refreshes preset indicators/detection lifecycle.
-   - The per-group `RotateCcw` UX and shared maintenance backend remain unchanged; no target-based Command Bots Resummon UI returned.
+3. **Lucide sizing correction: IMPLEMENTED; delta runtime pending.**
+   - Shipped Command default is 12px; shipped Preset default is 10px.
+   - Migration moves untouched 0.8.103 14px baselines to 12/10 while preserving explicit custom effective sizes.
+   - Command live size now also covers Command/Assignments main-section chevrons and the Command Buttons options-subsection chevron.
+   - Preset live size now also covers the Presets drawer chevron, both preset selector arrows, Preset Groups options-subsection chevron, and dropdown Delete/Rename/Move utility icons.
+   - Existing control hitboxes and 32x32 source TGAs remain unchanged.
 
 4. **Checks performed.**
-   - Reconciled from branch head `65bb1706c4ef7e6df1346a54f7f1cf901a7d5af2` before this revision.
-   - Reviewed all current Lucide call sites after implementation; global chrome routes to 14px rendering and the two agreed scoped controls use live layout values.
-   - Confirmed `Communication.lua` contains zero `PromoteToLeader` references and protocol is 5.
-   - Confirmed TOC version is `0.8.103-dev`.
-   - Canonical Lua 5.0.3 compiler check is **not run/unavailable**: no mounted VanillaTemplate `tools/lua50/` checker and no system Lua/luac are available in this execution environment.
+   - Verified starting handoff exactly matched `eb9dc5218804fd4c20ca1135c89d05f823c6a6f9` / `0.8.103-dev`.
+   - Current implementation head before this handoff update is `a88dc3d7e0e26fb113c6bf5772fcf5d7d567e002`; TOC is `0.8.104-dev`.
+   - Static search confirms protocol 6, zero `ASSIST`, zero `await-assist`, zero `PromoteToLeader`, and zero `LocalRaidRank` references in preset communications.
+   - Static inspection confirms Command/Preset defaults 12/10, migration marker 8104, and live sizing paths for all newly requested chevrons/dropdown utility icons.
+   - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
 5. **Exact next runtime test.**
-   - On `0.8.103-dev`, accept a >5 Request while still in a party with another human as actual party leader. Confirm that leader stays leader, their SCB converts automatically, the receiver becomes/remains Raid Assistant rather than raid leader, and the requested preset begins.
-   - With receiver Auto Loot enabled, confirm the actual raid leader applies the receiver-selected loot method without leadership transfer; if practical, include Master Looter once.
-   - Re-test an accepted Request that begins in an existing raid and confirm leadership remains unchanged.
-   - Resummon a preset group containing at least one human and confirm rebuilt bots' combat-role ticks return.
-   - Visually confirm global Lucides default to 14px, then change Command Buttons -> Icon Size and Preset Groups -> Icon Size and confirm each scoped icon set updates immediately and independently.
-   - If a third SCB-capable human leader is available, exercise that path; otherwise keep it explicitly untested.
+   - On `0.8.104-dev`, repeat only the previously failing >5 Request case: another human remains actual leader, Request is accepted, their SCB automatically converts to raid, and the receiver proceeds to summon without waiting for or requiring Raid Assistant.
+   - Confirm Command Icon Size starts at 12 and its newly covered expand/collapse chevrons resize immediately.
+   - Confirm Preset Icon Size starts at 10 and its Presets drawer/selector chevrons plus dropdown Delete/Rename/Move icons resize immediately.
+   - Do **not** repeat the already-passed delegated Auto Loot, existing-raid Request, human-containing Resummon, or previously proven stuck-summon tests unless a new regression appears.
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
