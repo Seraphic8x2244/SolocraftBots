@@ -63,8 +63,7 @@ function SCB_CreateAutoLootOption(parent)
     SCB.optionAutoLootSelector = selector
 
     arrow = selector:CreateTexture(nil, "ARTWORK")
-    arrow:SetWidth(18)
-    arrow:SetHeight(18)
+    SCB_SetTextureRenderSize(arrow, SCB.LUCIDE_ICON_SIZE, selector)
     arrow:SetPoint("RIGHT", selector, "RIGHT", -2, 0)
     arrow:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
 
@@ -205,10 +204,18 @@ function SCB_AdjustLayoutOption()
         minimum = this.scbUserMinimum or -20
         maximum = this.scbUserMaximum or 20
     end
-    value = (target[valueKey] or 0) + delta
-    if minimum and value < minimum then value = minimum end
-    if maximum and value > maximum then value = maximum end
-    target[valueKey] = value
+    if valueKey == "iconSize" and not (SCB.optionsDebugMode and SCB.optionsDebugMode[sectionKey]) then
+        value = SCB_GetLayoutValue(sectionKey, valueKey) + delta
+        if minimum and value < minimum then value = minimum end
+        if maximum and value > maximum then value = maximum end
+        local baseline = sectionKey == "command" and options.commandLayoutDebug[valueKey] or options.presetLayoutDebug[valueKey]
+        target[valueKey] = value - (baseline or 0)
+    else
+        value = (target[valueKey] or 0) + delta
+        if minimum and value < minimum then value = minimum end
+        if maximum and value > maximum then value = maximum end
+        target[valueKey] = value
+    end
     SCB_RefreshOptionsUI()
     if sectionKey == "command" and SCB_LayoutCommandUI then SCB_LayoutCommandUI() end
     if sectionKey == "preset" and SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
@@ -433,7 +440,11 @@ function SCB_RefreshOptionsUI()
         else
             target = sectionKey == "command" and options.commandLayoutUser or options.presetLayoutUser
         end
-        control.value:SetText(target[valueKey] or 0)
+        if valueKey == "iconSize" then
+            control.value:SetText(SCB_GetLayoutValue(sectionKey, valueKey))
+        else
+            control.value:SetText(target[valueKey] or 0)
+        end
     end
     SoloCraftBotsDB = SoloCraftBotsDB or {}
     SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
@@ -522,13 +533,14 @@ function SCB_CreateOptionsUI(frame)
     layoutContent:ClearAllPoints()
     layoutContent:SetPoint("TOPLEFT", SCB.optionLayoutSection, "TOPLEFT", 12, -26)
     layoutContent:SetWidth(panel:GetWidth() - 12)
-    SCB.optionCommandSection = SCB_CreateOptionsSubsection(layoutContent, "command", "OPTION_COMMAND_BUTTONS", 104)
+    SCB.optionCommandSection = SCB_CreateOptionsSubsection(layoutContent, "command", "OPTION_COMMAND_BUTTONS", 130)
     commandContent = SCB.optionCommandSection.scbContent
     control = SCB_CreateLayoutControl(commandContent, "command", "horizontalSpacing", "OPTION_COMMAND_H_SPACING", -2, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "verticalSpacing", "OPTION_COMMAND_V_SPACING", -28, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "groupVerticalSpacing", "OPTION_COMMAND_GROUP_SPACING", -54, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(commandContent, "command", "iconSize", "OPTION_ICON_SIZE", -80, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
-    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 286)
+    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 312)
     presetContent = SCB.optionPresetSection.scbContent
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupWidth", "OPTION_GROUP_WIDTH", -2, 60, 160, -30, 30); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupHeight", "OPTION_GROUP_HEIGHT", -26, 100, 240, -50, 50); table.insert(SCB.optionLayoutControls, control)
@@ -549,6 +561,7 @@ function SCB_CreateOptionsUI(frame)
     sublabel:SetTextColor(1, 0.82, 0, 1)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconHorizontal", "OPTION_HORIZONTAL", -222, -10, 20, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconVertical", "OPTION_VERTICAL", -246, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
