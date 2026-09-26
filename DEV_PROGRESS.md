@@ -4,19 +4,20 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.109-dev`
-- Current implementation head before this handoff update: `c122a4f8231da34b245bfc1f898ac7604182478c`
+- TOC version: `0.8.110-dev`
+- Current implementation head before this handoff update: `16231b8334d195b746d2e3c4e50db995a3afedfc`
 - Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so Request protocol 8 remains runtime-pending.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is **runtime-confirmed working** by the user.
-- User then reported the new horizontal justification chevron looked larger than the existing vertical section chevrons and requested a readability hierarchy.
-- `0.8.109-dev` makes the justification chevron use the same live Command icon-size value as the main Command/Assignments vertical chevrons (default 12).
-- `0.8.109-dev` also centralizes the primary UI palette alongside the existing chat blue: SCB blue `88CCFF`, gold `FFD100`, silver `C0C0C0`, white `FFFFFF`.
-- Typography hierarchy now is: main headers (SoloCraft Bots / Preset Manager / Options) = SCB blue; section/subsection headers = gold; ordinary descriptive/value text = silver; button/dropdown content = white.
-- Semantic color exceptions are preserved where color communicates state/identity (class-coloured player names and red/green preset-state pulses).
-- Immediate goal: locally runtime-check only the 0.8.109 visual delta; Request protocol 8 can wait until a second SCB player is available.
+- `0.8.109-dev` readability/palette pass was visually received positively by the user from runtime screenshot; exact Request runtime remains unrelated and pending.
+- `0.8.110-dev` is a narrow header-homogeneity pass:
+  - Preset Manager title centered.
+  - Options title centered.
+  - Both drawers now have matching top-right Lucide `X` close buttons using the existing global 14px chrome size.
+  - Preset Manager's self player class/role controls are hidden from the visible header but their frames, saved-role logic and refresh code remain intact.
+- Immediate goal: runtime-check only the 0.8.110 visual/header delta locally; Request protocol 8 can wait until a second SCB player is available.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -248,37 +249,32 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.109 implementation / static validation / next runtime test
+## 0.8.110 implementation / static validation / next runtime test
 1. **0.8.108 drawer layout: USER TESTED PASS.**
-   - User confirmed the left/right drawer layout works.
-   - No need to repeat basic anchoring/order tests unless the 0.8.109 visual-only change causes a regression.
+   - Left/right drawer anchoring and dynamic Options placement work.
+   - No need to repeat unless the header-only change causes a visible regression.
 
-2. **Chevron size normalization: IMPLEMENTED; runtime visual check pending.**
-   - The new main justification chevron now uses `SCB_GetLayoutValue("command", "iconSize")` at creation and during live Command layout refresh.
-   - Default therefore matches the Command/Assignments section chevrons at 12px and follows future Command Icon Size edits immediately.
+2. **0.8.109 readability pass: RUNTIME VISUALLY POSITIVE.**
+   - User supplied an in-game screenshot and described the result as looking really good.
+   - Shared blue/gold/silver/white hierarchy remains unchanged in 0.8.110.
 
-3. **Shared UI palette + readability hierarchy: IMPLEMENTED; runtime visual check pending.**
-   - Existing `COLOR_SCB = 88CCFF` remains the single SCB blue source used by both chat and UI.
-   - Added adjacent central palette values for gold/silver/white.
-   - Added shared core color-role helpers rather than scattering new RGB literals.
-   - Primary headers are blue; section/subsection headers are gold; ordinary text/value labels are silver; text-button/dropdown content is white.
-   - Preset selector/menu overrides that previously colored default groups gold/custom groups silver were removed so dropdown content stays white as requested.
-   - Base preset text buttons now return to white after status pulses.
-   - Class-color identity and red/green status feedback are intentionally preserved.
+3. **Header homogeneity: IMPLEMENTED; runtime visual check pending.**
+   - Preset Manager and Options titles now use the same centered top anchor as the main SCB title.
+   - Preset Manager and Options each have a top-right 18x18 control with the existing 14px Lucide `X` glyph and Close tooltip.
+   - Close buttons route through the existing `SCB_SetPresetPanelShown(false)` / `SCB_SetOptionsPanelShown(false)` owners.
+   - Preset self class/role controls remain fully instantiated and refreshed but are hidden after creation; no underlying per-character role/default code was deleted.
 
 4. **Checks performed.**
-   - Verified starting handoff exactly matched `5b85877f6be2e861e27089efc7623e4f5753223f` / `0.8.108-dev`.
-   - Current implementation head before this handoff update is `c122a4f8231da34b245bfc1f898ac7604182478c`; TOC is `0.8.109-dev`.
-   - Static inspection confirms all three requested main headers use the shared header role, shared section-title creation uses gold, text-button creation uses white, Preset dropdown/menus are white, and Options descriptive/value text routes to silver.
-   - Palette helper was namespaced on `SCB` rather than adding another top-level local, avoiding unnecessary Lua 5.0 local-budget pressure.
+   - Verified starting handoff exactly matched `6800964a6917e9dc951ff4976075b4c071758e42` / `0.8.109-dev`.
+   - Current implementation head before this handoff update is `16231b8334d195b746d2e3c4e50db995a3afedfc`; TOC is `0.8.110-dev`.
+   - Static inspection confirms centered Preset/Options headings, both close buttons and existing visibility owners, hidden Preset self identity controls, and retained `SCB_RefreshCharacterPresetIdentity()` logic.
    - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
 5. **Exact next runtime test.**
-   - Confirm the new top-left `< >` justification icon visually matches the Command/Assignments `^ v` chevrons at the current Command Icon Size.
-   - Confirm header hierarchy: SoloCraft Bots / Preset Manager / Options are light blue.
-   - Confirm section/subsection headings are gold, ordinary labels/values are silver, and button/dropdown text is white.
-   - Confirm semantic exceptions still read correctly: player names remain class-colored and preset state feedback still turns red/green where expected.
-   - Request protocol 8 tests remain deferred until another SCB player is available.
+   - Confirm Preset Manager and Options titles visually align/center like the main `SoloCraft Bots` title.
+   - Confirm each drawer's new `X` closes only that drawer and the remaining side-panel layout reflows correctly through existing logic.
+   - Confirm the Preset Manager no longer visibly shows the player's class/role icons in its header.
+   - No Request retest is required until a second SCB player is available.
 
 
 ## Deferred / later
