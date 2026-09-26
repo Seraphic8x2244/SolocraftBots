@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 7
+local COMM_PROTOCOL = 8
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -63,14 +63,6 @@ local function CurrentGroupLeaderName()
         end
     end
     return nil
-end
-
-local function CurrentAutoLootMethod()
-    if SCB_EnsureOptionsDB then SCB_EnsureOptionsDB() end
-    if SoloCraftBotsDB and SoloCraftBotsDB.options and SoloCraftBotsDB.options.autoLootMethod then
-        return SoloCraftBotsDB.options.autoLootMethod
-    end
-    return "off"
 end
 
 local function Escape(value)
@@ -617,7 +609,7 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
 }
 
 local function SCB_CommsStartAcceptedRequest(incoming)
-    local ok, errorText, raidCount, partyCount, method
+    local ok, errorText, raidCount, partyCount
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
     if SCB_ValidateRequestedPresetLocalCapacity then
@@ -645,19 +637,6 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         return true
     end
 
-    method = CurrentAutoLootMethod()
-    if not incoming.lootApplied then
-        if method == "off" then
-            incoming.lootApplied = true
-        elseif SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-            if not SCB_ApplyAutoLootMethod or not SCB_ApplyAutoLootMethod() then return false end
-            if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
-            incoming.lootApplied = true
-        else
-            return false
-        end
-    end
-
     incoming.controlLeader = nil
     ok, errorText = SCB_StartPresetRebuild(incoming.snapshot, false)
     if not ok then
@@ -678,8 +657,6 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
     incoming.controlLeader = leaderName
     if action == "CONVERT" then
         incoming.phase = "await-convert"
-    elseif string.find(action or "", "^LOOT_") then
-        incoming.phase = "await-loot"
     else
         return false
     end
@@ -697,7 +674,7 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
 end
 
 local function SCB_CommsContinueAcceptedRequest(incoming)
-    local raidCount, partyCount, method
+    local raidCount, partyCount
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
@@ -715,30 +692,6 @@ local function SCB_CommsContinueAcceptedRequest(incoming)
         return true
     end
 
-    method = CurrentAutoLootMethod()
-    if not incoming.lootApplied and method ~= "off" then
-        -- First ask the receiver's own client whether the desired loot state is
-        -- already active. SCB_ApplyAutoLootMethod() is intentionally
-        -- idempotent for non-master modes, so a non-leader receiver can accept
-        -- an already-correct FFA/Group/Round Robin/etc. state without sending a
-        -- needless leader-control message during post-conversion roster churn.
-        if SCB_ApplyAutoLootMethod and SCB_ApplyAutoLootMethod(method) then
-            incoming.lootApplied = true
-            return SCB_CommsStartAcceptedRequest(incoming)
-        end
-        if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-            return SCB_CommsStartAcceptedRequest(incoming)
-        end
-        if (raidCount > 0 or partyCount > 0)
-            and SCB_CommsRequestLeaderAction(incoming, "LOOT_" .. method) then
-            return true
-        end
-        SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-        FinishIncoming(incoming, "ERROR")
-        return false
-    end
-
-    if method == "off" then incoming.lootApplied = true end
     return SCB_CommsStartAcceptedRequest(incoming)
 end
 
@@ -901,21 +854,8 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             return
         end
 
-        local _, _, lootMethod = string.find(parts[4] or "", "^LOOT_(.+)$")
-        if lootMethod then
-            local info = SCB_GetAutoLootInfo and SCB_GetAutoLootInfo(lootMethod) or nil
-            if GroupHasName(sender) and info and info.key == lootMethod and lootMethod ~= "off"
-                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader()
-                and SCB_ApplyAutoLootMethod and SCB_ApplyAutoLootMethod(lootMethod, sender) then
-                SendControl("L", tx, sender, "LOOTED")
-            else
-                SendControl("L", tx, sender, "ERROR")
-            end
-            return
-        end
-
         if parts[4] == "REQUEST" then
-            -- Leadership-transfer Request controls are obsolete; protocol 7
+            -- Leadership-transfer Request controls are obsolete; protocol 8
             -- keeps leadership fixed for the entire preset Request lifecycle.
             SendControl("L", tx, sender, "ERROR")
             return
@@ -926,16 +866,8 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             and incoming.mode == "R" and incoming.requestAccepted then
             incoming.deadline = Now() + COMM_TIMEOUT
             if parts[4] == "ERROR" then
-                if incoming.phase == "await-convert" then
-                    SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
-                else
-                    SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
-                end
+                SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
                 FinishIncoming(incoming, "ERROR")
-            elseif parts[4] == "LOOTED" and incoming.phase == "await-loot" then
-                incoming.lootApplied = true
-                incoming.controlLeader = nil
-                SCB_CommsContinueAcceptedRequest(incoming)
             end
             return
         end
