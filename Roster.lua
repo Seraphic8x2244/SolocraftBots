@@ -911,10 +911,10 @@ function SCB_IsLocalGroupLeader()
     return false
 end
 
-function SCB_ApplyAutoLootMethod(methodOverride, masterName)
+function SCB_ApplyAutoLootMethod()
     local method, current, partyCount, raidCount, info, masterTarget
     SCB_EnsureOptionsDB()
-    method = methodOverride or SoloCraftBotsDB.options.autoLootMethod or "off"
+    method = SoloCraftBotsDB.options.autoLootMethod or "off"
     info = SCB_GetAutoLootInfo(method)
     if not info or info.key ~= method then return false end
     if method == "off" or not SetLootMethod then return true end
@@ -922,18 +922,17 @@ function SCB_ApplyAutoLootMethod(methodOverride, masterName)
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     if partyCount <= 0 and raidCount <= 0 then return false end
 
-    -- Applying an already-active non-master loot mode is idempotent and does
-    -- not require a fresh authority check. This matters immediately after
-    -- party->raid conversion while leader-rank propagation can briefly lag
-    -- even though the desired loot mode is already authoritative.
     if GetLootMethod then
         current = GetLootMethod()
         if current == method and method ~= "master" then return true end
     end
 
+    -- Auto Loot is addon-level state owned by the current group leader's SCB.
+    -- Other clients may call this harmlessly from shared roster/UI lifecycles,
+    -- but they never apply their own loot preference to somebody else's group.
     if not SCB_IsLocalGroupLeader() then return false end
     if method == "master" then
-        masterTarget = masterName or (UnitName and UnitName("player")) or nil
+        masterTarget = UnitName and UnitName("player") or nil
         if masterTarget and masterTarget ~= "" then SetLootMethod("master", masterTarget) else return false end
     else
         SetLootMethod(method)
