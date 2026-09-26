@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 4
+local COMM_PROTOCOL = 5
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -63,6 +63,26 @@ local function CurrentGroupLeaderName()
         end
     end
     return nil
+end
+
+local function LocalRaidRank()
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local selfName = SelfName()
+    local i, name, rank
+    if raidCount <= 0 or selfName == "" or not GetRaidRosterInfo then return nil end
+    for i = 1, raidCount do
+        name, rank = GetRaidRosterInfo(i)
+        if name == selfName then return rank or 0 end
+    end
+    return nil
+end
+
+local function CurrentAutoLootMethod()
+    if SCB_EnsureOptionsDB then SCB_EnsureOptionsDB() end
+    if SoloCraftBotsDB and SoloCraftBotsDB.options and SoloCraftBotsDB.options.autoLootMethod then
+        return SoloCraftBotsDB.options.autoLootMethod
+    end
+    return "off"
 end
 
 local function Escape(value)
@@ -608,20 +628,15 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
 }
 
 local function SCB_CommsStartAcceptedRequest(incoming)
-    local ok, errorText, raidCount, partyCount
+    local ok, errorText, raidCount, partyCount, localRank, method
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
-
-    if not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then
-        return false
-    end
 
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
 
     if (incoming.snapshot.size or 0) > 5 and raidCount == 0 then
-        if partyCount <= 0 or not ConvertToRaid then
-            SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
-            FinishIncoming(incoming, "ERROR")
+        if partyCount <= 0 or not ConvertToRaid
+            or not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then
             return false
         end
         incoming.controlLeader = nil
@@ -632,10 +647,30 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         return true
     end
 
-    incoming.controlLeader = nil
-    if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
-    if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
+    if raidCount > 0 then
+        localRank = LocalRaidRank()
+        if localRank == nil or localRank <= 0 then return false end
+    elseif partyCount > 0 and (not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader()) then
+        -- Vanilla parties have no assistant rank. Never transfer leadership
+        -- just to execute a Request; a non-leader receiver cannot own a
+        -- destructive 5-player rebuild safely.
+        return false
+    end
 
+    method = CurrentAutoLootMethod()
+    if not incoming.lootApplied then
+        if method == "off" then
+            incoming.lootApplied = true
+        elseif SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+            if not SCB_ApplyAutoLootMethod or not SCB_ApplyAutoLootMethod() then return false end
+            if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
+            incoming.lootApplied = true
+        else
+            return false
+        end
+    end
+
+    incoming.controlLeader = nil
     ok, errorText = SCB_StartPresetRebuild(incoming.snapshot, false)
     if not ok then
         if errorText then SCB_Print(errorText) end
@@ -653,23 +688,37 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
     if not leaderName or leaderName == SelfName() then return false end
 
     incoming.controlLeader = leaderName
-    incoming.phase = action == "CONVERT" and "await-convert" or "await-leader"
+    if action == "CONVERT" then
+        incoming.phase = "await-convert"
+    elseif action == "ASSIST" then
+        incoming.phase = "await-assist"
+    elseif string.find(action or "", "^LOOT_") then
+        incoming.phase = "await-loot"
+    else
+        return false
+    end
     incoming.deadline = Now() + COMM_TIMEOUT
     if not SendControl("L", incoming.tx, leaderName, action) then
         incoming.controlLeader = nil
         return false
     end
 
-    SCB_Print(SCB_L(action == "CONVERT" and "COMM_REQUEST_WAIT_CONVERT" or "COMM_REQUEST_WAIT_LEADER"))
+    if action == "CONVERT" then
+        SCB_Print(SCB_L("COMM_REQUEST_WAIT_CONVERT"))
+    elseif action == "ASSIST" then
+        SCB_Print(SCB_L("COMM_REQUEST_WAIT_LEADER"))
+    end
     if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     return true
 end
 
 local function SCB_CommsContinueAcceptedRequest(incoming)
-    local raidCount
+    local raidCount, partyCount, localRank, method
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+
     if (incoming.snapshot.size or 0) > 5 and raidCount == 0 then
         if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
             return SCB_CommsStartAcceptedRequest(incoming)
@@ -682,15 +731,41 @@ local function SCB_CommsContinueAcceptedRequest(incoming)
         return true
     end
 
-    if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+    if raidCount > 0 then
+        localRank = LocalRaidRank()
+        if localRank == nil then
+            SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+            FinishIncoming(incoming, "ERROR")
+            return false
+        end
+        if localRank <= 0 then
+            if not SCB_CommsRequestLeaderAction(incoming, "ASSIST") then
+                SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+                FinishIncoming(incoming, "ERROR")
+                return false
+            end
+            return true
+        end
+
+        method = CurrentAutoLootMethod()
+        if not incoming.lootApplied and method ~= "off" and localRank < 2 then
+            if not SCB_CommsRequestLeaderAction(incoming, "LOOT_" .. method) then
+                SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
+                FinishIncoming(incoming, "ERROR")
+                return false
+            end
+            return true
+        end
+        if method == "off" then incoming.lootApplied = true end
         return SCB_CommsStartAcceptedRequest(incoming)
     end
-    if not SCB_CommsRequestLeaderAction(incoming, "REQUEST") then
+
+    if partyCount > 0 and (not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader()) then
         SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
         FinishIncoming(incoming, "ERROR")
         return false
     end
-    return true
+    return SCB_CommsStartAcceptedRequest(incoming)
 end
 
 function SCB_CommsPromptAccept()
@@ -849,13 +924,34 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             return
         end
 
-        if parts[4] == "REQUEST" then
-            if GroupHasName(sender) and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and PromoteToLeader then
-                PromoteToLeader(sender)
-                SendControl("L", tx, sender, "PROMOTED")
+        if parts[4] == "ASSIST" then
+            local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+            if GroupHasName(sender) and raidCount > 0
+                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and PromoteToAssistant then
+                PromoteToAssistant(sender)
+                SendControl("L", tx, sender, "ASSISTING")
             else
                 SendControl("L", tx, sender, "ERROR")
             end
+            return
+        end
+
+        local _, _, lootMethod = string.find(parts[4] or "", "^LOOT_(.+)$")
+        if lootMethod then
+            local info = SCB_GetAutoLootInfo and SCB_GetAutoLootInfo(lootMethod) or nil
+            if GroupHasName(sender) and info and info.key == lootMethod and lootMethod ~= "off"
+                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader()
+                and SCB_ApplyAutoLootMethod and SCB_ApplyAutoLootMethod(lootMethod, sender) then
+                SendControl("L", tx, sender, "LOOTED")
+            else
+                SendControl("L", tx, sender, "ERROR")
+            end
+            return
+        end
+
+        if parts[4] == "REQUEST" then
+            -- Protocol 5 never transfers leadership for a preset Request.
+            SendControl("L", tx, sender, "ERROR")
             return
         end
 
@@ -870,6 +966,10 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
                     SCB_Print(SCB_L("COMM_REQUEST_LEADER_FAILED"))
                 end
                 FinishIncoming(incoming, "ERROR")
+            elseif parts[4] == "LOOTED" and incoming.phase == "await-loot" then
+                incoming.lootApplied = true
+                incoming.controlLeader = nil
+                SCB_CommsContinueAcceptedRequest(incoming)
             end
             return
         end
@@ -945,15 +1045,15 @@ commFrame:SetScript("OnUpdate", function()
         if now >= incoming.deadline then
             FinishIncoming(incoming, "TIMEOUT")
         elseif incoming.mode == "R" and incoming.requestAccepted then
-            if incoming.phase == "await-leader"
-                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-                SCB_CommsStartAcceptedRequest(incoming)
-            elseif (incoming.phase == "await-convert" or incoming.phase == "converting")
+            if (incoming.phase == "await-convert" or incoming.phase == "converting")
                 and GetNumRaidMembers and GetNumRaidMembers() > 0 then
-                if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
-                    SCB_CommsStartAcceptedRequest(incoming)
-                else
-                    SCB_CommsRequestLeaderAction(incoming, "REQUEST")
+                incoming.controlLeader = nil
+                SCB_CommsContinueAcceptedRequest(incoming)
+            elseif incoming.phase == "await-assist" then
+                local localRank = LocalRaidRank()
+                if localRank and localRank > 0 then
+                    incoming.controlLeader = nil
+                    SCB_CommsContinueAcceptedRequest(incoming)
                 end
             end
         end
