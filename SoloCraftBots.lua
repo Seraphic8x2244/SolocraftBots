@@ -27,7 +27,7 @@ SCB.UI_COLOR_KEYS = {
     content = "COLOR_UI_WHITE",
 }
 
-local function SCB_UIHexToRGB(hex, fallback)
+function SCB_UIHexToRGB(hex, fallback)
     local value = type(hex) == "string" and string.upper(hex) or fallback
     if not value or string.len(value) ~= 6 or string.find(value, "[^0-9A-F]") then
         value = fallback or "FFFFFF"
