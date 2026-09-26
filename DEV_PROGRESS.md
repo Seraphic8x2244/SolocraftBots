@@ -4,17 +4,18 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.104-dev`
-- Current implementation head before this handoff update: `a88dc3d7e0e26fb113c6bf5772fcf5d7d567e002`
-- Runtime-tested baseline for this slice: `0.8.103-dev` at handoff `eb9dc5218804fd4c20ca1135c89d05f823c6a6f9`, with the exact partial/pass results recorded below.
+- TOC version: `0.8.105-dev`
+- Current implementation head before this handoff update: `602d8b766aecb23bffdf8348c59ba5ea7ee48169`
+- Runtime-tested baseline for this slice: `0.8.104-dev` at handoff `89fd7e26d6a61d8ff490f1ac16dfb763039cf8ad`, with the exact result below.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
-- `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test; they explicitly tested two different 10-player presets and accepted it.
+- `0.8.92-dev` passed the summon/logical-slot/subgroup gate. Do **not** ask the user to repeat the stuck-summon test.
 - `0.8.97-dev` direct Feral Bear/rage validation is runtime-confirmed.
-- `0.8.103-dev` runtime: accepted >5 Request successfully triggered automatic party->raid conversion, but then incorrectly stopped on a receiver-authority/assistant gate. User clarified that summoning bots does not require assistant authority. Delegated receiver-selected Auto Loot passed; existing-raid Request with leadership unchanged passed; human-containing Resummon role-validation ticks passed.
-- `0.8.103-dev` Lucide runtime: live Command/Preset Icon Size adjustment worked for the already-scoped controls, but expand/collapse chevrons and preset dropdown-menu utility icons did not follow the live size.
-- `0.8.104-dev` removes the unnecessary Request assistant gate entirely and bumps preset protocol to 6. Automatic leader-owned conversion and delegated leader-only loot setup remain; Request never transfers leadership.
-- `0.8.104-dev` changes shipped scoped defaults to Command 12px / Preset 10px, preserves explicit existing custom sizes during migration, and extends live sizing to Command/Assignments chevrons, the Command/Preset options subsection chevrons, the Preset drawer/selector chevrons, and preset dropdown Delete/Rename/Move icons.
-- Immediate goal: runtime-confirm only the 0.8.104 deltas: accepted >5 Request proceeds after conversion without assistant authority, and the newly covered chevrons/dropdown icons resize live at the new defaults.
+- `0.8.103-dev`: delegated receiver-selected Auto Loot, existing-raid Request with leadership unchanged, human-containing Resummon role-validation ticks, and the original live icon-size controls passed.
+- `0.8.104-dev` runtime: accepted >5 Request passed automatic party->raid conversion and no longer hit the rejected assistant gate, but then falsely failed with "Couldn't apply the requested loot settings through the current group leader" even though FFA was already visibly active after conversion.
+- New design correction: Request execution limits belong to the **requestee's current location**, never the requester. Example: a requester in UBRS must not be able to make a requestee in Stormwind execute a 15-player preset merely because the requester is in a 15-player-capable location.
+- `0.8.105-dev` adds requestee-local capacity preflight before any conversion and rechecks immediately before execution; protocol is now 7 so older Request peers cannot bypass that receiver-owned safety contract.
+- `0.8.105-dev` also makes already-active non-master loot modes idempotent success before leader-authority checks, fixing the observed FFA false failure during post-conversion authority propagation.
+- The `0.8.104-dev` Command 12px / Preset 10px defaults and expanded live chevron/dropdown icon sizing remain implemented; their newly added coverage is still runtime-pending unless separately reported.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -76,16 +77,18 @@
 - Power evidence remains `Rage power` or `Energy power`; no intended-role value is consulted.
 - Full rebuild still starts a fresh role-validation epoch by clearing prior evidence/recent-observation/mismatch-warning state.
 
-## Requested preset ownership — current protocol 6
-- A Request no longer requires the requester to create a raid before sending a >5-player preset.
-- No Request path may transfer party or raid leadership. `PromoteToLeader` is not part of the protocol.
+## Requested preset ownership — current protocol 7
+- No Request path transfers party or raid leadership.
 - No leadership/conversion side effect occurs before Accept.
-- For an accepted >5-player snapshot while still in a party, the **actual current party leader** receives the SCB `CONVERT` control action and automatically calls `ConvertToRaid()`. There is no popup or manual confirmation.
-- **The receiving summoner does not require Raid Assistant or raid-leader authority to summon bots.** Do not gate Request execution on raid rank and do not request assistant promotion merely to summon.
-- The receiver's configured Auto Loot Method remains authoritative for a Request. If that method requires leader-only WoW authority and the receiver is not leader, it sends `LOOT_<method>` to the actual current group leader; the leader applies the receiver-selected method. `master` assigns the receiving summoner as Master Looter.
-- `SCB_ApplyAutoLootMethod(methodOverride, masterName)` supports delegated leader execution while preserving existing no-argument local behaviour.
-- If leader-owned conversion or delegated loot setup is required and the current leader is not running compatible SCB, fail/time out safely rather than changing leadership.
-- Request communications are protocol 6. Protocol 5 is intentionally incompatible because it contained the now-rejected assistant-authority handoff/gate. Older peers fail the normal offer handshake rather than mixing authority semantics.
+- **Execution capacity is receiver-owned.** On Accept, the requestee compares `snapshot.size` against `SCB_GetLocationMaxCapacity(SCB_GetLocationContext())` using the requestee's current location. The same check runs again immediately before execution in case location changed during the accepted transaction.
+- Canonical capacity model remains: world 5; normal dungeon 10; Blackrock Spire/UBRS 15; ZG/AQ20 20; MC/Onyxia/BWL/AQ40/Naxx 40.
+- If the requested size exceeds the requestee's local maximum, the request is refused before conversion/destructive work and the requestee receives a concrete required-size/current-capacity error.
+- For an accepted >5-player snapshot that is locally valid while still in a party, the **actual current party leader** receives `CONVERT` and automatically calls `ConvertToRaid()`.
+- The receiving summoner does not require Raid Assistant or raid-leader authority to summon bots.
+- The receiver's configured Auto Loot Method remains authoritative. If a change genuinely requires leader authority, `LOOT_<method>` is delegated to the actual current leader; `master` assigns the receiver as Master Looter.
+- Already-active non-master loot modes are successful no-ops and are recognized **before** leader-authority checks. This prevents transient post-conversion rank propagation from falsely rejecting an already-correct FFA/Group/Round Robin/etc. state.
+- `SCB_ApplyAutoLootMethod(methodOverride, masterName)` preserves no-argument local behaviour and supports delegated leader execution.
+- Request communications are protocol 7. Protocol 6 is intentionally incompatible because it lacks receiver-local capacity enforcement.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -224,40 +227,37 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.104 implementation / static validation / next runtime test
-1. **0.8.103 runtime results.**
-   - Accepted >5 Request: automatic party->raid conversion **PASS**, then receiver authority/assistant gate **FAIL**. The user confirmed this gate is invalid because any player may summon bots.
-   - Delegated receiver-selected Auto Loot: **PASS**.
-   - Existing-raid Request with leadership unchanged: **PASS**.
-   - Human-containing Resummon Group role-validation ticks: **PASS**.
-   - Existing live Command/Preset icon-size controls: **PASS**, but expand/collapse chevrons and preset dropdown-menu utility icons were not resized.
+## 0.8.105 implementation / static validation / next runtime test
+1. **0.8.104 runtime result.**
+   - >5 Request: automatic conversion **PASS**; rejected assistant gate no longer blocked execution.
+   - Post-conversion delegated loot: **FAIL** with the authority error even though FFA was already visibly active.
+   - Root cause: `SCB_ApplyAutoLootMethod()` checked local leader authority before recognizing that the desired non-master loot mode was already active.
+   - Newly expanded 0.8.104 icon-size coverage was not reported as runtime-tested in this result.
 
-2. **Request authority correction: IMPLEMENTED; delta runtime pending.**
-   - Protocol bumped 5 -> 6.
-   - Removed the `ASSIST` control action, `await-assist` state, local raid-rank gate and all Request-specific assistant promotion.
-   - After automatic conversion becomes authoritative, the receiver may start the existing preset rebuild regardless of raid rank.
-   - Leader delegation remains only for genuinely leader-owned Auto Loot changes. The already runtime-passed delegated loot path is otherwise unchanged.
-   - `PromoteToLeader` remains absent.
+2. **Receiver-local Request capacity: IMPLEMENTED; runtime pending.**
+   - Added `SCB_ValidateRequestedPresetLocalCapacity(snapshot)` using the receiving client's live `SCB_GetLocationContext()` and canonical `SCB_GetLocationMaxCapacity()`.
+   - Validation runs on Accept before conversion and again in `SCB_CommsStartAcceptedRequest()` before execution.
+   - Requester location is not consulted for execution eligibility.
+   - Protocol bumped 6 -> 7 so old receivers cannot silently execute under the superseded contract.
 
-3. **Lucide sizing correction: IMPLEMENTED; delta runtime pending.**
-   - Shipped Command default is 12px; shipped Preset default is 10px.
-   - Migration moves untouched 0.8.103 14px baselines to 12/10 while preserving explicit custom effective sizes.
-   - Command live size now also covers Command/Assignments main-section chevrons and the Command Buttons options-subsection chevron.
-   - Preset live size now also covers the Presets drawer chevron, both preset selector arrows, Preset Groups options-subsection chevron, and dropdown Delete/Rename/Move utility icons.
-   - Existing control hitboxes and 32x32 source TGAs remain unchanged.
+3. **FFA/loot false failure: IMPLEMENTED; runtime pending.**
+   - For non-master modes, `GetLootMethod() == requestedMethod` now returns success before `SCB_IsLocalGroupLeader()`.
+   - True loot changes still require/delegate leader authority exactly as before.
+   - Master Looter remains excluded from the idempotent shortcut because the specific master target matters.
 
 4. **Checks performed.**
-   - Verified starting handoff exactly matched `eb9dc5218804fd4c20ca1135c89d05f823c6a6f9` / `0.8.103-dev`.
-   - Current implementation head before this handoff update is `a88dc3d7e0e26fb113c6bf5772fcf5d7d567e002`; TOC is `0.8.104-dev`.
-   - Static search confirms protocol 6, zero `ASSIST`, zero `await-assist`, zero `PromoteToLeader`, and zero `LocalRaidRank` references in preset communications.
-   - Static inspection confirms Command/Preset defaults 12/10, migration marker 8104, and live sizing paths for all newly requested chevrons/dropdown utility icons.
+   - Verified starting handoff exactly matched `89fd7e26d6a61d8ff490f1ac16dfb763039cf8ad` / `0.8.104-dev`.
+   - Current implementation head before this handoff update is `602d8b766aecb23bffdf8348c59ba5ea7ee48169`; TOC is `0.8.105-dev`; protocol is 7.
+   - Static inspection confirms receiver-local capacity checks are present at both Accept and execution.
+   - Static inspection confirms the already-active non-master loot check occurs before the leader-authority check.
+   - Preset communications still contain zero `PromoteToLeader` and zero `ASSIST` paths.
    - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
 
 5. **Exact next runtime test.**
-   - On `0.8.104-dev`, repeat only the previously failing >5 Request case: another human remains actual leader, Request is accepted, their SCB automatically converts to raid, and the receiver proceeds to summon without waiting for or requiring Raid Assistant.
-   - Confirm Command Icon Size starts at 12 and its newly covered expand/collapse chevrons resize immediately.
-   - Confirm Preset Icon Size starts at 10 and its Presets drawer/selector chevrons plus dropdown Delete/Rename/Move icons resize immediately.
-   - Do **not** repeat the already-passed delegated Auto Loot, existing-raid Request, human-containing Resummon, or previously proven stuck-summon tests unless a new regression appears.
+   - Capacity ownership: put requester in a higher-cap location (e.g. UBRS) and requestee in world/Stormwind, request a >5 preset, Accept on the requestee. It must refuse **before raid conversion** with the requestee-local capacity message.
+   - Valid >5 Request with receiver Auto Loot = FFA: automatic conversion should occur, already-correct FFA must not produce the authority error, and preset summoning should continue.
+   - If not already checked, confirm the 0.8.104 Command 12px / Preset 10px defaults and newly covered chevrons/dropdown utility icons resize live.
+   - Do not repeat already-passed existing-raid Request, human-containing Resummon, delegated-loot-change, or old stuck-summon tests unless a new regression appears.
 
 ## Deferred / later
 - Audit remaining All-row/server target sensitivity.
