@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: Request protocol 8 runtime validation is complete. Investigate/fix the separate addon-level Auto Loot trigger gap without reintroducing Request ownership: the current leader's own configured Auto Loot method must be what applies, including when another SCB client performs the summon/conversion.
+- Immediate goal / exact next step: implement the Auto Loot authority/state trigger fix in the **next addon build** (`0.8.112-dev` if no intervening addon revision). Preserve current ownership: Request carries no loot data/behavior and only the actual current group/raid leader may call `SetLootMethod()`. Keep the existing option-change and locally-recognised bot-add/adoption triggers, and additionally re-apply/queue the leader's own configured Auto Loot method when party→raid conversion is observed and when group leadership changes. Do not add periodic loot enforcement or make non-leaders authoritative. After runtime confirmation of this build, resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -90,6 +90,16 @@
 - **Loot settings are not part of Request.** No snapshot field, Request state, leader-control action or Request completion condition may carry/apply the requestee's Auto Loot preference.
 - Auto Loot remains ordinary addon-level behavior: every client may hold its own preference, but `SCB_ApplyAutoLootMethod()` only mutates loot when that client is the current party/raid leader. Therefore the current leader's SCB and setting are authoritative, independent of who requested or accepted the preset.
 - Request communications are protocol 8. Protocol 7 is intentionally incompatible because it still contained Request-specific loot negotiation/delegation.
+
+
+### Auto Loot authority/state trigger — next build
+- Fix is addon-level, not part of Request protocol 8.
+- The actual current party/raid leader's SCB setting remains authoritative; non-leaders must never apply their own configured method to the group.
+- Preserve existing Auto Loot triggers: changing the option while grouped and local bot-add/adoption paths.
+- Add authority/state triggers so the current leader re-applies and queues its own setting after an observed party→raid conversion and after a leadership change.
+- This specifically covers the runtime case where a non-leader accepts a Request and summons bots while the leader's client only observes the resulting conversion/roster changes.
+- Do not serialize loot settings, send a Request-specific loot control, transfer leadership, or make Request completion responsible for choosing a loot method.
+- Runtime target: with leader Auto Loot = Round Robin and requestee Auto Loot = Free For All, a party→raid Request conversion should result in Round Robin because the leader owns loot authority.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -283,9 +293,10 @@ Exact `0.8.92-dev` baseline:
    - Static inspection confirms initial selector placement and dynamic layout both anchor to the Preset panel's right edge, with the group selector chained from it.
    - Canonical Lua 5.0.3 compiler check is not run/unavailable in the current executable environment; do not claim a compiler pass.
 
-4. **Exact next runtime test.**
+4. **Runtime status.**
    - No further local UI test is required for the 0.8.108-0.8.111 drawer/header/readability slice.
-   - Request protocol 8 tests remain deferred until another SCB player is available.
+   - Request protocol 8 runtime validation is complete at `0.8.111-dev` / `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`; see the dedicated result section above.
+   - Next runtime test belongs to the next Auto Loot trigger build: verify party→raid conversion applies the actual leader's configured method, and verify a subsequent leadership change causes the new leader to apply its own method.
 
 
 ## Deferred / later
