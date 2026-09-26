@@ -1855,7 +1855,7 @@ function SCB_SetMenuDeleteButton(button, show, index, deleteScript)
         del:SetHeight(16)
         del:SetPoint("RIGHT", button, "RIGHT", -2, 0)
         local tex = del:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints(del)
+        SCB_SetTextureRenderSize(tex, SCB.LUCIDE_ICON_SIZE, del)
         tex:SetTexture(SCB.assetRoot .. "lucide_trash.tga")
         del.icon = tex
         del:SetScript("OnEnter", function()
@@ -1881,7 +1881,7 @@ function SCB_SetMenuRenameButton(button, show, index)
         rename:SetHeight(16)
         rename:SetPoint("RIGHT", button, "RIGHT", -20, 0)
         local tex = rename:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints(rename)
+        SCB_SetTextureRenderSize(tex, SCB.LUCIDE_ICON_SIZE, rename)
         tex:SetTexture(SCB.assetRoot .. "lucide_pencil.tga")
         rename.icon = tex
         rename.scbTooltip = SCB_L("TIP_RENAME_PRESET")
@@ -3161,7 +3161,7 @@ function SCB_CreateDropdownArrow(parent)
     arrow:SetPoint("RIGHT", parent, "RIGHT", -2, 0)
     arrow:EnableMouse(false)
     local texture = arrow:CreateTexture(nil, "ARTWORK")
-    texture:SetAllPoints(arrow)
+    SCB_SetTextureRenderSize(texture, SCB.LUCIDE_ICON_SIZE, arrow)
     texture:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
     parent.arrow = arrow
 end
@@ -3402,6 +3402,7 @@ SCB_LayoutPresetGroups = function()
         groupFrame = SCB.presetGroupFrames[i]
         title = SCB.presetGroupTitles[i]
         resummon = SCB.presetGroupResummonButtons[i]
+        if resummon then SCB_SetArtButtonIconSize(resummon, SCB_GetLayoutValue("preset", "iconSize")) end
         if i <= groupCount then
             col = math.mod(i - 1, columns)
             row = math.floor((i - 1) / columns)
