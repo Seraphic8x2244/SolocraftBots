@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 6
+local COMM_PROTOCOL = 7
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -294,8 +294,9 @@ local function BeginOutgoing(mode, target, snapshot)
     SCB_CommsSetButtonPending(mode, true)
 
     -- A preset request does not require the requester to pre-build a raid.
-    -- After acceptance, the current group leader owns any required party->raid
-    -- conversion; raid leadership moves to the receiver only after raid exists.
+    -- After acceptance, the receiver validates its own local capacity and the
+    -- current group leader owns any required party->raid conversion. Leadership
+    -- itself never moves as part of Request execution.
     BeginHandshake(out)
 end
 
@@ -619,6 +620,15 @@ local function SCB_CommsStartAcceptedRequest(incoming)
     local ok, errorText, raidCount, partyCount, method
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
 
+    if SCB_ValidateRequestedPresetLocalCapacity then
+        ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
+        if not ok then
+            if errorText then SCB_Print(errorText) end
+            FinishIncoming(incoming, "ERROR")
+            return false
+        end
+    end
+
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
 
@@ -736,6 +746,9 @@ function SCB_CommsPromptAccept()
     end
 
     ok, errorText = SCB_ValidatePresetExecutionSnapshot(incoming.snapshot, true)
+    if ok and SCB_ValidateRequestedPresetLocalCapacity then
+        ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
+    end
     if not ok then
         SCB_Print(errorText)
         FinishIncoming(incoming, "ERROR")
@@ -893,7 +906,8 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         end
 
         if parts[4] == "REQUEST" then
-            -- Protocol 5 never transfers leadership for a preset Request.
+            -- Leadership-transfer Request controls are obsolete; protocol 7
+            -- keeps leadership fixed for the entire preset Request lifecycle.
             SendControl("L", tx, sender, "ERROR")
             return
         end
