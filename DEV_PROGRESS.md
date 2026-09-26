@@ -5,7 +5,8 @@
 ## Current
 - Branch: `dev`
 - TOC version: `0.8.111-dev`
-- Current implementation head before this handoff update: `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`
+- Current implementation head: `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`
+- Current handoff/status head before this final handoff commit: `1cb8e1201ce093bbb2f885874ea22af9790c740a`
 - Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so Request protocol 8 remains runtime-pending.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -16,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal: no local UI regression remains from the header/content-anchor pass. Request protocol 8 testing remains deferred until a second SCB player is available.
+- Immediate goal / exact next step: no local UI regression remains from the 0.8.108-0.8.111 drawer/header/readability slice. When a second SCB player is available, resume **Request protocol 8 runtime validation first**: receiver-owned location-capacity refusal, automatic leader-owned party→raid conversion, no leadership transfer/assistant requirement, and no Request-owned loot behavior.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
