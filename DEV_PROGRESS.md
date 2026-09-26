@@ -4,20 +4,18 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.110-dev`
-- Current implementation head before this handoff update: `16231b8334d195b746d2e3c4e50db995a3afedfc`
+- TOC version: `0.8.111-dev`
+- Current implementation head before this handoff update: `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`
 - Runtime-tested baseline for the Request slice remains `0.8.105-dev` at handoff `7999592220cc3893153f1226513c6110058a6c6e`; friend/test peer is currently offline, so Request protocol 8 remains runtime-pending.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
-- `0.8.108-dev` side-drawer justification layout is **runtime-confirmed working** by the user.
-- `0.8.109-dev` readability/palette pass was visually received positively by the user from runtime screenshot; exact Request runtime remains unrelated and pending.
-- `0.8.110-dev` is a narrow header-homogeneity pass:
-  - Preset Manager title centered.
-  - Options title centered.
-  - Both drawers now have matching top-right Lucide `X` close buttons using the existing global 14px chrome size.
-  - Preset Manager's self player class/role controls are hidden from the visible header but their frames, saved-role logic and refresh code remain intact.
-- Immediate goal: runtime-check only the 0.8.110 visual/header delta locally; Request protocol 8 can wait until a second SCB player is available.
+- `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
+- `0.8.109-dev` readability/palette pass was visually received positively by the user.
+- `0.8.110-dev` header homogeneity runtime: all four requested checks **PASS** — centered Preset/Options titles, both new X buttons, dynamic Options reflow, and hidden Preset self class/role widgets.
+- New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
+- `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
+- Immediate goal: runtime-confirm only that Preset Manager contents have returned to their original right-aligned position while the title remains centered.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -249,32 +247,34 @@ Exact `0.8.92-dev` baseline:
 - Confirmed stock `UICheckButtonTemplate` usage is removed from the mini-control layer and Command Bots/class/role/gameplay artwork was not replaced.
 - Canonical Lua 5.0.2 compiler pass is **not claimed** in this environment; no Lua executable/project compiler is available in the current tool environment.
 
-## 0.8.110 implementation / static validation / next runtime test
-1. **0.8.108 drawer layout: USER TESTED PASS.**
-   - Left/right drawer anchoring and dynamic Options placement work.
-   - No need to repeat unless the header-only change causes a visible regression.
+## 0.8.111 implementation / static validation / next runtime test
+1. **0.8.110 header homogeneity: USER TESTED PASS.**
+   - Preset Manager title centered: PASS.
+   - Options title centered: PASS.
+   - Preset and Options X buttons close correctly: PASS.
+   - Options reflows inward after Preset closes: PASS.
+   - Preset self class/role widgets are no longer visible: PASS.
 
-2. **0.8.109 readability pass: RUNTIME VISUALLY POSITIVE.**
-   - User supplied an in-game screenshot and described the result as looking really good.
-   - Shared blue/gold/silver/white hierarchy remains unchanged in 0.8.110.
+2. **Preset content shift regression: ROOT CAUSE CONFIRMED + FIX IMPLEMENTED.**
+   - Runtime showed the entire Preset content block floating left.
+   - Confirmed `presetSelector` still used `presetHeader:BOTTOMRIGHT` as its horizontal anchor.
+   - Centering the title therefore changed the selector's x-position and dragged the full dependent control chain with it.
+   - `0.8.111-dev` anchors `presetSelector` to `presetPanel:TOPRIGHT` instead.
+   - Vertical spacing still uses the measured header height, preserving the existing header/dropdown gap.
+   - `presetGroupSelector` remains anchored relative to `presetSelector`; the rest of the existing content chain is unchanged.
 
-3. **Header homogeneity: IMPLEMENTED; runtime visual check pending.**
-   - Preset Manager and Options titles now use the same centered top anchor as the main SCB title.
-   - Preset Manager and Options each have a top-right 18x18 control with the existing 14px Lucide `X` glyph and Close tooltip.
-   - Close buttons route through the existing `SCB_SetPresetPanelShown(false)` / `SCB_SetOptionsPanelShown(false)` owners.
-   - Preset self class/role controls remain fully instantiated and refreshed but are hidden after creation; no underlying per-character role/default code was deleted.
+3. **Checks performed.**
+   - Verified starting handoff exactly matched `4b0b17bc711063a22ae2a74936df35710f3b5734` / `0.8.110-dev`.
+   - Current implementation head before this handoff update is `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`; TOC is `0.8.111-dev`.
+   - Static inspection confirms no remaining selector anchor to `presetHeader`.
+   - Static inspection confirms initial selector placement and dynamic layout both anchor to the Preset panel's right edge, with the group selector chained from it.
+   - Canonical Lua 5.0.3 compiler check is not run/unavailable in the current executable environment; do not claim a compiler pass.
 
-4. **Checks performed.**
-   - Verified starting handoff exactly matched `6800964a6917e9dc951ff4976075b4c071758e42` / `0.8.109-dev`.
-   - Current implementation head before this handoff update is `16231b8334d195b746d2e3c4e50db995a3afedfc`; TOC is `0.8.110-dev`.
-   - Static inspection confirms centered Preset/Options headings, both close buttons and existing visibility owners, hidden Preset self identity controls, and retained `SCB_RefreshCharacterPresetIdentity()` logic.
-   - Canonical Lua 5.0.3 compiler check is **not run/unavailable** in the current executable environment; do not claim a compiler pass.
-
-5. **Exact next runtime test.**
-   - Confirm Preset Manager and Options titles visually align/center like the main `SoloCraft Bots` title.
-   - Confirm each drawer's new `X` closes only that drawer and the remaining side-panel layout reflows correctly through existing logic.
-   - Confirm the Preset Manager no longer visibly shows the player's class/role icons in its header.
-   - No Request retest is required until a second SCB player is available.
+4. **Exact next runtime test.**
+   - Open Preset Manager and confirm the content block is back in its previous right-aligned position inside the frame.
+   - Confirm the Preset Manager title remains centered and the X button remains correctly placed.
+   - No need to repeat the already-passed 0.8.110 close/reflow/self-icon tests unless this anchor fix visibly affects them.
+   - Request protocol 8 tests remain deferred until another SCB player is available.
 
 
 ## Deferred / later
