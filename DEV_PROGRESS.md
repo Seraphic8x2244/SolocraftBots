@@ -15,7 +15,8 @@
 - `0.8.110-dev` header homogeneity runtime: all four requested checks **PASS** — centered Preset/Options titles, both new X buttons, dynamic Options reflow, and hidden Preset self class/role widgets.
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
-- Immediate goal: runtime-confirm only that Preset Manager contents have returned to their original right-aligned position while the title remains centered.
+- `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
+- Immediate goal: no local UI regression remains from the header/content-anchor pass. Request protocol 8 testing remains deferred until a second SCB player is available.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -255,13 +256,10 @@ Exact `0.8.92-dev` baseline:
    - Options reflows inward after Preset closes: PASS.
    - Preset self class/role widgets are no longer visible: PASS.
 
-2. **Preset content shift regression: ROOT CAUSE CONFIRMED + FIX IMPLEMENTED.**
-   - Runtime showed the entire Preset content block floating left.
-   - Confirmed `presetSelector` still used `presetHeader:BOTTOMRIGHT` as its horizontal anchor.
-   - Centering the title therefore changed the selector's x-position and dragged the full dependent control chain with it.
-   - `0.8.111-dev` anchors `presetSelector` to `presetPanel:TOPRIGHT` instead.
-   - Vertical spacing still uses the measured header height, preserving the existing header/dropdown gap.
-   - `presetGroupSelector` remains anchored relative to `presetSelector`; the rest of the existing content chain is unchanged.
+2. **Preset content shift regression: USER TESTED PASS.**
+   - Runtime had shown the entire Preset content block floating left because `presetSelector` was still anchored to `presetHeader:BOTTOMRIGHT`.
+   - `0.8.111-dev` re-anchors `presetSelector` to `presetPanel:TOPRIGHT`, retains measured header-height spacing, and leaves the downstream chain unchanged.
+   - User confirmed the corrected layout is sorted.
 
 3. **Checks performed.**
    - Verified starting handoff exactly matched `4b0b17bc711063a22ae2a74936df35710f3b5734` / `0.8.110-dev`.
@@ -271,9 +269,7 @@ Exact `0.8.92-dev` baseline:
    - Canonical Lua 5.0.3 compiler check is not run/unavailable in the current executable environment; do not claim a compiler pass.
 
 4. **Exact next runtime test.**
-   - Open Preset Manager and confirm the content block is back in its previous right-aligned position inside the frame.
-   - Confirm the Preset Manager title remains centered and the X button remains correctly placed.
-   - No need to repeat the already-passed 0.8.110 close/reflow/self-icon tests unless this anchor fix visibly affects them.
+   - No further local UI test is required for the 0.8.108-0.8.111 drawer/header/readability slice.
    - Request protocol 8 tests remain deferred until another SCB player is available.
 
 
