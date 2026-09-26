@@ -3501,10 +3501,17 @@ function SCB_CreatePresetUI(frame)
     SCB.presetPanel = panel
 
     local presetHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    presetHeader:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -12)
+    presetHeader:SetPoint("TOP", panel, "TOP", 0, -13)
     presetHeader:SetText(SCB_L("PRESET_CONFIGURATION"))
     SCB_SetFontColor(presetHeader, "header")
     SCB.presetConfigurationHeading = presetHeader
+
+    SCB.presetCloseButton = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_x.tga")
+    SCB.presetCloseButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -9)
+    SCB.presetCloseButton.scbTooltip = SCB_L("TIP_CLOSE")
+    SCB.presetCloseButton:SetScript("OnClick", function() SCB_SetPresetPanelShown(false) end)
+    SCB.presetCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.presetCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     -- Per-character preset identity: actual class is read-only; role is this
     -- character's default used only to seed newly-created presets.
@@ -3524,6 +3531,11 @@ function SCB_CreatePresetUI(frame)
     SCB.presetSelfRoleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
     SCB.presetSelfRoleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB_RefreshCharacterPresetIdentity()
+
+    -- Retain the per-character identity controls and their state logic, but
+    -- remove them from the visible Preset Manager header.
+    SCB.presetSelfClassFrame:Hide()
+    SCB.presetSelfRoleButton:Hide()
 
     local groupSelector = SCB_CreatePresetDropdown(panel, "SoloCraftBotsPresetGroupSelector", 92, SCB_L("PRESET_GROUP_PLACEHOLDER"), SCB_PresetGroupSelectorOnClick)
     groupSelector.scbTooltip = SCB_L("TIP_PRESET_GROUP")
