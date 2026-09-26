@@ -6,6 +6,9 @@ local T = SoloCraftBotsLocale
 -- General UI
 T["TIP_CLOSE"] = "Close"
 T["TIP_CONFIG"] = "Options"
+T["TIP_DRAWER_JUSTIFICATION"] = "Drawer justification: %s"
+T["JUSTIFICATION_LEFT"] = "Left"
+T["JUSTIFICATION_RIGHT"] = "Right"
 T["ADDON_TITLE"] = "SoloCraft Bots"
 T["SECTION_PRESETS"] = "Presets"
 T["SECTION_COMMANDS"] = "Command Bots"
