@@ -50,7 +50,7 @@ function SCB_CreateAutoLootOption(parent)
     label:SetWidth(118)
     label:SetJustifyH("LEFT")
     label:SetText(SCB_L("OPTION_AUTO_LOOT"))
-    label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(label, "text")
     SCB.optionAutoLootLabel = label
 
     selector = SCB_CreateTextButton(parent, "SoloCraftBotsAutoLootSelector", 118, 22, SCB_L("LOOT_OFF"))
@@ -122,7 +122,7 @@ function SCB_CreateOptionCheck(parent, key, labelKey, y)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", check, "RIGHT", 4, 0)
     label:SetText(SCB_L(labelKey))
-    label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(label, "text")
     check.scbLabel = label
     check:SetScript("OnClick", SCB_OptionCheckOnClick)
     return check
@@ -230,7 +230,7 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     label:SetWidth(116)
     label:SetJustifyH("LEFT")
     label:SetText(SCB_L(labelKey))
-    label:SetTextColor(0.82, 0.82, 0.82, 1)
+    SCB_SetFontColor(label, "text")
 
     minus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_minus.tga")
     minus:SetWidth(22)
@@ -248,7 +248,7 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     value:SetPoint("LEFT", minus, "RIGHT", 3, 0)
     value:SetWidth(24)
     value:SetJustifyH("CENTER")
-    value:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(value, "text")
 
     plus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_plus.tga")
     plus:SetWidth(22)
@@ -352,7 +352,7 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
         debugLabel = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         debugLabel:SetPoint("RIGHT", debugCheck, "LEFT", -2, 0)
         debugLabel:SetText(SCB_L("OPTION_DEBUG"))
-        debugLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+        SCB_SetFontColor(debugLabel, "text")
         section.scbDebugLabel = debugLabel
     end
 
@@ -519,7 +519,7 @@ function SCB_CreateOptionsUI(frame)
     heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -12)
     heading:SetText(SCB_L("OPTIONS_TITLE"))
-    heading:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(heading, "header")
 
     SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
     miscContent = SCB.optionMiscSection.scbContent
@@ -571,21 +571,21 @@ function SCB_CreateOptionsUI(frame)
     sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -130)
     sublabel:SetText(SCB_L("OPTION_BORDER_OFFSET"))
-    sublabel:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(sublabel, "subheader")
     control = SCB_CreateLayoutControl(presetContent, "preset", "borderHorizontal", "OPTION_HORIZONTAL", -150, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "borderVertical", "OPTION_VERTICAL", -174, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
 
     sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -202)
     sublabel:SetText(SCB_L("OPTION_ICON_SPACING"))
-    sublabel:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(sublabel, "subheader")
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconHorizontal", "OPTION_HORIZONTAL", -222, -10, 20, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconVertical", "OPTION_VERTICAL", -246, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
-    SCB.optionVersion:SetTextColor(0.6, 0.6, 0.6, 1)
+    SCB_SetFontColor(SCB.optionVersion, "text")
 
     SCB_RefreshOptionsUI()
     SCB_LayoutOptionsUI()
