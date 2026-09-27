@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.116-dev`
-- Current implementation head: `157574ebe9e061b0054328e5147f46783736847e`
-- Current handoff/status head before this final handoff commit: `157574ebe9e061b0054328e5147f46783736847e`
+- TOC version: `0.8.117-dev`
+- Current implementation head: `da22c1800797b628af8fb2442822ac96f0015833`
+- Current handoff/status head before this final handoff commit: `da22c1800797b628af8fb2442822ac96f0015833`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.116-dev` Object target-state correction is implemented and statically reviewed at `157574ebe9e061b0054328e5147f46783736847e`; runtime validation is still required. Test only the three agreed states: friendly bot target -> enabled with tooltip `Object`; human-player target -> greyed/disabled and unclickable; anything else -> enabled with tooltip `Object All`. The `usegobject` route remains unchanged. No target-clearing, delayed send, timeout, restoration, propagation machinery, unrelated cleanup or refactors.
+- Immediate goal / exact next step: `0.8.117-dev` adds only the two runtime-discovered Object precondition guards on top of the working `0.8.116-dev` target-state logic: Object is unavailable with zero live bots, and unavailable outside an instance map. Validate those two guards plus one valid in-instance/bot-present case. The `usegobject` route and target-state classifier remain unchanged. No target-clearing, delayed send, timeout, restoration, propagation machinery, unrelated cleanup or refactors.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -399,19 +399,26 @@ Exact `0.8.92-dev` baseline:
 - Do **not** add a timeout, delayed send, forced detarget, target restoration, or propagation state. The user explicitly considers normal manual target/click timing sufficient; keep the correction purely in availability/tooltip presentation around the existing server command.
 - The narrow correction is now implemented in `0.8.116-dev`; see the validation block below.
 
-## Object target-state correction — 0.8.116-dev
-- Implementation head: `157574ebe9e061b0054328e5147f46783736847e`.
-- Runtime route is unchanged: Object still sends only the existing `usegobject` command through its existing `all` route.
-- Object now uses a dedicated target semantic that blocks a human player target while still allowing a friendly bot target and all non-player/no-target states.
-- Existing `PLAYER_TARGET_CHANGED` command-availability refresh is reused; no new scheduler, delay, timeout, target clearing/restoration or propagation state was added.
-- Tooltip presentation is now target-sensitive: friendly bot target -> `Object`; every non-bot state -> `Object All`. A human-player target is disabled/unclickable, so the non-bot tooltip is not an actionable state.
-- Static diff review: only `Communication.lua` and `SoloCraftBots.toc` changed; the TOC version is `0.8.116-dev`; no Request, roster, spawn, preset, maintenance or transport behavior changed.
+## Object target-state correction — 0.8.116-dev / 0.8.117-dev
+- `0.8.116-dev` implementation head: `157574ebe9e061b0054328e5147f46783736847e`.
+- `0.8.116-dev` runtime result: **target-state logic PASS, with two uncovered server preconditions**.
+  - Friendly bot target -> Object enabled with tooltip `Object`: PASS.
+  - Human-player target -> Object greyed/disabled and unclickable: PASS.
+  - Other/no target -> Object enabled with tooltip `Object All`: PASS.
+  - Exception discovered: with no bots present, clicking Object produced the server message `You are not in a group.`
+  - Exception discovered: with a group present outside an instance map, clicking Object produced the server message `You have to be in an instance map.`
+- `0.8.117-dev` implementation head: `da22c1800797b628af8fb2442822ac96f0015833`.
+- Runtime route remains unchanged: Object still sends only the existing `usegobject` command through its existing `all` route.
+- Object availability now additionally requires the established live roster to contain at least one bot and the established location context to report `inInstance == true`.
+- Existing roster events already refresh command availability when membership changes. The existing delayed location-refresh owner now also refreshes command availability after its location probe settles, preventing a stale Object state when entering/leaving an instance.
+- No new scheduler, delay value, target clearing/restoration, timeout or propagation state was added.
+- Static diff review: runtime changes are limited to `Communication.lua`, the location-owner refresh hook in `Presets.lua`, and the required `SoloCraftBots.toc` bump to `0.8.117-dev`; no Request, spawn, preset composition, maintenance, command transport or `usegobject` routing changed.
 - Canonical Lua 5.0.3 compiler check is **not run**: the checker files are not present in the executable container and that container cannot resolve GitHub to fetch them. Do not claim a compiler pass.
-- Runtime status: **IMPLEMENTED / STATICALLY CHECKED, NOT USER TESTED**.
+- Runtime status for `0.8.117-dev`: **IMPLEMENTED / STATICALLY CHECKED, NOT USER TESTED**.
 - Next runtime test:
-  1. Target a friendly bot: Object stays enabled and tooltip reads `Object`; click should affect that bot through native server target behavior.
-  2. Target a human player: Object is greyed/disabled and cannot be clicked.
-  3. Clear target or target anything else: Object is enabled and tooltip reads `Object All`; click should use the server's group branch.
+  1. In an instance with at least one bot present, Object remains available and the already-tested target-sensitive `Object` / `Object All` behavior still works.
+  2. With zero live bots, Object is greyed/disabled and clicking cannot produce `You are not in a group.`
+  3. With at least one bot/group present but outside an instance map, Object is greyed/disabled and clicking cannot produce `You have to be in an instance map.`
 
 
 ## Deferred / later
