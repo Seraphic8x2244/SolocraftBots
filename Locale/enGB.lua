@@ -29,6 +29,7 @@ T["NO_GROUP"] = "No Group"
 T["NO_PRESET"] = "No Preset"
 T["GROUP_NUMBER"] = "Group %d"
 T["PLAYERS"] = "Players"
+T["UNASSIGNED_PLAYERS"] = "Unassigned Players"
 T["TIP_PRESET_LAYOUT_REGROUPED"] = "Group rearranged in Blizzard Raid tab."
 
 -- Preset groups and locations

@@ -1027,7 +1027,7 @@ end
 
 SCB_RefreshPresetPlayers = function()
     local size, roster, present, assignedPresent, playerRows
-    local i, info, key, slotIndex, row, button, poolIndex, poolRows, draggable
+    local i, info, key, slotIndex, row, button, poolIndex, draggable
 
     if not SCB.presetPanel then return end
     size = SCB_CurrentPresetSize()
@@ -1081,7 +1081,6 @@ SCB_RefreshPresetPlayers = function()
             button = SCB.presetPlayerPoolButtons[poolIndex]
             if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
             button:ClearAllPoints()
-            button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
             SCB_SetPlayerNameIdentity(button, info, true)
             button.scbSlotIndex = nil
             button:Show()
@@ -1090,8 +1089,7 @@ SCB_RefreshPresetPlayers = function()
     for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do SCB.presetPlayerPoolButtons[i]:Hide() end
     SCB.presetPlayerPoolVisibleCount = poolIndex
     if poolIndex > 0 then
-        poolRows = math.floor((poolIndex - 1) / 2) + 1
-        SCB.presetPlayerPool:Show(); SCB.presetPlayerPoolLabel:Show(); SCB.presetPlayerPool:SetHeight(16 + (poolRows * 24))
+        SCB.presetPlayerPool:Show(); SCB.presetPlayerPoolLabel:Show()
     else
         SCB.presetPlayerPool:Hide(); SCB.presetPlayerPoolLabel:Hide(); SCB.presetPlayerPool:SetHeight(1)
     end
@@ -3316,6 +3314,7 @@ SCB_LayoutPresetGroups = function()
     local rows, panelWidth, panelHeight, groupFrame, title, resummon
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
     local headerHeight, twoGroupWidth, contentWidth, menuWidth, iconSize, menuButton
+    local poolCount, poolColumns, poolHeight, poolButton, groupAnchor, titleHeight
 
     if groupCount == 1 then
         columns = 1
@@ -3350,9 +3349,30 @@ SCB_LayoutPresetGroups = function()
     panelWidth = contentWidth + 24
 
     poolExtra = 0
+    groupAnchor = SCB.presetCounterBox
     if SCB.presetPlayerPool and SCB.presetPlayerPool:IsShown() then
-        poolRows = math.floor(((SCB.presetPlayerPoolVisibleCount or 0) + 1) / 2)
-        poolExtra = 18 + (poolRows * 24)
+        poolCount = SCB.presetPlayerPoolVisibleCount or 0
+        poolColumns = math.floor((contentWidth - 8) / 112)
+        if poolColumns < 1 then poolColumns = 1 end
+        if poolColumns > poolCount then poolColumns = poolCount end
+        poolRows = math.floor((poolCount + poolColumns - 1) / poolColumns)
+        poolHeight = 24 + (poolRows * 24)
+        SCB.presetPlayerPool:SetWidth(contentWidth)
+        SCB.presetPlayerPool:SetHeight(poolHeight)
+        SCB.presetPlayerPool:ClearAllPoints()
+        SCB.presetPlayerPool:SetPoint("TOPLEFT", SCB.presetCounterBox, "BOTTOMLEFT", 0, -6)
+        groupAnchor = SCB.presetPlayerPool
+        for i = 1, poolCount do
+            poolButton = SCB.presetPlayerPoolButtons[i]
+            if poolButton then
+                col = math.mod(i - 1, poolColumns)
+                row = math.floor((i - 1) / poolColumns)
+                poolButton:SetWidth(108)
+                poolButton:ClearAllPoints()
+                poolButton:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", 6 + (col * 112), -20 - (row * 24))
+            end
+        end
+        poolExtra = 6 + poolHeight
     end
 
     headerHeight = 20
@@ -3445,7 +3465,7 @@ SCB_LayoutPresetGroups = function()
             groupFrame:ClearAllPoints()
             groupFrame:SetPoint(
                 "TOPLEFT",
-                SCB.presetCounterBox,
+                groupAnchor,
                 "BOTTOMLEFT",
                 col * (groupWidth + gapX),
                 -20 - (row * (groupHeight + gapY))
@@ -3456,8 +3476,10 @@ SCB_LayoutPresetGroups = function()
             title:SetPoint("BOTTOMLEFT", groupFrame, "TOPLEFT", 8, 2)
             title:Show()
             if resummon then
+                titleHeight = title:GetHeight()
+                if not titleHeight or titleHeight <= 0 then titleHeight = 10 end
                 resummon:ClearAllPoints()
-                resummon:SetPoint("BOTTOMRIGHT", groupFrame, "TOPRIGHT", -6, 1)
+                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -14, 2 + (titleHeight / 2))
                 resummon:Show()
             end
         else
@@ -3467,16 +3489,6 @@ SCB_LayoutPresetGroups = function()
         end
     end
 
-    if SCB.presetPlayerPool then
-        SCB.presetPlayerPool:ClearAllPoints()
-        SCB.presetPlayerPool:SetPoint(
-            "TOPLEFT",
-            SCB.presetCounterBox,
-            "BOTTOMLEFT",
-            3,
-            -20 - (rows * groupHeight) - ((rows - 1) * gapY) - 8
-        )
-    end
     SCB_UpdateLayoutDebugBorders()
 end
 function SCB_CreatePresetUI(frame)
@@ -3726,13 +3738,21 @@ function SCB_CreatePresetUI(frame)
     local playerPool = CreateFrame("Frame", nil, panel)
     playerPool:SetWidth(224)
     playerPool:SetHeight(1)
+    playerPool:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    playerPool:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+    playerPool:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
     playerPool:Hide()
     SCB.presetPlayerPool = playerPool
 
     local playerPoolLabel = playerPool:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 2, 0)
-    playerPoolLabel:SetText(SCB_L("PLAYERS"))
-    SCB_SetFontColor(playerPoolLabel, "text")
+    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 8, -4)
+    playerPoolLabel:SetText(SCB_L("UNASSIGNED_PLAYERS"))
+    playerPoolLabel:SetTextColor(1, 0.2, 0.2, 1)
     playerPoolLabel:Hide()
     SCB.presetPlayerPoolLabel = playerPoolLabel
 
