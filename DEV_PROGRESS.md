@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.117-dev`
-- Current implementation head: `da22c1800797b628af8fb2442822ac96f0015833`
-- Current handoff/status head before this final handoff commit: `da22c1800797b628af8fb2442822ac96f0015833`
+- TOC version: `0.9.0-dev`
+- Current implementation head: `9161d333e3c42112d812abbc464e41d7b25e768c`
+- Current handoff/status head before this final handoff commit: `9161d333e3c42112d812abbc464e41d7b25e768c`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.117-dev` Object target-state and precondition behavior is **fully USER TESTED PASS** at implementation head `da22c1800797b628af8fb2442822ac96f0015833`. The Object slice is closed; make no further Object changes unless a regression is reported. Await the next explicitly selected development task; do not begin deferred cleanup/refactors automatically.
+- Immediate goal / exact next step: user approved freezing the fully tested `0.8.117-dev` runtime and promoting it as `0.9.0`. `0.9.0-dev` release-candidate head `9161d333e3c42112d812abbc464e41d7b25e768c` changes only TOC version metadata; runtime code is identical to the tested `0.8.117-dev` implementation. Promote the intended stable snapshot to `main` as `0.9.0`, excluding `DEV_PROGRESS.md` and development-only workflow material, with no feature/refactor changes.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -426,5 +426,13 @@ Exact `0.8.92-dev` baseline:
 - Add neutral read-only activity/status surface, then visualiser as a presentation-only consumer.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
 
+## 0.9.0 release preparation
+- User explicitly approved the 0.9.0 milestone and promotion to `main`.
+- Tested runtime source: `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`; Object and preceding active slices are closed with the documented runtime PASS results.
+- Release-candidate source: `0.9.0-dev` implementation `9161d333e3c42112d812abbc464e41d7b25e768c`; delta from the tested source is TOC version metadata only.
+- `main` and `dev` histories are intentionally diverged. Promotion must construct the stable tree from the release-candidate snapshot rather than merge old `main` runtime files over it.
+- Stable release hygiene: title `SoloCraft Bots`, version `0.9.0`; exclude `DEV_PROGRESS.md` and development-only workflow material; no dev-only loader/debug entries are present.
+- Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the executable environment: the checker is not mounted locally and direct container network access cannot fetch it. Do not claim a compiler pass.
+
 ## Release note
-Do not promote the current dev line. Stable remains `0.8.78` on `main`. Release preparation must compare `main` and `dev` rather than overwrite main because histories have diverged.
+0.9.0 promotion is explicitly authorized. After promotion, record the exact stable `main` commit here and keep future feature work on `dev`.
