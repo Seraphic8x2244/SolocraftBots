@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: **runtime-test the `0.8.114-dev` Preset Manager header polish** at implementation head `b000d6209131be326f4a21dbfc548355c1625f34`. Confirm each `Group N` label now matches the accepted Unassigned Players top/left padding, and both Unassigned/Group divider rules are visually shorter/lighter so they match the existing box-border weight rather than appearing overlong or thick. Preserve the already-accepted row spacing and overall height. After PASS, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: implement the **Auto Loot authority/state trigger fix** in the next actual addon build (`0.8.115-dev` if no intervening addon revision). Preserve current ownership: Request carries no loot data/behavior and only the actual current group/raid leader may call `SetLootMethod()`. Keep existing option-change and locally-recognised bot-add/adoption triggers; additionally re-apply/queue the leader's own configured Auto Loot method when party→raid conversion is observed and when group leadership changes. Include the queued presentation-only tweak in this same build: nudge each Resummon Group button down by exactly 1 px without changing its frame size, horizontal position, header height, or any row geometry. After runtime confirmation of Auto Loot and the 1 px visual nudge, resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -102,8 +102,10 @@
 - Group-title anchor now exactly matches the accepted Unassigned Players title anchor: 6 units from the left and 5 units from the top.
 - Both divider rules are inset 3 units from the box edges and use reduced alpha (0.55 instead of 0.9) while remaining one unit high, to better match the apparent weight of the existing tooltip border.
 - No row geometry, header height, box height, assignment behavior, Resummon placement, Request, Auto Loot, roster, spawn, maintenance backend, or protocol behavior changed.
+- `0.8.114-dev` runtime: **PASS** — Group title padding matches Unassigned Players; both divider lines now read correctly against the existing box borders; accepted row spacing and overall height remain good.
+- Minor accepted follow-up: the Resummon glyph reads about 1 px high. Do not make a standalone build for this; queue a **1 px downward anchor nudge** into the next actual addon revision.
 
-### Auto Loot authority/state trigger — next build after the 0.8.114 UI runtime pass
+### Auto Loot authority/state trigger — next build
 - Fix is addon-level, not part of Request protocol 8.
 - The actual current party/raid leader's SCB setting remains authoritative; non-leaders must never apply their own configured method to the group.
 - Preserve existing Auto Loot triggers: changing the option while grouped and local bot-add/adoption paths.
@@ -341,13 +343,13 @@ Exact `0.8.92-dev` baseline:
    - Group-title padding: needs refinement to match Unassigned Players.
    - Unassigned and Group dividers: structurally correct but slightly overlong and visually thicker than the surrounding border.
 
-5. **`0.8.114-dev` implementation / next runtime test.**
+5. **`0.8.114-dev` implementation / runtime result: PASS.**
    - Verified starting `dev` exactly matched handoff `4a1bd21dd70473cd14e21fbbfd532069b4e469fd` / `0.8.113-dev`.
    - Implementation commit is `b000d6209131be326f4a21dbfc548355c1625f34`; TOC is `0.8.114-dev`.
    - Group title now uses the exact same 6-left/5-top padding as the accepted Unassigned title.
    - Both divider rules are inset 3 units on each side and reduced to 0.55 alpha; height remains one unit.
-   - Diff is limited to `Presets.lua` plus the required TOC version bump.
-   - Runtime: compare Group-title padding directly against Unassigned Players, and compare both divider lengths/visual weight against the existing box borders.
+   - User confirmed the resulting padding/divider treatment looks good.
+   - Accepted follow-up: Resummon appears about 1 px high; queue a 1 px downward anchor nudge into the next actual addon build rather than creating a UI-only revision.
    - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
 
 
