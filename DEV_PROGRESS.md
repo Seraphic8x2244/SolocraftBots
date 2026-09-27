@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.115-dev`
-- Current implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
-- Current handoff/status head before this final handoff commit: `04785924257f9b6045f11b0085dcdbc2e4e07c9f`
+- TOC version: `0.8.116-dev`
+- Current implementation head: `157574ebe9e061b0054328e5147f46783736847e`
+- Current handoff/status head before this final handoff commit: `157574ebe9e061b0054328e5147f46783736847e`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. The **All-row/server target-sensitivity audit is complete**. Implement only the narrow Object-button correction agreed below: bot target -> `Object`; human-player target -> disabled/unclickable; anything else -> `Object All`. Do not add target-clearing, delayed send, timeout, restoration, or other propagation machinery. No unrelated cleanup/refactors.
+- Immediate goal / exact next step: `0.8.116-dev` Object target-state correction is implemented and statically reviewed at `157574ebe9e061b0054328e5147f46783736847e`; runtime validation is still required. Test only the three agreed states: friendly bot target -> enabled with tooltip `Object`; human-player target -> greyed/disabled and unclickable; anything else -> enabled with tooltip `Object All`. The `usegobject` route remains unchanged. No target-clearing, delayed send, timeout, restoration, propagation machinery, unrelated cleanup or refactors.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -397,7 +397,21 @@ Exact `0.8.92-dev` baseline:
   - human player targeted -> button greyed/disabled and unclickable;
   - anything else -> tooltip `Object All`; button remains clickable and sends the existing command.
 - Do **not** add a timeout, delayed send, forced detarget, target restoration, or propagation state. The user explicitly considers normal manual target/click timing sufficient; keep the correction purely in availability/tooltip presentation around the existing server command.
-- Exact next implementation scope: change only Object-button target classification/availability/tooltip behavior needed for the three states above, then statically review the narrow diff and bump the addon patch version because this is an addon-affecting runtime/UI revision.
+- The narrow correction is now implemented in `0.8.116-dev`; see the validation block below.
+
+## Object target-state correction — 0.8.116-dev
+- Implementation head: `157574ebe9e061b0054328e5147f46783736847e`.
+- Runtime route is unchanged: Object still sends only the existing `usegobject` command through its existing `all` route.
+- Object now uses a dedicated target semantic that blocks a human player target while still allowing a friendly bot target and all non-player/no-target states.
+- Existing `PLAYER_TARGET_CHANGED` command-availability refresh is reused; no new scheduler, delay, timeout, target clearing/restoration or propagation state was added.
+- Tooltip presentation is now target-sensitive: friendly bot target -> `Object`; every non-bot state -> `Object All`. A human-player target is disabled/unclickable, so the non-bot tooltip is not an actionable state.
+- Static diff review: only `Communication.lua` and `SoloCraftBots.toc` changed; the TOC version is `0.8.116-dev`; no Request, roster, spawn, preset, maintenance or transport behavior changed.
+- Canonical Lua 5.0.3 compiler check is **not run**: the checker files are not present in the executable container and that container cannot resolve GitHub to fetch them. Do not claim a compiler pass.
+- Runtime status: **IMPLEMENTED / STATICALLY CHECKED, NOT USER TESTED**.
+- Next runtime test:
+  1. Target a friendly bot: Object stays enabled and tooltip reads `Object`; click should affect that bot through native server target behavior.
+  2. Target a human player: Object is greyed/disabled and cannot be clicked.
+  3. Clear target or target anything else: Object is enabled and tooltip reads `Object All`; click should use the server's group branch.
 
 
 ## Deferred / later
