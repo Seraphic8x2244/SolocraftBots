@@ -1929,6 +1929,10 @@ eventFrame:SetScript("OnEvent", function()
         end
     elseif event == "PARTY_LEADER_CHANGED" then
         SCB_ApplyAutoPromotePlayers()
+        -- Every client may observe the leadership event, but the existing
+        -- Auto Loot apply path mutates loot only when this client is now leader.
+        if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
+        if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
         local observed = SCB_HandleRosterChange()
         if SCB.presetPanel and SCB.presetPanel:IsShown()

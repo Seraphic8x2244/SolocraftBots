@@ -1031,6 +1031,7 @@ function SCB_HandleRosterChange()
     local previousNames = SCB.lastRoster
     local rawMembers = SCB_CollectGroupMembers()
     local observed, current, name, scbBotAdded
+    local autoLootAuthorityChanged, selfName, previousSelf, currentSelf
 
     if SCB_BindAssumptionsFromRosterDelta then
         SCB_BindAssumptionsFromRosterDelta(previousNames, rawMembers)
@@ -1041,6 +1042,24 @@ function SCB_HandleRosterChange()
     current = {}
     observed.delta = SCB_BuildRosterDelta(previousObserved, observed)
     for name in pairs(observed.byName or {}) do current[name] = true end
+
+    -- Auto Loot remains leader-owned addon state. A party->raid transition can
+    -- be driven by another client's accepted Request, so the local leader must
+    -- react to observed authority/state changes rather than only local bot adds.
+    autoLootAuthorityChanged = previousObserved
+        and previousObserved.mode ~= "raid"
+        and observed.mode == "raid"
+        and true or false
+    if not autoLootAuthorityChanged and previousObserved
+        and previousObserved.mode == "raid" and observed.mode == "raid" and UnitName then
+        selfName = UnitName("player")
+        previousSelf = selfName and previousObserved.byName and previousObserved.byName[selfName] or nil
+        currentSelf = selfName and observed.byName and observed.byName[selfName] or nil
+        if previousSelf and currentSelf and previousSelf.rank ~= currentSelf.rank
+            and (previousSelf.rank == 2 or currentSelf.rank == 2) then
+            autoLootAuthorityChanged = true
+        end
+    end
 
     SCB_EnsureSessionDB()
     if SCB.pendingBotAdds > 0 and GetTime and SCB.pendingBotAddsExpires > 0 and GetTime() > SCB.pendingBotAddsExpires then
@@ -1061,7 +1080,10 @@ function SCB_HandleRosterChange()
 
     SCB.lastRoster = current
     SCB.lastHandledLiveRoster = observed
-    if scbBotAdded then SCB_ApplyAutoLootMethod(); SCB_QueueAutoLootApply() end
+    if scbBotAdded or autoLootAuthorityChanged then
+        SCB_ApplyAutoLootMethod()
+        SCB_QueueAutoLootApply()
+    end
     if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved(observed) end
     if SCB_QueueRefillButtonRefresh then
         SCB_QueueRefillButtonRefresh(0.15)

@@ -3482,7 +3482,7 @@ SCB_LayoutPresetGroups = function()
             title:Show()
             if resummon then
                 resummon:ClearAllPoints()
-                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -11, -(boxHeaderHeight / 2))
+                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -11, -(boxHeaderHeight / 2) - 1)
                 resummon:Show()
             end
         else
