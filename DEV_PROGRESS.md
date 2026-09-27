@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.9.0-dev`
 - Current implementation head: `9161d333e3c42112d812abbc464e41d7b25e768c`
-- Current handoff/status head before this final handoff commit: `fb09b470a6d359c8e99964004bac2ef610732487`
+- Current handoff/status head before this final handoff commit: `7f6e15532e270e294e604e806ca849532289ff79`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,59 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.0` promotion is complete on `main` at `4c1a75f052927be00aac91327a92dac902e2b301`. No release follow-up is required. Keep future feature work on `dev`; the next documented feature direction is the neutral read-only activity/status surface, followed later by the visualiser, but do not start it until explicitly selected.
+- Immediate goal / exact next step: stabilize the BWL findings as the first `0.9.1-dev` slice on `dev`. The neutral read-only activity/status surface and later visualiser are explicitly deferred until this BWL batch is implemented and runtime-tested.
+
+
+## BWL runtime findings / agreed 0.9.1-dev priority
+No implementation changes for this batch have been made yet. These findings came from the user's BWL runtime on the stable 0.9.0 implementation and are now higher priority than the previously planned status/visualiser work.
+
+### 1. Group targeted-command acknowledgement timeout
+- Runtime defect: a Group command can remain busy indefinitely if an expected targeted acknowledgement never arrives or is not parsed.
+- Confirmed cause in `Communication.lua`: the sequencer enters `phase = "await"`, but its OnUpdate services only `settle` and `budget`; there is no await timeout.
+- Stable `main` and current `dev` have the same affected `Communication.lua`; this predates the 0.9.0 release rather than being introduced by promotion.
+- Agreed fix: **1.0 second acknowledgement timeout** per Group recipient/attempt.
+- Initial policy is deliberately simple: **no automatic retry**. On timeout, report failure concisely, restore the original target, clear `SCB.targetedCommandState`, hide the sequencer frame and allow another Group command immediately.
+- Preserve Single-target's current direct/spammable behaviour, the Group 0.10-second target-settle delay and the 24 commands/second budget.
+- Main invariant: a missing server response can never permanently own the Group command pipeline.
+
+### 2. Rare full-rebuild bot identity misbinding
+- BWL runtime example: `Arwhui*` was reported against the logical Group 3 tank assignment even though the live bot was a Priest and combat evidence confirmed healer via `Heal`.
+- The warning showed global slot 11, which corresponds to Group 3 local slot 1.
+- The configured spawn commands themselves remain correct (`add <class> <role>`). The problem is the later bot-name -> logical-slot association.
+- Existing full-rebuild ordinal finalization remains the proven baseline and must **not** be redesigned. The user reports only roughly 3-4 known identity mistakes across thousands of bot spawns, including raid sessions with hundreds of repeated kick/resummon cycles.
+- The exact reason this Group 3 roster appeared out of sequence is **not proven**. A Blizzard/server subgroup-order anomaly is plausible, but do not encode that deduction as fact or change the established reverse-send/LIFO burst sequencing without evidence.
+- Add a narrow **post-binding class sanity check**:
+  - compare the configured logical slot class with the bound bot's actual live `UnitClass` / raid-tab class;
+  - matching class -> do nothing;
+  - mismatching class -> the identity mapping is impossible and becomes eligible for focused correction.
+- First correction step: within the affected logical group, use actual classes to repair an **unambiguous** cross-class swap/mapping. This should catch the common practical case where rare mistakes involve tanks/healers spread across different classes.
+- Do not mutate the preset's configured class/role. Correction changes only which bot name is bound to which logical assignment.
+- If class matching leaves same-class ambiguity, reuse the existing combat-role evidence machinery **only for the affected candidate bots**, even when the global combat-confirmation option is disabled:
+  - do not change the user's saved option;
+  - do not enable whole-raid scanning;
+  - stop the temporary focused confirmation when the mapping becomes unambiguous;
+  - if evidence never makes the mapping unambiguous, warn rather than guess.
+- Combat evidence remains validation/reconciliation evidence; it must never silently rewrite the requested role.
+
+### 3. Role-mismatch slot wording
+- Current warning can say e.g. `Group 3, Slot 11` because it prints the global logical slot index alongside the group.
+- User-facing wording should use the subgroup-local slot: `((slotIndex - 1) % 5) + 1`.
+- Internal/global slot numbering remains unchanged.
+
+### 4. Group -> Pause Healers
+- High-priority raid-control gap found during BWL tank pulls: existing "others" controls do not stop healer bots, so they can heal immediately, pull threat and ruin boss positioning.
+- Add one narrowly scoped **Group -> Pause Healers** control; do not invent or require a server `pauseheal` command.
+- Resolve the targeted raid group, filter that group's bots to resolved healer identities, then reuse the existing Group targeted sequencer to send the ordinary targeted `pause` command to those healers only.
+- Tanks and DPS remain active.
+- Existing Group Play/Unpause is sufficient to release the group afterward; no separate Unpause Healers control is requested at this stage.
+- This command should use the same corrected timeout behaviour as other Group targeted sequences.
+
+### Implementation order agreed after BWL
+1. Group -> Pause Healers.
+2. 1.0-second Group acknowledgement timeout.
+3. Minimal post-finalization class sanity check plus focused recovery for the rare identity mismatch.
+4. Local-slot warning wording.
+5. Runtime-test the complete BWL batch before starting the neutral activity/status surface or visualiser.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
