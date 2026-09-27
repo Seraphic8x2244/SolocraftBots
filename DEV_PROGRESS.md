@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: implement the Auto Loot authority/state trigger fix in the **next addon build** (`0.8.112-dev` if no intervening addon revision). Preserve current ownership: Request carries no loot data/behavior and only the actual current group/raid leader may call `SetLootMethod()`. Keep the existing option-change and locally-recognised bot-add/adoption triggers, and additionally re-apply/queue the leader's own configured Auto Loot method when party→raid conversion is observed and when group leadership changes. Do not add periodic loot enforcement or make non-leaders authoritative. After runtime confirmation of this build, resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: implement a **targeted Preset Manager UI-only build first** (`0.8.112-dev` if no intervening addon revision). Replace the current loose unassigned-player pool with a full-width dynamic `Unassigned Players` box between the role counter and group boxes; red subtitle; hidden with zero space when empty; reuse the existing draggable/class-coloured player controls; dynamically wrap names to the live content width and grow/shrink height accordingly; group boxes move down/up with it. Also vertically align each Resummon Group icon to the visual centre of its `Group N` subheader. Do not change assignment semantics, roster logic, Request, Auto Loot, or other backend behavior in this build. After this UI slice is runtime-confirmed, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -91,6 +91,18 @@
 - Auto Loot remains ordinary addon-level behavior: every client may hold its own preference, but `SCB_ApplyAutoLootMethod()` only mutates loot when that client is the current party/raid leader. Therefore the current leader's SCB and setting are authoritative, independent of who requested or accepted the preset.
 - Request communications are protocol 8. Protocol 7 is intentionally incompatible because it still contained Request-specific loot negotiation/delegation.
 
+
+### Targeted Preset Manager UI slice — next build
+- This UI slice is intentionally ahead of the Auto Loot trigger work and All-row/server audit.
+- Replace the current loose `Players` pool with a full-width bordered box using the same visual grammar as the role-counter section.
+- Subtitle text: `Unassigned Players`; subtitle colour: red.
+- Position: role counter -> Unassigned Players box -> Group 1/2/etc.
+- Hide the entire box and consume zero vertical space when every present player is assigned.
+- Reuse the existing draggable/class-coloured unassigned-player controls and assignment path; do not duplicate or alter assignment semantics.
+- Box width follows the live preset content width; calculate names-per-row from available width, then calculate rows/height dynamically so wider 20/40-player layouts can fit more names per line.
+- Assignment/unassignment refresh must immediately resize the box and move the group grid.
+- Vertically align the Resummon Group icon with the visual centre of the corresponding `Group N` subheader, including when Preset Groups icon size is changed.
+- Scope boundary: presentation/layout only; no Request, Auto Loot, roster, spawn, or protocol changes.
 
 ### Auto Loot authority/state trigger — next build
 - Fix is addon-level, not part of Request protocol 8.
