@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.113-dev`
-- Current implementation head: `9125129649783b87cf928e653932870d1923f3fd`
-- Current handoff/status head before this final handoff commit: `9125129649783b87cf928e653932870d1923f3fd`
+- TOC version: `0.8.114-dev`
+- Current implementation head: `b000d6209131be326f4a21dbfc548355c1625f34`
+- Current handoff/status head before this final handoff commit: `b000d6209131be326f4a21dbfc548355c1625f34`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: **runtime-test the `0.8.113-dev` Preset Manager visual refinement** at implementation head `9125129649783b87cf928e653932870d1923f3fd`. Confirm the Unassigned Players header has balanced top/left padding, both Unassigned and Group boxes have a border-to-border header divider, each Group box now contains its `Group N` title and Resummon control, the five existing assignment rows retain their spacing/drag semantics, and the panel has not grown excessively. Do not begin Auto Loot work until this refinement is runtime-confirmed. After PASS, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: **runtime-test the `0.8.114-dev` Preset Manager header polish** at implementation head `b000d6209131be326f4a21dbfc548355c1625f34`. Confirm each `Group N` label now matches the accepted Unassigned Players top/left padding, and both Unassigned/Group divider rules are visually shorter/lighter so they match the existing box-border weight rather than appearing overlong or thick. Preserve the already-accepted row spacing and overall height. After PASS, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -97,14 +97,13 @@
 - `0.8.112-dev` runtime: **PASS on all five requested checks** — hidden/no-gap state, visible red full-width Unassigned Players box, live grow/shrink/reflow on assignment changes, wider-preset multi-column wrapping, and Resummon vertical centring at default and adjusted Preset Groups icon sizes.
 - Screenshot follow-up from the accepted runtime exposed two presentation-only refinements: Unassigned Players text padding was top-heavy, and Group headers still sat outside their bordered boxes.
 - `0.8.113-dev` implementation head: `9125129649783b87cf928e653932870d1923f3fd`.
-- Unassigned Players header padding is rebalanced and now has a border-to-border divider below the red subtitle.
-- Each Group box now owns its `Group N` title and Resummon button inside an 18-unit header band with the same border-to-border divider treatment.
-- Existing five assignment rows are shifted down by exactly that header band; their internal sizing/spacing and drag/assignment semantics are unchanged.
-- To avoid unnecessary vertical growth, the old 20-unit external group-title/grid clearance is replaced by a 6-unit box gap. Net Preset Manager growth is only about 4 units per rendered Group row versus `0.8.112-dev`.
-- `0.8.113-dev` changes only `Presets.lua` and the TOC version; no Request, Auto Loot, roster, spawn, maintenance backend, or protocol behavior changed.
-- Runtime validation of the new visual refinement is still required before Auto Loot work begins.
+- `0.8.113-dev` runtime feedback: Unassigned padding PASS; five-row spacing PASS; overall size PASS. Remaining visual issues were Group-title padding not matching Unassigned, plus both divider rules appearing slightly overlong and visually heavier than the surrounding border.
+- `0.8.114-dev` implementation head: `b000d6209131be326f4a21dbfc548355c1625f34`.
+- Group-title anchor now exactly matches the accepted Unassigned Players title anchor: 6 units from the left and 5 units from the top.
+- Both divider rules are inset 3 units from the box edges and use reduced alpha (0.55 instead of 0.9) while remaining one unit high, to better match the apparent weight of the existing tooltip border.
+- No row geometry, header height, box height, assignment behavior, Resummon placement, Request, Auto Loot, roster, spawn, maintenance backend, or protocol behavior changed.
 
-### Auto Loot authority/state trigger — next build after the 0.8.113 UI runtime pass
+### Auto Loot authority/state trigger — next build after the 0.8.114 UI runtime pass
 - Fix is addon-level, not part of Request protocol 8.
 - The actual current party/raid leader's SCB setting remains authoritative; non-leaders must never apply their own configured method to the group.
 - Preserve existing Auto Loot triggers: changing the option while grouped and local bot-add/adoption paths.
@@ -316,7 +315,7 @@ Exact `0.8.92-dev` baseline:
    - Request protocol 8 runtime validation is complete at `0.8.111-dev` / `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`; see the dedicated result section above.
    - The next runtime test is now the targeted `0.8.112-dev` Preset Manager UI slice; Auto Loot validation remains queued behind that PASS.
 
-## 0.8.112-0.8.113 Preset Manager UI validation
+## 0.8.112-0.8.114 Preset Manager UI validation
 1. **`0.8.112-dev` runtime result: PASS.**
    - User confirmed all five requested checks passed.
    - This validates the dynamic Unassigned Players box, preserved draggable/class-coloured player controls, live reflow, wide-layout wrapping, and Resummon centring behavior at the exact `0.8.112-dev` implementation head `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`.
@@ -335,12 +334,21 @@ Exact `0.8.92-dev` baseline:
    - Confirmed Group frame content height remains user-layout-derived; the fixed 18-unit header is additive rather than rewriting saved layout values.
    - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
 
-4. **Next runtime test — `0.8.113-dev` / `9125129649783b87cf928e653932870d1923f3fd`.**
-   - Unassigned Players subtitle padding looks balanced and its divider spans the full box width.
-   - Group title and Resummon are visibly inside each Group border with a full-width divider below them.
-   - Five assignment rows retain their previous spacing and interactions.
-   - Resummon remains vertically centred at default and adjusted Preset Groups icon sizes.
-   - Overall panel/group height increase remains visually small.
+4. **`0.8.113-dev` runtime result: PARTIAL.**
+   - Unassigned Players padding: PASS.
+   - Five assignment rows / interaction layout: PASS.
+   - Overall panel/group height: PASS.
+   - Group-title padding: needs refinement to match Unassigned Players.
+   - Unassigned and Group dividers: structurally correct but slightly overlong and visually thicker than the surrounding border.
+
+5. **`0.8.114-dev` implementation / next runtime test.**
+   - Verified starting `dev` exactly matched handoff `4a1bd21dd70473cd14e21fbbfd532069b4e469fd` / `0.8.113-dev`.
+   - Implementation commit is `b000d6209131be326f4a21dbfc548355c1625f34`; TOC is `0.8.114-dev`.
+   - Group title now uses the exact same 6-left/5-top padding as the accepted Unassigned title.
+   - Both divider rules are inset 3 units on each side and reduced to 0.55 alpha; height remains one unit.
+   - Diff is limited to `Presets.lua` plus the required TOC version bump.
+   - Runtime: compare Group-title padding directly against Unassigned Players, and compare both divider lengths/visual weight against the existing box borders.
+   - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
 
 
 ## Deferred / later
