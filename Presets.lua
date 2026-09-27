@@ -3478,7 +3478,7 @@ SCB_LayoutPresetGroups = function()
             groupFrame:Show()
 
             title:ClearAllPoints()
-            title:SetPoint("LEFT", groupFrame, "TOPLEFT", 7, -(boxHeaderHeight / 2))
+            title:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 6, -5)
             title:Show()
             if resummon then
                 resummon:ClearAllPoints()
@@ -3648,9 +3648,9 @@ function SCB_CreatePresetUI(frame)
 
         groupDivider = groupFrame:CreateTexture(nil, "ARTWORK")
         groupDivider:SetHeight(1)
-        groupDivider:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 0, -18)
-        groupDivider:SetPoint("TOPRIGHT", groupFrame, "TOPRIGHT", 0, -18)
-        groupDivider:SetTexture(0.45, 0.45, 0.45, 0.9)
+        groupDivider:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 3, -18)
+        groupDivider:SetPoint("TOPRIGHT", groupFrame, "TOPRIGHT", -3, -18)
+        groupDivider:SetTexture(0.45, 0.45, 0.45, 0.55)
 
         local resummonButton = SCB_CreateArtButton(groupFrame, nil, 16, SCB.assetRoot .. "lucide_rotate_ccw.tga")
         resummonButton.scbGroupIndex = g
@@ -3767,9 +3767,9 @@ function SCB_CreatePresetUI(frame)
 
     local playerPoolDivider = playerPool:CreateTexture(nil, "ARTWORK")
     playerPoolDivider:SetHeight(1)
-    playerPoolDivider:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 0, -18)
-    playerPoolDivider:SetPoint("TOPRIGHT", playerPool, "TOPRIGHT", 0, -18)
-    playerPoolDivider:SetTexture(0.45, 0.45, 0.45, 0.9)
+    playerPoolDivider:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 3, -18)
+    playerPoolDivider:SetPoint("TOPRIGHT", playerPool, "TOPRIGHT", -3, -18)
+    playerPoolDivider:SetTexture(0.45, 0.45, 0.45, 0.55)
 
     local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 42, 24, SCB_L("PRESET_SUMMON"))
     summon:ClearAllPoints()
