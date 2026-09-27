@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.8.115-dev`
 - Current implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
-- Current handoff/status head before this final handoff commit: `6160b1e514c361b9a48efab6126941fecbb43e3c`
+- Current handoff/status head before this final handoff commit: `04785924257f9b6045f11b0085dcdbc2e4e07c9f`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Resume the deferred **All-row/server target-sensitivity audit** next. First audit every Command Bots path that can use recipient `all`, including paired/special-case command construction, and identify whether any server command still depends on the player's current target despite being presented as All. Compare All/Group/Target command strings and modifier handling, and distinguish proven target-sensitive cases from merely suspicious ones. **Audit/report findings before changing behavior**; only implement a narrow fix if a concrete server-sensitive All path is proven. Do not begin unrelated cleanup/refactors during the audit.
+- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. The **All-row/server target-sensitivity audit is complete**. Implement only the narrow Object-button correction agreed below: bot target -> `Object`; human-player target -> disabled/unclickable; anything else -> `Object All`. Do not add target-clearing, delayed send, timeout, restoration, or other propagation machinery. No unrelated cleanup/refactors.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -385,8 +385,22 @@ Exact `0.8.92-dev` baseline:
    - No further Auto Loot or Preset Manager UI runtime work is required for this build.
 
 
+## All-row/server target-sensitivity audit — 0.8.115-dev
+- Audit completed against the current Command Bots route matrix, Group/Target sequencing, modifier handling, slash/special paths, historical SoloCraft runtime evidence, and current upstream vMaNGOS PartyBot command source. No addon behavior changed during the audit.
+- Group and Target intentionally use targeted command forms/sequencing. Paired role routes and special construction do not accidentally leak into recipient `all`.
+- `moveall` and `stayall` remain historically runtime-proven global on SoloCraft.
+- All Come uses `cometome`, which is server target-sensitive. SCB already treats this as conditional; Ctrl-Come All is `moveall` followed by the same `cometome` behavior.
+- All Play/Pause remain `unpause all` / `pause all`. Current upstream vMaNGOS parses `all` explicitly, while older SoloCraft runtime evidence was contradictory. Preserve the existing conservative handling unless new exact-server runtime evidence justifies changing it.
+- AoE, Attack Start, and Attack Stop intentionally use the selected living enemy as command context while addressing the bot group; this is expected target context, not accidental All-recipient narrowing.
+- **Object is the concrete mismatch found by the audit.** Current upstream `usegobject` has a selected-player branch and a group branch, and the user confirms SoloCraft can target one bot to use the gameobject. The agreed UI should expose that native behavior directly rather than forcing All semantics:
+  - friendly bot targeted -> tooltip `Object`; button remains clickable and sends the existing command;
+  - human player targeted -> button greyed/disabled and unclickable;
+  - anything else -> tooltip `Object All`; button remains clickable and sends the existing command.
+- Do **not** add a timeout, delayed send, forced detarget, target restoration, or propagation state. The user explicitly considers normal manual target/click timing sufficient; keep the correction purely in availability/tooltip presentation around the existing server command.
+- Exact next implementation scope: change only Object-button target classification/availability/tooltip behavior needed for the three states above, then statically review the narrow diff and bump the addon patch version because this is an addon-affecting runtime/UI revision.
+
+
 ## Deferred / later
-- Audit remaining All-row/server target sensitivity.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
 - Add neutral read-only activity/status surface, then visualiser as a presentation-only consumer.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
