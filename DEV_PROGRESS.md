@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: continue the **`0.8.115-dev` runtime test** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Initial Auto Loot results are PASS: when Gaia invited Revenga, Gaia's Round Robin applied immediately; Revenga then requested a >5 preset while configured Free For All and the group remained Round Robin through the Request/conversion path. Next, transfer leadership to Revenga and confirm loot automatically becomes Free For All, then transfer leadership back to Gaia and confirm it returns to Round Robin. Also confirm the Resummon Group icon 1 px nudge. After full PASS, resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Resume the deferred **All-row/server target-sensitivity audit** next. Audit remaining "All" recipient command paths against server target sensitivity without changing command semantics unless a concrete server-sensitive path is proven. Do not begin unrelated cleanup/refactors during the audit.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -105,7 +105,7 @@
 - `0.8.114-dev` runtime: **PASS** — Group title padding matches Unassigned Players; both divider lines now read correctly against the existing box borders; accepted row spacing and overall height remain good.
 - Minor accepted follow-up: the Resummon glyph reads about 1 px high. Do not make a standalone build for this; queue a **1 px downward anchor nudge** into the next actual addon revision.
 
-### Auto Loot authority/state trigger — `0.8.115-dev` implemented; runtime pending
+### Auto Loot authority/state trigger — `0.8.115-dev` implemented; runtime PASS
 - Implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`.
 - Ownership is unchanged: Request protocol 8 carries no loot setting/state and only `SCB_ApplyAutoLootMethod()` may call `SetLootMethod()`; that function still refuses mutation unless the local client is the actual party/raid leader.
 - Existing option-change and locally-recognised bot-add/adoption triggers remain intact.
@@ -114,7 +114,8 @@
 - `PARTY_LEADER_CHANGED` now also applies + queues through the existing leader-gated Auto Loot path, covering party leadership changes and providing an additional event-level authority trigger.
 - No new scheduler/timing exists; the existing 0.25-second / four-attempt `SCB_QueueAutoLootApply()` retry behavior is reused unchanged.
 - Request/Communication code is unchanged and contains no loot-setting references.
-- Runtime target: with leader Auto Loot = Round Robin and requestee Auto Loot = Free For All, an accepted >5-player Request conversion must end in Round Robin because the leader owns loot authority; transferring leadership afterward must make the new leader's own preference authoritative.
+- Runtime result: **PASS**. Gaia leader / Round Robin immediately applied on invite; Revenga / Free For All requested the >5 preset and Round Robin remained authoritative through Request/conversion; transferring leadership to Revenga automatically changed loot to Free For All; transferring leadership back to Gaia automatically restored Round Robin. This confirms the non-leader never overrides the current leader's preference.
+- The bundled 1 px Resummon Group downward nudge is also **USER TESTED PASS** with no other header/layout regression reported.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -375,11 +376,13 @@ Exact `0.8.92-dev` baseline:
    - Existing Auto Loot retry cadence is reused; no timing values changed.
    - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
 
-3. **Runtime test — `0.8.115-dev` / `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`: PARTIAL PASS.**
+3. **Runtime test — `0.8.115-dev` / `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`: PASS.**
    - Gaia leader / Auto Loot Round Robin -> Gaia invited Revenga: actual loot method switched to Round Robin immediately. PASS.
    - Revenga Auto Loot Free For All -> Revenga requested the preset while Gaia remained leader: actual loot method stayed Round Robin through the Request/conversion path. PASS; non-leader preference did not override leader authority.
-   - Remaining: transfer leadership to Revenga; actual loot method must become Free For All automatically. Transfer leadership back to Gaia; it must return to Round Robin automatically.
-   - Remaining visual check: Resummon Group icon should read 1 px lower than `0.8.114-dev`, with no other header spacing/size change.
+   - Leadership transferred to Revenga: actual loot method automatically became Free For All. PASS.
+   - Leadership transferred back to Gaia: actual loot method automatically returned to Round Robin. PASS.
+   - Resummon Group 1 px downward nudge: PASS; user confirmed it looks correct.
+   - No further Auto Loot or Preset Manager UI runtime work is required for this build.
 
 
 ## Deferred / later
