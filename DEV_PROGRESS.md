@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.117-dev` adds only the two runtime-discovered Object precondition guards on top of the working `0.8.116-dev` target-state logic: Object is unavailable with zero live bots, and unavailable outside an instance map. Validate those two guards plus one valid in-instance/bot-present case. The `usegobject` route and target-state classifier remain unchanged. No target-clearing, delayed send, timeout, restoration, propagation machinery, unrelated cleanup or refactors.
+- Immediate goal / exact next step: `0.8.117-dev` Object target-state and precondition behavior is **fully USER TESTED PASS** at implementation head `da22c1800797b628af8fb2442822ac96f0015833`. The Object slice is closed; make no further Object changes unless a regression is reported. Await the next explicitly selected development task; do not begin deferred cleanup/refactors automatically.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -414,11 +414,11 @@ Exact `0.8.92-dev` baseline:
 - No new scheduler, delay value, target clearing/restoration, timeout or propagation state was added.
 - Static diff review: runtime changes are limited to `Communication.lua`, the location-owner refresh hook in `Presets.lua`, and the required `SoloCraftBots.toc` bump to `0.8.117-dev`; no Request, spawn, preset composition, maintenance, command transport or `usegobject` routing changed.
 - Canonical Lua 5.0.3 compiler check is **not run**: the checker files are not present in the executable container and that container cannot resolve GitHub to fetch them. Do not claim a compiler pass.
-- Runtime status for `0.8.117-dev`: **IMPLEMENTED / STATICALLY CHECKED, NOT USER TESTED**.
-- Next runtime test:
-  1. In an instance with at least one bot present, Object remains available and the already-tested target-sensitive `Object` / `Object All` behavior still works.
-  2. With zero live bots, Object is greyed/disabled and clicking cannot produce `You are not in a group.`
-  3. With at least one bot/group present but outside an instance map, Object is greyed/disabled and clicking cannot produce `You have to be in an instance map.`
+- Runtime result for `0.8.117-dev` / `da22c1800797b628af8fb2442822ac96f0015833`: **PASS**.
+  1. In an instance with at least one bot present, Object remains available and the target-sensitive `Object` / `Object All` behavior works as intended.
+  2. With zero live bots, Object is greyed/disabled; the invalid server-side `You are not in a group.` path is no longer reachable through the button.
+  3. With a bot/group present outside an instance map, Object is greyed/disabled; the invalid server-side `You have to be in an instance map.` path is no longer reachable through the button.
+- Object target-state and availability work is now closed with no remaining runtime validation debt.
 
 
 ## Deferred / later
