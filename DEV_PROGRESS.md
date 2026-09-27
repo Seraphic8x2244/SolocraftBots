@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.114-dev`
-- Current implementation head: `b000d6209131be326f4a21dbfc548355c1625f34`
-- Current handoff/status head before this final handoff commit: `b000d6209131be326f4a21dbfc548355c1625f34`
+- TOC version: `0.8.115-dev`
+- Current implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
+- Current handoff/status head before this final handoff commit: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: implement the **Auto Loot authority/state trigger fix** in the next actual addon build (`0.8.115-dev` if no intervening addon revision). Preserve current ownership: Request carries no loot data/behavior and only the actual current group/raid leader may call `SetLootMethod()`. Keep existing option-change and locally-recognised bot-add/adoption triggers; additionally re-apply/queue the leader's own configured Auto Loot method when party→raid conversion is observed and when group leadership changes. Include the queued presentation-only tweak in this same build: nudge each Resummon Group button down by exactly 1 px without changing its frame size, horizontal position, header height, or any row geometry. After runtime confirmation of Auto Loot and the 1 px visual nudge, resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: **runtime-test `0.8.115-dev`** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Validate that a leader observing a party→raid Request conversion re-applies that leader's own configured Auto Loot method, that changing party/raid leadership causes the new leader to re-apply their own configured method, and that non-leaders never apply their own preference. Also confirm the queued Resummon Group icon is now 1 px lower with no other header/layout change. After PASS, resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -105,14 +105,16 @@
 - `0.8.114-dev` runtime: **PASS** — Group title padding matches Unassigned Players; both divider lines now read correctly against the existing box borders; accepted row spacing and overall height remain good.
 - Minor accepted follow-up: the Resummon glyph reads about 1 px high. Do not make a standalone build for this; queue a **1 px downward anchor nudge** into the next actual addon revision.
 
-### Auto Loot authority/state trigger — next build
-- Fix is addon-level, not part of Request protocol 8.
-- The actual current party/raid leader's SCB setting remains authoritative; non-leaders must never apply their own configured method to the group.
-- Preserve existing Auto Loot triggers: changing the option while grouped and local bot-add/adoption paths.
-- Add authority/state triggers so the current leader re-applies and queues its own setting after an observed party→raid conversion and after a leadership change.
-- This specifically covers the runtime case where a non-leader accepts a Request and summons bots while the leader's client only observes the resulting conversion/roster changes.
-- Do not serialize loot settings, send a Request-specific loot control, transfer leadership, or make Request completion responsible for choosing a loot method.
-- Runtime target: with leader Auto Loot = Round Robin and requestee Auto Loot = Free For All, a party→raid Request conversion should result in Round Robin because the leader owns loot authority.
+### Auto Loot authority/state trigger — `0.8.115-dev` implemented; runtime pending
+- Implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`.
+- Ownership is unchanged: Request protocol 8 carries no loot setting/state and only `SCB_ApplyAutoLootMethod()` may call `SetLootMethod()`; that function still refuses mutation unless the local client is the actual party/raid leader.
+- Existing option-change and locally-recognised bot-add/adoption triggers remain intact.
+- `SCB_HandleRosterChange()` now treats an observed non-raid -> raid transition as an Auto Loot authority/state trigger and immediately applies + queues the existing retry path.
+- Raid leadership transitions are detected narrowly from the local player's rank crossing raid-leader rank 2; ordinary assistant-rank changes do not count.
+- `PARTY_LEADER_CHANGED` now also applies + queues through the existing leader-gated Auto Loot path, covering party leadership changes and providing an additional event-level authority trigger.
+- No new scheduler/timing exists; the existing 0.25-second / four-attempt `SCB_QueueAutoLootApply()` retry behavior is reused unchanged.
+- Request/Communication code is unchanged and contains no loot-setting references.
+- Runtime target: with leader Auto Loot = Round Robin and requestee Auto Loot = Free For All, an accepted >5-player Request conversion must end in Round Robin because the leader owns loot authority; transferring leadership afterward must make the new leader's own preference authoritative.
 
 ## Refill / maintenance contract
 - Refill intentionally differs from full rebuild: up to five missing/dead assignments may be mixed across destination groups in one burst.
@@ -351,6 +353,33 @@ Exact `0.8.92-dev` baseline:
    - User confirmed the resulting padding/divider treatment looks good.
    - Accepted follow-up: Resummon appears about 1 px high; queue a 1 px downward anchor nudge into the next actual addon build rather than creating a UI-only revision.
    - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
+
+6. **`0.8.115-dev` queued visual follow-up implemented.**
+   - Resummon Group keeps the same frame size, horizontal position, header height and row geometry.
+   - Its existing centre anchor is moved down by exactly 1 px.
+   - Runtime confirmation is bundled with the Auto Loot test rather than requiring another UI-only revision.
+
+
+## 0.8.115 implementation / static validation / next runtime test
+1. **Implementation.**
+   - Verified starting `dev` exactly matched handoff `bf7a3455348d01755c705271e2028049e24c9b70` / `0.8.114-dev`.
+   - Implementation commit is `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`; TOC is `0.8.115-dev`.
+   - Changed runtime files are `Roster.lua`, `SoloCraftBots.lua`, `Presets.lua`, plus the required TOC version bump.
+
+2. **Static validation.**
+   - Full diff reviewed; no Communication/Request code changed.
+   - Repository scan confirms the only `SetLootMethod()` calls remain inside `SCB_ApplyAutoLootMethod()`.
+   - Party->raid detection is observation-based, so it covers conversion initiated by another SCB client rather than depending on the local summoner path.
+   - Raid leadership detection only fires when the local player's rank changes to/from leader rank 2.
+   - Non-leader calls remain harmless because `SCB_ApplyAutoLootMethod()` still checks `SCB_IsLocalGroupLeader()` before any `SetLootMethod()`.
+   - Existing Auto Loot retry cadence is reused; no timing values changed.
+   - Canonical Lua 5.0.3 compiler check is **not run** in the current executable environment; do not claim a compiler pass.
+
+3. **Next runtime test — `0.8.115-dev` / `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`.**
+   - Party->raid Request authority: leader configured Round Robin; non-leader requestee configured Free For All; accepted >5-player Request must convert and finish with actual loot method Round Robin.
+   - Leadership change: transfer leadership to the Free For All client; actual loot method must become Free For All automatically. Transfer leadership back; it must return to Round Robin automatically.
+   - Confirm the non-leader never overrides the current leader's method during either direction.
+   - Preset Manager: Resummon Group icon should read 1 px lower than `0.8.114-dev`, with no other header spacing/size change.
 
 
 ## Deferred / later
