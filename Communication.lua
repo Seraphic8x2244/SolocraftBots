@@ -990,6 +990,7 @@ SCB.commandTargetSemantics = {
     friendlyBot = "friendly-bot-recipient",
     livingEnemy = "living-enemy-context",
     conditional = "conditional-friendly-player-or-bot",
+    humanPlayerBlocked = "human-player-blocked",
 }
 
 SCB.commands = {
@@ -1116,7 +1117,7 @@ SCB.commands = {
         label = SCB_L("COMMAND_OBJECT"),
         icon = "object.tga",
         highlightIcon = "object_h.tga",
-        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemantic = SCB.commandTargetSemantics.humanPlayerBlocked,
         routes = { all = { "usegobject" } },
     },
     aoe = {
@@ -1155,6 +1156,12 @@ function SCB_IsFriendlyBotTarget()
         return false
     end
     return true
+end
+
+local function SCB_IsHumanPlayerTarget()
+    if not UnitExists or not UnitExists("target") then return false end
+    if not UnitIsPlayer or UnitIsPlayer("target") ~= 1 then return false end
+    return not SCB_IsFriendlyBotTarget()
 end
 
 local function SCB_IsFriendlyPlayerOrBotTarget()
@@ -1259,6 +1266,8 @@ local function SCB_IsCommandTargetContextValid(commandKey, scope)
         return SCB_IsLivingEnemyTarget()
     elseif semantic == SCB.commandTargetSemantics.conditional then
         return not SCB_IsFriendlyPlayerOrBotTarget()
+    elseif semantic == SCB.commandTargetSemantics.humanPlayerBlocked then
+        return not SCB_IsHumanPlayerTarget()
     end
     return semantic == SCB.commandTargetSemantics.agnostic
 end
@@ -1719,6 +1728,15 @@ end
 local function SCB_SetCommandButtonAvailability(button)
     local available
     if not button or not button.scbCommandKey or not button.scbRecipientKey then return end
+
+    if button.scbCommandKey == "object" then
+        if SCB_IsFriendlyBotTarget() then
+            button.scbTooltip = SCB_L("COMMAND_OBJECT")
+        else
+            button.scbTooltip = SCB_L("COMMAND_OBJECT") .. " " .. SCB_L("RECIPIENT_ALL")
+        end
+        if SCB_RefreshVisibleTooltip then SCB_RefreshVisibleTooltip(button) end
+    end
 
     available = SCB_IsCommandRequestAvailable(button.scbCommandKey, button.scbRecipientKey)
     button:SetAlpha(available and 1 or 0.5)
