@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.8.115-dev`
 - Current implementation head: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
-- Current handoff/status head before this final handoff commit: `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`
+- Current handoff/status head before this final handoff commit: `6160b1e514c361b9a48efab6126941fecbb43e3c`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Resume the deferred **All-row/server target-sensitivity audit** next. Audit remaining "All" recipient command paths against server target sensitivity without changing command semantics unless a concrete server-sensitive path is proven. Do not begin unrelated cleanup/refactors during the audit.
+- Immediate goal / exact next step: `0.8.115-dev` runtime is **fully PASS** at implementation head `b0ed87093d79cddeab6c38fd8853d71f7fdebc90`. Resume the deferred **All-row/server target-sensitivity audit** next. First audit every Command Bots path that can use recipient `all`, including paired/special-case command construction, and identify whether any server command still depends on the player's current target despite being presented as All. Compare All/Group/Target command strings and modifier handling, and distinguish proven target-sensitive cases from merely suspicious ones. **Audit/report findings before changing behavior**; only implement a narrow fix if a concrete server-sensitive All path is proven. Do not begin unrelated cleanup/refactors during the audit.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
