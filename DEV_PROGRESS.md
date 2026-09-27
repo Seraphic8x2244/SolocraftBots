@@ -114,7 +114,7 @@
 - Destination capacity remains preflighted before any kick. Humans, manual/unbound bots and other non-removed occupants count against the five-player destination capacity; if the complete tracked group cannot fit, the action refuses unchanged rather than failing mid-rebuild.
 - Live tracked bots in the selected group remain routed through the shared paced kick queue, existing 3-second capacity settle, combat wait, assumed-spawn burst identity, subgroup placement and Active Roster binding paths.
 - If the selected group contains every live bot and survivor safety is required, preserve the existing retained-survivor lifecycle. A lone required survivor must be left in place rather than risking instance removal.
-- Runtime 0.8.101: direct group rebuild works and humans remain untouched, but a group containing humans can return without combat-role validation ticks. 0.8.102 targets the identified post-bind refresh gap: replacement binding now clears recycled per-name role evidence/live confirmation and queues the existing preset-indicator + role-detection lifecycle refresh. Runtime confirmation is pending; Resummon Group itself remains the same maintenance operation.
+- Runtime 0.8.101 exposed a post-bind refresh gap where a group containing humans could return without combat-role validation ticks. 0.8.102 fixed this by clearing recycled per-name role evidence/live confirmation on replacement binding and re-queuing the existing preset-indicator + role-detection lifecycle. **Runtime smoke test now PASS on the current 0.8.111-dev line:** after Resummon Group, eligible replacement bots regained the normal binding/role-validation indicator lifecycle and the human remained untouched.
 
 ## Mini-button visual system — finalized design; 0.8.102 exact artwork implemented
 Lucide is used only for the **small utility/chrome controls**. This is not a global artwork redesign. Use the exact official/free Lucide glyph geometry, rasterized directly to Vanilla-compatible TGA; do not redraw, stylize or AI-reinterpret it. The source TGAs remain 32x32, but Lucide textures now render centred at a **14px default** inside the existing control hitboxes.
@@ -206,6 +206,12 @@ Implementation intent:
    - However, automatic apply is only triggered by that client's own Auto Loot option change, locally-recognised SCB bot-add events, and specific local add/adoption paths. A leader observing bots summoned by another SCB client can therefore receive roster changes without running its own Auto Loot apply path.
    - `PARTY_LEADER_CHANGED`, generic raid conversion/roster change, and Request completion do not currently guarantee that the leader re-applies its configured Auto Loot method.
    - Fix must remain addon-level/leader-owned; do not put loot state back into Request protocol data or Request completion semantics.
+
+## Resummon Group role-validation runtime result — 0.8.111-dev
+- **Resummon Group role-validation smoke: PASS.**
+- The historical 0.8.101 missing-indicator regression is no longer active in current runtime.
+- Replacement bots in a mixed human/bot preset group regained the expected role-validation indicator lifecycle after Resummon Group; the human remained untouched.
+- This closes the outstanding runtime-validation debt for the 0.8.102 post-bind refresh fix.
 
 ## Runtime results
 Exact `0.8.92-dev` baseline:
