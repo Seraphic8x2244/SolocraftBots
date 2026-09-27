@@ -3235,6 +3235,7 @@ function SCB_LayoutPresetRowGeometry()
     local iconH = SCB_GetLayoutValue("preset", "iconHorizontal")
     local iconV = SCB_GetLayoutValue("preset", "iconVertical")
     local rowWidth, rowHeight, roleX, classX, buffX, groupIndex, localIndex, slotIndex, groupFrame, row, totemSize, totemIndex
+    local headerHeight = 18
 
     if groupWidth < 1 then groupWidth = 1 end
     if groupHeight < 1 then groupHeight = 1 end
@@ -3257,7 +3258,7 @@ function SCB_LayoutPresetRowGeometry()
         groupFrame = SCB.presetGroupFrames and SCB.presetGroupFrames[groupIndex]
         if groupFrame then
             groupFrame:SetWidth(groupWidth)
-            groupFrame:SetHeight(groupHeight)
+            groupFrame:SetHeight(groupHeight + headerHeight)
         end
         for localIndex = 1, 5 do
             slotIndex = ((groupIndex - 1) * 5) + localIndex
@@ -3266,7 +3267,7 @@ function SCB_LayoutPresetRowGeometry()
                 row:ClearAllPoints()
                 row:SetWidth(rowWidth)
                 row:SetHeight(rowHeight)
-                row:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", borderH, -borderV - ((localIndex - 1) * (rowHeight + iconV)))
+                row:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", borderH, -headerHeight - borderV - ((localIndex - 1) * (rowHeight + iconV)))
 
                 row.roleButton:ClearAllPoints()
                 row.roleButton:SetWidth(roleSize)
@@ -3314,7 +3315,8 @@ SCB_LayoutPresetGroups = function()
     local rows, panelWidth, panelHeight, groupFrame, title, resummon
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
     local headerHeight, twoGroupWidth, contentWidth, menuWidth, iconSize, menuButton
-    local poolCount, poolColumns, poolHeight, poolButton, groupAnchor, titleHeight
+    local poolCount, poolColumns, poolHeight, poolButton, groupAnchor
+    local boxHeaderHeight, groupBoxHeight
 
     if groupCount == 1 then
         columns = 1
@@ -3326,6 +3328,8 @@ SCB_LayoutPresetGroups = function()
     groupWidth = SCB_GetLayoutValue("preset", "groupWidth")
     groupHeight = SCB_GetLayoutValue("preset", "groupHeight")
     iconSize = SCB_GetLayoutValue("preset", "iconSize")
+    boxHeaderHeight = 18
+    groupBoxHeight = groupHeight + boxHeaderHeight
     SCB_LayoutPresetRowGeometry()
 
     if SCB.presetToggle and SCB.presetToggle.scbArrowTexture then
@@ -3338,10 +3342,10 @@ SCB_LayoutPresetGroups = function()
         SCB_SetTextureRenderSize(SCB.presetSelector.arrow.scbArrowTexture, iconSize, SCB.presetSelector.arrow)
     end
 
-    -- Bordered controls use 6 frame units for the intended visible 12px gap.
-    -- The Group-title row clearance stays at the existing 20 units.
+    -- Group headers now live inside their bordered boxes, so both horizontal
+    -- and vertical box spacing use the same compact 6-unit gap.
     gapX = 6
-    gapY = 20
+    gapY = 6
 
     twoGroupWidth = (2 * groupWidth) + gapX
     contentWidth = (columns * groupWidth) + ((columns - 1) * gapX)
@@ -3369,7 +3373,7 @@ SCB_LayoutPresetGroups = function()
                 row = math.floor((i - 1) / poolColumns)
                 poolButton:SetWidth(108)
                 poolButton:ClearAllPoints()
-                poolButton:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", 6 + (col * 112), -20 - (row * 24))
+                poolButton:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", 6 + (col * 112), -21 - (row * 24))
             end
         end
         poolExtra = 6 + poolHeight
@@ -3383,9 +3387,10 @@ SCB_LayoutPresetGroups = function()
 
     -- Fixed vertical chain:
     -- 12 top inset + header + 12 + dropdown(24) + 6 + action(24)
-    -- + 6 + counter(34) + 20 title clearance + groups + 12 bottom inset.
-    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 34 + 20
-        + (rows * groupHeight) + ((rows - 1) * gapY) + 12 + poolExtra
+    -- + 6 + counter(34) + 6 + boxed groups + 12 bottom inset.
+    -- poolExtra contributes the optional counter->pool box plus pool->groups gap.
+    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 34 + 6
+        + (rows * groupBoxHeight) + ((rows - 1) * gapY) + 12 + poolExtra
 
     SCB.presetPanel:SetWidth(panelWidth)
     SCB.presetPanel:SetHeight(panelHeight)
@@ -3468,18 +3473,16 @@ SCB_LayoutPresetGroups = function()
                 groupAnchor,
                 "BOTTOMLEFT",
                 col * (groupWidth + gapX),
-                -20 - (row * (groupHeight + gapY))
+                -6 - (row * (groupBoxHeight + gapY))
             )
             groupFrame:Show()
 
             title:ClearAllPoints()
-            title:SetPoint("BOTTOMLEFT", groupFrame, "TOPLEFT", 8, 2)
+            title:SetPoint("LEFT", groupFrame, "TOPLEFT", 7, -(boxHeaderHeight / 2))
             title:Show()
             if resummon then
-                titleHeight = title:GetHeight()
-                if not titleHeight or titleHeight <= 0 then titleHeight = 10 end
                 resummon:ClearAllPoints()
-                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -14, 2 + (titleHeight / 2))
+                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -11, -(boxHeaderHeight / 2))
                 resummon:Show()
             end
         else
@@ -3620,16 +3623,11 @@ function SCB_CreatePresetUI(frame)
     SCB.presetMenu = menu
 
     local groupWidth, groupHeight = 92, 158
-    local g, groupFrame, groupTitle, i, localIndex, row, classButton, roleButton
+    local g, groupFrame, groupTitle, groupDivider, i, localIndex, row, classButton, roleButton
     for g = 1, 8 do
-        groupTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        groupTitle:SetText(string.format(SCB_L("GROUP_NUMBER"), g))
-        SCB_SetFontColor(groupTitle, "subheader")
-        SCB.presetGroupTitles[g] = groupTitle
-
         groupFrame = CreateFrame("Frame", nil, panel)
         groupFrame:SetWidth(groupWidth)
-        groupFrame:SetHeight(groupHeight)
+        groupFrame:SetHeight(groupHeight + 18)
         groupFrame:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -3643,7 +3641,18 @@ function SCB_CreatePresetUI(frame)
         groupFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.presetGroupFrames[g] = groupFrame
 
-        local resummonButton = SCB_CreateArtButton(panel, nil, 16, SCB.assetRoot .. "lucide_rotate_ccw.tga")
+        groupTitle = groupFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        groupTitle:SetText(string.format(SCB_L("GROUP_NUMBER"), g))
+        SCB_SetFontColor(groupTitle, "subheader")
+        SCB.presetGroupTitles[g] = groupTitle
+
+        groupDivider = groupFrame:CreateTexture(nil, "ARTWORK")
+        groupDivider:SetHeight(1)
+        groupDivider:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 0, -18)
+        groupDivider:SetPoint("TOPRIGHT", groupFrame, "TOPRIGHT", 0, -18)
+        groupDivider:SetTexture(0.45, 0.45, 0.45, 0.9)
+
+        local resummonButton = SCB_CreateArtButton(groupFrame, nil, 16, SCB.assetRoot .. "lucide_rotate_ccw.tga")
         resummonButton.scbGroupIndex = g
         resummonButton.scbTooltip = string.format(SCB_L("TIP_RESUMMON_GROUP"), g)
         resummonButton:SetScript("OnClick", SCB_MaintenanceResummonGroupOnClick)
@@ -3750,11 +3759,17 @@ function SCB_CreatePresetUI(frame)
     SCB.presetPlayerPool = playerPool
 
     local playerPoolLabel = playerPool:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 8, -4)
+    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 6, -5)
     playerPoolLabel:SetText(SCB_L("UNASSIGNED_PLAYERS"))
     playerPoolLabel:SetTextColor(1, 0.2, 0.2, 1)
     playerPoolLabel:Hide()
     SCB.presetPlayerPoolLabel = playerPoolLabel
+
+    local playerPoolDivider = playerPool:CreateTexture(nil, "ARTWORK")
+    playerPoolDivider:SetHeight(1)
+    playerPoolDivider:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 0, -18)
+    playerPoolDivider:SetPoint("TOPRIGHT", playerPool, "TOPRIGHT", 0, -18)
+    playerPoolDivider:SetTexture(0.45, 0.45, 0.45, 0.9)
 
     local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 42, 24, SCB_L("PRESET_SUMMON"))
     summon:ClearAllPoints()
