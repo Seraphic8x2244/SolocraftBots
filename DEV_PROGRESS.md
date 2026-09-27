@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.8.111-dev`
-- Current implementation head: `ef47c5d0fac9dafd722e33b27c407ce78d43d8a4`
-- Current handoff/status head before this final handoff commit: `1cb8e1201ce093bbb2f885874ea22af9790c740a`
+- TOC version: `0.8.112-dev`
+- Current implementation head: `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`
+- Current handoff/status head before this final handoff commit: `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: implement a **targeted Preset Manager UI-only build first** (`0.8.112-dev` if no intervening addon revision). Replace the current loose unassigned-player pool with a full-width dynamic `Unassigned Players` box between the role counter and group boxes; red subtitle; hidden with zero space when empty; reuse the existing draggable/class-coloured player controls; dynamically wrap names to the live content width and grow/shrink height accordingly; group boxes move down/up with it. Also vertically align each Resummon Group icon to the visual centre of its `Group N` subheader. Do not change assignment semantics, roster logic, Request, Auto Loot, or other backend behavior in this build. After this UI slice is runtime-confirmed, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
+- Immediate goal / exact next step: **runtime-test the targeted Preset Manager UI-only `0.8.112-dev` build** at implementation head `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`. Confirm the red full-width `Unassigned Players` box appears between the role counter and group boxes only when needed, dynamically wraps/resizes and moves the group grid during assignment/unassignment, preserves the existing draggable/class-coloured player controls, and keeps each Resummon Group icon vertically centred with its `Group N` subheader at both default and adjusted Preset Groups icon sizes. Do not begin Auto Loot work until this UI slice is runtime-confirmed. After PASS, implement the already-planned Auto Loot authority/state trigger fix, then resume the deferred **All-row/server target-sensitivity audit**.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -92,19 +92,17 @@
 - Request communications are protocol 8. Protocol 7 is intentionally incompatible because it still contained Request-specific loot negotiation/delegation.
 
 
-### Targeted Preset Manager UI slice — next build
-- This UI slice is intentionally ahead of the Auto Loot trigger work and All-row/server audit.
-- Replace the current loose `Players` pool with a full-width bordered box using the same visual grammar as the role-counter section.
-- Subtitle text: `Unassigned Players`; subtitle colour: red.
-- Position: role counter -> Unassigned Players box -> Group 1/2/etc.
-- Hide the entire box and consume zero vertical space when every present player is assigned.
-- Reuse the existing draggable/class-coloured unassigned-player controls and assignment path; do not duplicate or alter assignment semantics.
-- Box width follows the live preset content width; calculate names-per-row from available width, then calculate rows/height dynamically so wider 20/40-player layouts can fit more names per line.
-- Assignment/unassignment refresh must immediately resize the box and move the group grid.
-- Vertically align the Resummon Group icon with the visual centre of the corresponding `Group N` subheader, including when Preset Groups icon size is changed.
-- Scope boundary: presentation/layout only; no Request, Auto Loot, roster, spawn, or protocol changes.
+### Targeted Preset Manager UI slice — `0.8.112-dev` implemented; runtime pending
+- Implementation head: `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`.
+- The loose `Players` pool is replaced by a full-width bordered `Unassigned Players` box using the role-counter visual grammar; subtitle is red.
+- Position is role counter -> Unassigned Players box -> Group 1/2/etc.; the box hides completely and contributes zero vertical space when empty.
+- Existing draggable/class-coloured player buttons and assignment semantics are reused unchanged.
+- Layout now calculates names-per-row from the live content width, wraps visible unassigned names, grows/shrinks the box, and moves the group grid immediately on refresh.
+- Resummon Group button centres are derived from the live `Group N` title height; changing Preset Groups Lucide render size keeps the glyph centred in the same button frame.
+- Scope stayed presentation/layout only: implementation commit changes only `Presets.lua`, `Locale/enGB.lua`, and the TOC version; no Request, Auto Loot, roster, spawn, or protocol code changed.
+- Runtime validation is still required before Auto Loot work begins.
 
-### Auto Loot authority/state trigger — next build
+### Auto Loot authority/state trigger — next build after the 0.8.112 UI runtime pass
 - Fix is addon-level, not part of Request protocol 8.
 - The actual current party/raid leader's SCB setting remains authoritative; non-leaders must never apply their own configured method to the group.
 - Preserve existing Auto Loot triggers: changing the option while grouped and local bot-add/adoption paths.
@@ -314,7 +312,28 @@ Exact `0.8.92-dev` baseline:
 4. **Runtime status.**
    - No further local UI test is required for the 0.8.108-0.8.111 drawer/header/readability slice.
    - Request protocol 8 runtime validation is complete at `0.8.111-dev` / `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`; see the dedicated result section above.
-   - Next runtime test belongs to the next Auto Loot trigger build: verify party→raid conversion applies the actual leader's configured method, and verify a subsequent leadership change causes the new leader to apply its own method.
+   - The next runtime test is now the targeted `0.8.112-dev` Preset Manager UI slice; Auto Loot validation remains queued behind that PASS.
+
+## 0.8.112 implementation / static validation / next runtime test
+1. **Implementation.**
+   - Verified starting `dev` exactly matched handoff `ce2c525741a9a91af85c845b79bfb144483f0dd4` / `0.8.111-dev`.
+   - Implementation commit is `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`; TOC is `0.8.112-dev`.
+   - Unassigned-player controls are still created through `SCB_CreatePresetPlayerNameButton` and still use `SCB_SetPlayerNameIdentity(..., true)`; only their presentation/layout ownership moved into `SCB_LayoutPresetGroups`.
+   - The new box width follows the live preset content width, visible button columns derive from that width, height derives from row count, and the group grid anchors below the box only while it is shown.
+   - Resummon Group stays right-justified; its button centre now follows the live `Group N` title centre instead of an independent bottom offset.
+
+2. **Checks performed.**
+   - Reviewed the complete implementation diff: only `Presets.lua`, `Locale/enGB.lua`, and `SoloCraftBots.toc` changed.
+   - Confirmed no assignment-map, Request, Auto Loot, roster, spawn, maintenance backend, or protocol logic changed.
+   - Confirmed the old pool-below-groups anchor and old Resummon `BOTTOMRIGHT` vertical offset are absent.
+   - Canonical Lua 5.0.3 compiler check is **not run**: the executable environment has GCC but neither repository nor vendored checker files are materialized there, and its container has no network access to fetch them. Do not claim a compiler pass.
+
+3. **Next runtime test — `0.8.112-dev` / `267989036e23f3f4f4d10a3103bfd3d3f8d58c7a`.**
+   - With every present player assigned, no Unassigned Players box or extra vertical gap.
+   - With one or more unassigned players, full-width bordered red-subtitle box appears between counter and groups; class colours and drag assignment remain correct.
+   - Assignment/unassignment immediately shrinks/grows/hides/shows the box and moves the group grid.
+   - On a wider 20/40-player preset, names wrap into more columns than on the narrow layout.
+   - Resummon Group icon is vertically centred with `Group N` at the default Preset Groups icon size and after changing that icon size.
 
 
 ## Deferred / later
