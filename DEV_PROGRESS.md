@@ -6,9 +6,9 @@
 - Branch: `dev`
 - TOC version: `0.9.0-dev`
 - Current implementation head: `9161d333e3c42112d812abbc464e41d7b25e768c`
-- Current handoff/status head before this final handoff commit: `9161d333e3c42112d812abbc464e41d7b25e768c`
+- Current handoff/status head before this final handoff commit: `fb09b470a6d359c8e99964004bac2ef610732487`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.8.78` at `87e61360ec36c2d9543b2e1bc8606b948b10d6bd`; tested dev source `0200cdb5ef59fc0cb4ef81016237d90ba16e22b9`
+- Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: user approved freezing the fully tested `0.8.117-dev` runtime and promoting it as `0.9.0`. `0.9.0-dev` release-candidate head `9161d333e3c42112d812abbc464e41d7b25e768c` changes only TOC version metadata; runtime code is identical to the tested `0.8.117-dev` implementation. Promote the intended stable snapshot to `main` as `0.9.0`, excluding `DEV_PROGRESS.md` and development-only workflow material, with no feature/refactor changes.
+- Immediate goal / exact next step: `0.9.0` promotion is complete on `main` at `4c1a75f052927be00aac91327a92dac902e2b301`. No release follow-up is required. Keep future feature work on `dev`; the next documented feature direction is the neutral read-only activity/status surface, followed later by the visualiser, but do not start it until explicitly selected.
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
@@ -426,13 +426,16 @@ Exact `0.8.92-dev` baseline:
 - Add neutral read-only activity/status surface, then visualiser as a presentation-only consumer.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
 
-## 0.9.0 release preparation
+## 0.9.0 release
 - User explicitly approved the 0.9.0 milestone and promotion to `main`.
 - Tested runtime source: `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`; Object and preceding active slices are closed with the documented runtime PASS results.
 - Release-candidate source: `0.9.0-dev` implementation `9161d333e3c42112d812abbc464e41d7b25e768c`; delta from the tested source is TOC version metadata only.
-- `main` and `dev` histories are intentionally diverged. Promotion must construct the stable tree from the release-candidate snapshot rather than merge old `main` runtime files over it.
-- Stable release hygiene: title `SoloCraft Bots`, version `0.9.0`; exclude `DEV_PROGRESS.md` and development-only workflow material; no dev-only loader/debug entries are present.
+- Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`.
+- Promotion used a snapshot tree derived from the release candidate with old `main` as the commit parent; diverged branch histories were not merged over the tested runtime.
+- Stable TOC is `SoloCraft Bots` / `0.9.0`. `DEV_PROGRESS.md` and `dev_rulebook.md` are absent from the stable tree; no dev-only loader/debug entries exist.
+- Post-promotion tree audit: compared with the dev release state, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differ. Compared with the tested `0.8.117-dev` source, those same three paths are the only differences; all runtime code and artwork blobs are identical.
+- Exact stable metadata/tree was not separately runtime-tested after promotion; runtime behavior inherits the user-tested source unchanged. This distinction is intentional and recorded rather than treating release as a runtime test.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the executable environment: the checker is not mounted locally and direct container network access cannot fetch it. Do not claim a compiler pass.
 
 ## Release note
-0.9.0 promotion is explicitly authorized. After promotion, record the exact stable `main` commit here and keep future feature work on `dev`.
+`0.9.0` is the current stable release on `main`. Future addon work remains on `dev`; the next addon-affecting revision should advance the development patch version from `0.9.0-dev`.
