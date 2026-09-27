@@ -4,7 +4,7 @@
 
 local SCB = SoloCraftBots
 local COMM_PREFIX = "SCBPRESET"
-local COMM_PROTOCOL = 2
+local COMM_PROTOCOL = 8
 local COMM_CHUNK = 190
 local COMM_TIMEOUT = 30
 local COMM_HANDSHAKE_RETRY = 2
@@ -20,6 +20,49 @@ end
 
 local function SelfName()
     return (UnitName and UnitName("player")) or ""
+end
+
+local function GroupHasName(name)
+    local members, i
+    if not name or name == "" then return false end
+    members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
+    for i = 1, table.getn(members) do
+        if members[i] and members[i].name == name then return true end
+    end
+    return false
+end
+
+local function CurrentGroupLeaderName()
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local i, name, rank, leaderIndex
+
+    if raidCount > 0 and GetRaidRosterInfo then
+        for i = 1, raidCount do
+            name, rank = GetRaidRosterInfo(i)
+            if name and rank == 2 then return name end
+        end
+        return nil
+    end
+
+    if partyCount > 0 then
+        if IsPartyLeader and IsPartyLeader() then return SelfName() end
+        if GetPartyLeaderIndex and UnitName then
+            leaderIndex = GetPartyLeaderIndex()
+            if leaderIndex and leaderIndex > 0 then
+                name = UnitName("party" .. leaderIndex)
+                if name then return name end
+            end
+        end
+        if UnitIsPartyLeader and UnitName then
+            for i = 1, partyCount do
+                if UnitIsPartyLeader("party" .. i) then
+                    return UnitName("party" .. i)
+                end
+            end
+        end
+    end
+    return nil
 end
 
 local function Escape(value)
@@ -220,7 +263,7 @@ local function BeginHandshake(out)
 end
 
 local function BeginOutgoing(mode, target, snapshot)
-    local out, targetRank, selfRank
+    local out
     if not SendAddonMessage then
         SCB_Print(SCB_L("COMM_UNAVAILABLE"))
         return
@@ -242,30 +285,10 @@ local function BeginOutgoing(mode, target, snapshot)
     if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     SCB_CommsSetButtonPending(mode, true)
 
-    if mode == "R" and snapshot.size > 5 then
-        if not GetNumRaidMembers or GetNumRaidMembers() == 0 then
-            SCB_Print(SCB_L("COMM_REQUEST_NEEDS_RAID"))
-            ClearOutgoing(mode)
-            return
-        end
-        targetRank = SCB_CommsGetRaidRank(target)
-        if targetRank == nil then
-            SCB_Print(string.format(SCB_L("COMM_TARGET_LEFT_RAID"), target))
-            ClearOutgoing(mode)
-            return
-        end
-        if targetRank == 0 then
-            selfRank = SCB_CommsGetRaidRank(SelfName())
-            if selfRank == 2 and PromoteToAssistant then
-                out.phase = "promoting"
-                PromoteToAssistant(target)
-                return
-            end
-            SCB_Print(string.format(SCB_L("COMM_TARGET_NEEDS_ASSISTANT"), target))
-            ClearOutgoing(mode)
-            return
-        end
-    end
+    -- A preset request does not require the requester to pre-build a raid.
+    -- After acceptance, the receiver validates its own local capacity and the
+    -- current group leader owns any required party->raid conversion. Leadership
+    -- itself never moves as part of Request execution.
     BeginHandshake(out)
 end
 
@@ -513,19 +536,21 @@ end
 local function SaveIncomingSnapshot(incoming, name)
     local snapshot = incoming.snapshot
     local group = FindOrCreateSnapshotGroup(snapshot)
-    local playerGroups, playerRoles = {}, {}
+    local playerGroups, playerSlots, playerRoles = {}, {}, {}
     local i, player, key, preset
     if not group then return false end
     for i = 1, table.getn(snapshot.players or {}) do
         player = snapshot.players[i]
         key = player.name == SelfName() and "$self" or player.name
         playerGroups[key] = player.group or 1
+        if player.slotIndex then playerSlots[key] = player.slotIndex end
         playerRoles[key] = { role = player.role, extra = player.extra }
     end
     preset = {
         name = name,
         slots = SCB_CopySlots(snapshot.slots),
         playerGroups = playerGroups,
+        playerSlots = playerSlots,
         playerRoles = playerRoles,
     }
     table.insert(group.presets, preset)
@@ -583,9 +608,96 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
     timeout = 0, whileDead = 1, hideOnEscape = 1, exclusive = 1,
 }
 
+local function SCB_CommsStartAcceptedRequest(incoming)
+    local ok, errorText, raidCount, partyCount
+    if not incoming or incoming.done or incoming.mode ~= "R" then return false end
+
+    if SCB_ValidateRequestedPresetLocalCapacity then
+        ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
+        if not ok then
+            if errorText then SCB_Print(errorText) end
+            FinishIncoming(incoming, "ERROR")
+            return false
+        end
+    end
+
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+
+    if (incoming.snapshot.size or 0) > 5 and raidCount == 0 then
+        if partyCount <= 0 or not ConvertToRaid
+            or not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then
+            return false
+        end
+        incoming.controlLeader = nil
+        incoming.phase = "converting"
+        incoming.deadline = Now() + COMM_TIMEOUT
+        ConvertToRaid()
+        if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+        return true
+    end
+
+    incoming.controlLeader = nil
+    ok, errorText = SCB_StartPresetRebuild(incoming.snapshot, false)
+    if not ok then
+        if errorText then SCB_Print(errorText) end
+        FinishIncoming(incoming, "ERROR")
+        return false
+    end
+    FinishIncoming(incoming, "SUMMONED")
+    return true
+end
+
+local function SCB_CommsRequestLeaderAction(incoming, action)
+    local leaderName
+    if not incoming or incoming.done then return false end
+    leaderName = CurrentGroupLeaderName()
+    if not leaderName or leaderName == SelfName() then return false end
+
+    incoming.controlLeader = leaderName
+    if action == "CONVERT" then
+        incoming.phase = "await-convert"
+    else
+        return false
+    end
+    incoming.deadline = Now() + COMM_TIMEOUT
+    if not SendControl("L", incoming.tx, leaderName, action) then
+        incoming.controlLeader = nil
+        return false
+    end
+
+    if action == "CONVERT" then
+        SCB_Print(SCB_L("COMM_REQUEST_WAIT_CONVERT"))
+    end
+    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+    return true
+end
+
+local function SCB_CommsContinueAcceptedRequest(incoming)
+    local raidCount, partyCount
+    if not incoming or incoming.done or incoming.mode ~= "R" then return false end
+
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+
+    if (incoming.snapshot.size or 0) > 5 and raidCount == 0 then
+        if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+            return SCB_CommsStartAcceptedRequest(incoming)
+        end
+        if not SCB_CommsRequestLeaderAction(incoming, "CONVERT") then
+            SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
+            FinishIncoming(incoming, "ERROR")
+            return false
+        end
+        return true
+    end
+
+    return SCB_CommsStartAcceptedRequest(incoming)
+end
+
 function SCB_CommsPromptAccept()
     local incoming = SCB.commPromptTransaction
-    local ok, errorText, rank
+    local ok, errorText
     if not incoming or incoming.done then return end
     if incoming.mode == "S" then
         incoming.defaultSaveName = incoming.sender .. "-" .. (incoming.snapshot.presetName or "Preset")
@@ -596,26 +708,18 @@ function SCB_CommsPromptAccept()
     end
 
     ok, errorText = SCB_ValidatePresetExecutionSnapshot(incoming.snapshot, true)
+    if ok and SCB_ValidateRequestedPresetLocalCapacity then
+        ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
+    end
     if not ok then
         SCB_Print(errorText)
         FinishIncoming(incoming, "ERROR")
         return
     end
-    if incoming.snapshot.size > 5 then
-        rank = SCB_CommsGetRaidRank(SelfName())
-        if not rank or rank < 1 then
-            SCB_Print(SCB_L("COMM_SELF_NEEDS_ASSISTANT"))
-            FinishIncoming(incoming, "ERROR")
-            return
-        end
-    end
-    ok, errorText = SCB_StartPresetSummonSnapshot(incoming.snapshot)
-    if not ok then
-        if errorText then SCB_Print(errorText) end
-        FinishIncoming(incoming, "ERROR")
-        return
-    end
-    FinishIncoming(incoming, "SUMMONED")
+    incoming.requestAccepted = true
+    incoming.deadline = Now() + COMM_TIMEOUT
+    if SCB.commPromptFrame then SCB.commPromptFrame:Hide() end
+    SCB_CommsContinueAcceptedRequest(incoming)
 end
 
 function SCB_CommsPromptRefuse()
@@ -736,6 +840,39 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         return
     end
 
+    if kind == "L" and table.getn(parts) == 4 then
+        if parts[4] == "CONVERT" then
+            local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+            local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            if GroupHasName(sender) and raidCount == 0 and partyCount > 0
+                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and ConvertToRaid then
+                ConvertToRaid()
+                SendControl("L", tx, sender, "CONVERTING")
+            else
+                SendControl("L", tx, sender, "ERROR")
+            end
+            return
+        end
+
+        if parts[4] == "REQUEST" then
+            -- Leadership-transfer Request controls are obsolete; protocol 8
+            -- keeps leadership fixed for the entire preset Request lifecycle.
+            SendControl("L", tx, sender, "ERROR")
+            return
+        end
+
+        local incoming = SCB.commPromptTransaction
+        if incoming and not incoming.done and incoming.tx == tx and incoming.controlLeader == sender
+            and incoming.mode == "R" and incoming.requestAccepted then
+            incoming.deadline = Now() + COMM_TIMEOUT
+            if parts[4] == "ERROR" then
+                SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
+                FinishIncoming(incoming, "ERROR")
+            end
+            return
+        end
+    end
+
     if kind == "R" and table.getn(parts) == 4 then
         for mode, out in pairs(SCB.commOutgoing) do
             if out and out.tx == tx and out.target == sender then
@@ -774,8 +911,6 @@ commFrame:SetScript("OnUpdate", function()
         if out then
             if now >= out.deadline then
                 ClearOutgoing(mode, "TIMEOUT")
-            elseif out.phase == "promoting" then
-                if (SCB_CommsGetRaidRank(out.target) or 0) >= 1 then BeginHandshake(out) end
             elseif out.phase == "handshake" then
                 out.handshakeElapsed = (out.handshakeElapsed or 0) + elapsed
                 if out.handshakeElapsed >= COMM_HANDSHAKE_RETRY then
@@ -804,7 +939,17 @@ commFrame:SetScript("OnUpdate", function()
     end
 
     incoming = SCB.commPromptTransaction
-    if incoming and not incoming.done and now >= incoming.deadline then FinishIncoming(incoming, "TIMEOUT") end
+    if incoming and not incoming.done then
+        if now >= incoming.deadline then
+            FinishIncoming(incoming, "TIMEOUT")
+        elseif incoming.mode == "R" and incoming.requestAccepted then
+            if (incoming.phase == "await-convert" or incoming.phase == "converting")
+                and GetNumRaidMembers and GetNumRaidMembers() > 0 then
+                incoming.controlLeader = nil
+                SCB_CommsContinueAcceptedRequest(incoming)
+            end
+        end
+    end
 
     if not SCB_CommsHasTimedWork() then commFrame:Hide() end
 end)
@@ -845,6 +990,7 @@ SCB.commandTargetSemantics = {
     friendlyBot = "friendly-bot-recipient",
     livingEnemy = "living-enemy-context",
     conditional = "conditional-friendly-player-or-bot",
+    humanPlayerBlocked = "human-player-blocked",
 }
 
 SCB.commands = {
@@ -971,7 +1117,7 @@ SCB.commands = {
         label = SCB_L("COMMAND_OBJECT"),
         icon = "object.tga",
         highlightIcon = "object_h.tga",
-        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemantic = SCB.commandTargetSemantics.humanPlayerBlocked,
         routes = { all = { "usegobject" } },
     },
     aoe = {
@@ -1010,6 +1156,12 @@ function SCB_IsFriendlyBotTarget()
         return false
     end
     return true
+end
+
+local function SCB_IsHumanPlayerTarget()
+    if not UnitExists or not UnitExists("target") then return false end
+    if not UnitIsPlayer or UnitIsPlayer("target") ~= 1 then return false end
+    return not SCB_IsFriendlyBotTarget()
 end
 
 local function SCB_IsFriendlyPlayerOrBotTarget()
@@ -1114,15 +1266,24 @@ local function SCB_IsCommandTargetContextValid(commandKey, scope)
         return SCB_IsLivingEnemyTarget()
     elseif semantic == SCB.commandTargetSemantics.conditional then
         return not SCB_IsFriendlyPlayerOrBotTarget()
+    elseif semantic == SCB.commandTargetSemantics.humanPlayerBlocked then
+        return not SCB_IsHumanPlayerTarget()
     end
     return semantic == SCB.commandTargetSemantics.agnostic
 end
 
 function SCB_IsCommandRequestAvailable(commandKey, scope)
     local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
-    local group, roster
+    local group, roster, context
     if not commandInfo or not route or not SCB_IsCommandTargetContextValid(commandKey, scope) then
         return false
+    end
+    if commandKey == "object" then
+        roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+        context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+        if not roster or (roster.botCount or 0) == 0 or not context or not context.inInstance then
+            return false
+        end
     end
     if scope == "group" then
         group, roster = SCB_GetTargetLiveGroup()
@@ -1526,9 +1687,11 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
 end
 
 function SCB_RequestCommand(commandKey, scope, modifiers)
-    local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
+    local commandInfo, route
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return false end
+    commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
     local moveInfo, moveRoute
-    local forceMove = modifiers and modifiers.forceMove == true
+    local forceMove = modifiers and modifiers.forceMove and true or false
     local sent = true
     local i
 
@@ -1572,6 +1735,15 @@ end
 local function SCB_SetCommandButtonAvailability(button)
     local available
     if not button or not button.scbCommandKey or not button.scbRecipientKey then return end
+
+    if button.scbCommandKey == "object" then
+        if SCB_IsFriendlyBotTarget() then
+            button.scbTooltip = SCB_L("COMMAND_OBJECT")
+        else
+            button.scbTooltip = SCB_L("COMMAND_OBJECT") .. " " .. SCB_L("RECIPIENT_ALL")
+        end
+        if SCB_RefreshVisibleTooltip then SCB_RefreshVisibleTooltip(button) end
+    end
 
     available = SCB_IsCommandRequestAvailable(button.scbCommandKey, button.scbRecipientKey)
     button:SetAlpha(available and 1 or 0.5)
@@ -1651,11 +1823,11 @@ function SCB_RefreshRaidmarkModeButton()
         return
     end
     if SCB.raidMarkMode == "cc" then
-        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "cc_h.tga", nil)
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "lucide_wand_sparkles.tga", nil)
         SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_CC")
     else
         SCB.raidMarkMode = "focus"
-        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "focus_h.tga", nil)
+        SCB_SetArtButtonTexture(SCB.assignmentModeButton, SCB.assetRoot .. "lucide_crosshair.tga", nil)
         SCB.assignmentModeButton.scbTooltip = SCB_L("TIP_ASSIGNMENT_FOCUS")
     end
     SCB_RefreshVisibleTooltip(SCB.assignmentModeButton)
@@ -1674,6 +1846,7 @@ function SCB_RaidMarkOnClick()
     if not this.scbMark or not SCB.raidMarkMode then
         return
     end
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     SCB_SendCommand(SCB.raidMarkMode .. "mark " .. this.scbMark)
 end
 
@@ -1839,6 +2012,7 @@ local function SCB_FinishKickQueue()
     SCB.kickQueueState = nil
     SCB_kickQueueFrame:SetScript("OnUpdate", nil)
     SCB_kickQueueFrame:Hide()
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 
     if state and not state.silent and not state.safetyApplied and (state.issued or 0) > 0 then
         if state.mode == "dead" then
@@ -1901,6 +2075,7 @@ local function SCB_StartKickQueue(names, mode, safetyApplied, silent)
         safetyApplied = safetyApplied and true or false,
         silent = silent and true or false,
     }
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 
     -- Every multi-bot removal uses the same proven client/server-safe pacing.
     SCB_RunKickQueueBatch()
@@ -1918,7 +2093,9 @@ end
 -- options.preserveName: explicit name to preserve
 -- options.silent: suppress normal kick-count chat (used by maintenance)
 function SCB_KickBots(mode, options)
-    local members = SCB_CollectGroupMembers()
+    local members
+    if SCB_CanOperateBots and not SCB_CanOperateBots(not (options and options.silent)) then return false end
+    members = SCB_CollectGroupMembers()
     local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
     local i, member, survivorName, safetyApplied
@@ -2142,16 +2319,16 @@ end
 -- validated command is sent. Preset summons intentionally do not print one line
 -- per bot; their single preset summary below is the only normal chat feedback.
 function SCB_SpawnOnClick()
-    local extra, command, finalExtra
+    local extra, command, finalExtra, ok
     if not this.scbClass or not this.scbRole then return end
 
     extra = this.scbExtra
     if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
-    command = SCB_BuildSpawnCommand(this.scbClass, this.scbRole, extra)
-    finalExtra = SCB_GetFinalSpawnExtra(command)
 
-    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
-    if SCB_SendSpawnCommand(command) then
+    if not SCB_RequestManualAdd then return end
+    ok, command = SCB_RequestManualAdd(this.scbClass, this.scbRole, extra)
+    if ok then
+        finalExtra = SCB_GetFinalSpawnExtra(command)
         SCB_PrintAddedRequest(this.scbClass, this.scbRole, finalExtra)
     end
 end
@@ -2161,6 +2338,8 @@ end
 function SCB_PresetSummonOnClick()
     local snapshot, errorText, ok, botCount, botWord
     local forced = IsControlKeyDown and IsControlKeyDown() and true or false
+
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
     local legacyActive = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
 
@@ -2245,15 +2424,22 @@ end
 
 function SCB_HandleSpawnServerRejection(text)
     local hadOperation, hiddenKind, auraName, warning
-    if text ~= "Cannot add bots right now." then return end
+    local flying = text == "Cannot add bots while flying."
+    if text ~= "Cannot add bots right now." and not flying then return end
 
     hadOperation = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
     if hadOperation and SCB_AbortBotSpawnOperations then
         SCB_AbortBotSpawnOperations()
     end
 
-    hiddenKind, auraName = SCB_GetHiddenAuraKind()
-    if hiddenKind == "prowl" then
+    if flying then
+        warning = SCB_L("SUMMON_BLOCKED_FLYING")
+    else
+        hiddenKind, auraName = SCB_GetHiddenAuraKind()
+    end
+    if flying then
+        -- Exact taxi rejection already selected the warning above.
+    elseif hiddenKind == "prowl" then
         warning = SCB_L("SUMMON_BLOCKED_PROWL", "Cannot summon bots while prowling.")
     elseif hiddenKind == "shadowmeld" then
         warning = SCB_L("SUMMON_BLOCKED_SHADOWMELD", "Cannot summon bots while Shadowmelded.")

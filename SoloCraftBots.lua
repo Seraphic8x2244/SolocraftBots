@@ -19,7 +19,41 @@ SoloCraftBotsCharDB.helpers = SoloCraftBotsCharDB.helpers or {}
 SCB.version = (GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")) or SCB_L("UNKNOWN")
 SCB.prefix = SCB_L("CHAT_PREFIX")
 SCB.assetRoot = "Interface\\AddOns\\SoloCraftBots\\artwork\\"
+
+SCB.UI_COLOR_KEYS = {
+    header = "COLOR_SCB",
+    subheader = "COLOR_UI_GOLD",
+    text = "COLOR_UI_SILVER",
+    content = "COLOR_UI_WHITE",
+}
+
+function SCB_UIHexToRGB(hex, fallback)
+    local value = type(hex) == "string" and string.upper(hex) or fallback
+    if not value or string.len(value) ~= 6 or string.find(value, "[^0-9A-F]") then
+        value = fallback or "FFFFFF"
+    end
+    return (tonumber(string.sub(value, 1, 2), 16) or 255) / 255,
+        (tonumber(string.sub(value, 3, 4), 16) or 255) / 255,
+        (tonumber(string.sub(value, 5, 6), 16) or 255) / 255
+end
+
+function SCB_GetUIColor(role)
+    local key = SCB.UI_COLOR_KEYS[role] or SCB.UI_COLOR_KEYS.text
+    local fallback = role == "header" and "88CCFF"
+        or role == "subheader" and "FFD100"
+        or role == "content" and "FFFFFF"
+        or "C0C0C0"
+    return SCB_UIHexToRGB(SCB_L(key, fallback), fallback)
+end
+
+function SCB_SetFontColor(fontString, role)
+    local r, g, b
+    if not fontString then return end
+    r, g, b = SCB_GetUIColor(role)
+    fontString:SetTextColor(r, g, b, 1)
+end
 SCB.commandButtons = {}
+SCB.manualAddButtons = {}
 SCB.presetSlotButtons = {}
 SCB.presetMenuButtons = {}
 SCB.presetEditorSlots = {}
@@ -114,11 +148,30 @@ function SCB_Print(text)
     end
 end
 
+function SCB_ShowBotOperationError(key)
+    local text = SCB_L(key)
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage(text, 1.0, 0.1, 0.1, 1.0)
+    else
+        SCB_Print(text)
+    end
+    if PlaySound then PlaySound("igQuestFailed") end
+end
+
+function SCB_CanOperateBots(showError)
+    if UnitOnTaxi and UnitOnTaxi("player") then
+        if showError then SCB_ShowBotOperationError("ERR_TAXI_OPERATION") end
+        return false
+    end
+    return true
+end
+
 function SCB_SendPartyBotCommand(command, options)
     local channel
     if not command or command == "" or not SendChatMessage then return false end
 
     options = options or {}
+    if SCB_CanOperateBots and not SCB_CanOperateBots(false) then return false end
     channel = options.channel or "GUILD"
     if options.registerSpawnIntent and SCB_RegisterSpawnIntent then
         SCB_RegisterSpawnIntent()
@@ -203,13 +256,55 @@ function SCB_CreateTextButton(parent, name, width, height, text, allowRightClick
     local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("CENTER", button, "CENTER", 0, 0)
     label:SetText(text)
-    label:SetTextColor(1, 1, 1, 1)
+    SCB_SetFontColor(label, "content")
     button.label = label
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints(button)
     highlight:SetTexture(1, 1, 1, 0.12)
     return button
+end
+
+SCB.LUCIDE_ICON_SIZE = 14
+
+function SCB_IsLucideTexturePath(texturePath)
+    return type(texturePath) == "string" and string.find(texturePath, "lucide_", 1, true) ~= nil
+end
+
+function SCB_SetTextureRenderSize(texture, size, parent)
+    if not texture then return end
+    size = tonumber(size) or SCB.LUCIDE_ICON_SIZE
+    texture:ClearAllPoints()
+    texture:SetWidth(size)
+    texture:SetHeight(size)
+    texture:SetPoint("CENTER", parent or texture:GetParent(), "CENTER", 0, 0)
+end
+
+function SCB_SetArtButtonIconSize(button, size)
+    if not button then return end
+    size = tonumber(size) or SCB.LUCIDE_ICON_SIZE
+    button.scbIconSize = size
+    if button.icon then SCB_SetTextureRenderSize(button.icon, size, button) end
+    if button.highlight then SCB_SetTextureRenderSize(button.highlight, size, button) end
+end
+
+local function SCB_RefreshArtButtonTextureGeometry(button, texturePath)
+    if not button then return end
+    if SCB_IsLucideTexturePath(texturePath) then
+        button.scbUsesLucide = true
+        SCB_SetArtButtonIconSize(button, button.scbIconSize or SCB.LUCIDE_ICON_SIZE)
+    else
+        button.scbUsesLucide = nil
+        button.scbIconSize = nil
+        if button.icon then
+            button.icon:ClearAllPoints()
+            button.icon:SetAllPoints(button)
+        end
+        if button.highlight then
+            button.highlight:ClearAllPoints()
+            button.highlight:SetAllPoints(button)
+        end
+    end
 end
 
 function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, highlightTexturePath)
@@ -224,12 +319,10 @@ function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, h
     end
 
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints(button)
     icon:SetTexture(texturePath)
     button.icon = icon
 
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetAllPoints(button)
     if highlightTexturePath then
         highlight:SetTexture(highlightTexturePath)
         highlight:SetBlendMode("BLEND")
@@ -242,6 +335,7 @@ function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, h
     button.highlight = highlight
     button.scbNormalTexture = texturePath
     button.scbHighlightTexture = highlightTexturePath
+    SCB_RefreshArtButtonTextureGeometry(button, texturePath)
 
     return button
 end
@@ -266,6 +360,7 @@ function SCB_SetArtButtonTexture(button, texturePath, highlightTexturePath)
             button.highlight:SetAlpha(0.22)
         end
     end
+    SCB_RefreshArtButtonTextureGeometry(button, texturePath)
 end
 
 function SCB_SetArtButtonAvailable(button, available)
@@ -281,6 +376,29 @@ function SCB_SetArtButtonAvailable(button, available)
     else
         button.icon:SetVertexColor(0.45, 0.45, 0.45, 1)
         button:SetAlpha(1)
+    end
+end
+
+function SCB_RefreshManualAddButtons()
+    local available = true
+    local i, button
+
+    if SCB_IsManualAddAvailable then
+        available = SCB_IsManualAddAvailable()
+    elseif SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() then
+        available = false
+    end
+
+    for i = 1, table.getn(SCB.manualAddButtons or {}) do
+        button = SCB.manualAddButtons[i]
+        if button then
+            SCB_SetArtButtonAvailable(button, available)
+            if available then
+                button:Enable()
+            else
+                button:Disable()
+            end
+        end
     end
 end
 
@@ -309,24 +427,21 @@ function SCB_CreateSectionTitle(parent, text, x, y)
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     title:SetText(text)
-    title:SetTextColor(0.82, 0.82, 0.82, 1)
+    SCB_SetFontColor(title, "subheader")
     return title
 end
 
-local SCB_ARROW_TEXTURE = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up"
+local SCB_ARROW_TEXTURES = {
+    left = SCB.assetRoot .. "lucide_chevron_left.tga",
+    right = SCB.assetRoot .. "lucide_chevron_right.tga",
+    down = SCB.assetRoot .. "lucide_chevron_down.tga",
+    up = SCB.assetRoot .. "lucide_chevron_up.tga",
+}
 
 function SCB_SetArrowDirection(texture, direction)
     if not texture then return end
-    texture:SetTexture(SCB_ARROW_TEXTURE)
-    if direction == "left" then
-        texture:SetTexCoord(0, 1, 0, 1)
-    elseif direction == "right" then
-        texture:SetTexCoord(1, 0, 0, 1)
-    elseif direction == "down" then
-        texture:SetTexCoord(1, 1, 0, 1, 1, 0, 0, 0)
-    else -- up
-        texture:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
-    end
+    texture:SetTexCoord(0, 1, 0, 1)
+    texture:SetTexture(SCB_ARROW_TEXTURES[direction] or SCB_ARROW_TEXTURES.down)
 end
 
 function SCB_CreateArrowButton(parent, size)
@@ -334,9 +449,25 @@ function SCB_CreateArrowButton(parent, size)
     button:SetWidth(size or 18)
     button:SetHeight(size or 18)
     local texture = button:CreateTexture(nil, "ARTWORK")
-    texture:SetAllPoints(button)
+    SCB_SetTextureRenderSize(texture, SCB.LUCIDE_ICON_SIZE, button)
     button.scbArrowTexture = texture
     return button
+end
+
+function SCB_CreateMiniCheckButton(parent, size)
+    local check = CreateFrame("CheckButton", nil, parent)
+    check:SetWidth(size or 20)
+    check:SetHeight(size or 20)
+    check:SetNormalTexture(SCB.assetRoot .. "lucide_square.tga")
+    check:SetCheckedTexture(SCB.assetRoot .. "lucide_square_check_big.tga")
+    if check.GetNormalTexture then SCB_SetTextureRenderSize(check:GetNormalTexture(), SCB.LUCIDE_ICON_SIZE, check) end
+    if check.GetCheckedTexture then SCB_SetTextureRenderSize(check:GetCheckedTexture(), SCB.LUCIDE_ICON_SIZE, check) end
+    local highlight = check:CreateTexture(nil, "HIGHLIGHT")
+    SCB_SetTextureRenderSize(highlight, SCB.LUCIDE_ICON_SIZE, check)
+    highlight:SetTexture(SCB.assetRoot .. "lucide_square_check_big.tga")
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.20)
+    return check
 end
 
 SCB.sections = SCB.sections or {}
@@ -351,6 +482,7 @@ SCB.commandLayoutDefaults = SCB.commandLayoutDefaults or {
     horizontalSpacing = -3,
     verticalSpacing = -1,
     groupVerticalSpacing = 8,
+    iconSize = 12,
 }
 SCB.presetLayoutDefaults = SCB.presetLayoutDefaults or {
     groupWidth = 85,
@@ -362,6 +494,7 @@ SCB.presetLayoutDefaults = SCB.presetLayoutDefaults or {
     borderVertical = 6,
     iconHorizontal = 0,
     iconVertical = 2,
+    iconSize = 10,
 }
 
 function SCB_EnsureOptionsDB()
@@ -389,6 +522,9 @@ function SCB_EnsureOptionsDB()
     if options.hideBotAttackMessages == nil then options.hideBotAttackMessages = false end
     if options.autoPromotePlayers == nil then options.autoPromotePlayers = false end
     if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
+    if options.drawerJustification ~= "left" and options.drawerJustification ~= "right" then
+        options.drawerJustification = "right"
+    end
 
     -- Debug layout values are the raw internal baseline.  Seed command values
     -- from the old spacing settings so existing test profiles keep their exact
@@ -406,6 +542,7 @@ function SCB_EnsureOptionsDB()
         options.commandLayoutDebug.groupVerticalSpacing = options.commandGroupVerticalSpacing
         if options.commandLayoutDebug.groupVerticalSpacing == nil then options.commandLayoutDebug.groupVerticalSpacing = SCB.commandLayoutDefaults.groupVerticalSpacing end
     end
+    if options.commandLayoutDebug.iconSize == nil then options.commandLayoutDebug.iconSize = SCB.commandLayoutDefaults.iconSize end
     options.commandLayoutUser = options.commandLayoutUser or {}
     for key in pairs(SCB.commandLayoutDefaults) do
         if options.commandLayoutUser[key] == nil then options.commandLayoutUser[key] = 0 end
@@ -416,6 +553,29 @@ function SCB_EnsureOptionsDB()
     for key in pairs(SCB.presetLayoutDefaults) do
         if options.presetLayoutDebug[key] == nil then options.presetLayoutDebug[key] = SCB.presetLayoutDefaults[key] end
         if options.presetLayoutUser[key] == nil then options.presetLayoutUser[key] = 0 end
+    end
+
+    -- 0.8.104 changes the shipped Lucide defaults from 14 to 12/10.
+    -- Preserve an explicit user adjustment while migrating untouched 0.8.103
+    -- profiles onto the new defaults.
+    if not options.lucideIconSizeBaselineVersion or options.lucideIconSizeBaselineVersion < 8104 then
+        if options.commandLayoutDebug.iconSize == 14 then
+            if (options.commandLayoutUser.iconSize or 0) == 0 then
+                options.commandLayoutDebug.iconSize = 12
+            else
+                options.commandLayoutDebug.iconSize = 12
+                options.commandLayoutUser.iconSize = (options.commandLayoutUser.iconSize or 0) + 2
+            end
+        end
+        if options.presetLayoutDebug.iconSize == 14 then
+            if (options.presetLayoutUser.iconSize or 0) == 0 then
+                options.presetLayoutDebug.iconSize = 10
+            else
+                options.presetLayoutDebug.iconSize = 10
+                options.presetLayoutUser.iconSize = (options.presetLayoutUser.iconSize or 0) + 4
+            end
+        end
+        options.lucideIconSizeBaselineVersion = 8104
     end
 
     -- 0.4.25 promotes the visually-tuned debug geometry to the shipped
@@ -454,6 +614,66 @@ function SCB_GetLayoutValue(sectionKey, valueKey)
     return baseline + user
 end
 
+function SCB_GetDrawerJustification()
+    SCB_EnsureOptionsDB()
+    return SoloCraftBotsDB.options.drawerJustification == "left" and "left" or "right"
+end
+
+function SCB_RefreshDrawerJustificationToggle()
+    local side = SCB_GetDrawerJustification()
+    local button = SCB.drawerJustificationToggle
+    if not button then return end
+    if button.scbArrowTexture then
+        SCB_SetArrowDirection(button.scbArrowTexture, side)
+    end
+    button.scbTooltip = string.format(
+        SCB_L("TIP_DRAWER_JUSTIFICATION"),
+        SCB_L(side == "left" and "JUSTIFICATION_LEFT" or "JUSTIFICATION_RIGHT")
+    )
+end
+
+function SCB_LayoutSidePanels()
+    local side, presetShown, outerAnchor
+    if not SCB.frame then return end
+
+    side = SCB_GetDrawerJustification()
+    presetShown = SCB.presetPanel and SCB.presetPanel:IsShown() and true or false
+
+    if SCB.presetPanel then
+        SCB.presetPanel:ClearAllPoints()
+        if side == "left" then
+            SCB.presetPanel:SetPoint("TOPRIGHT", SCB.frame, "TOPLEFT", -2, 0)
+        else
+            SCB.presetPanel:SetPoint("TOPLEFT", SCB.frame, "TOPRIGHT", 2, 0)
+        end
+    end
+
+    if SCB.optionsPanel then
+        outerAnchor = presetShown and SCB.presetPanel or SCB.frame
+        SCB.optionsPanel:ClearAllPoints()
+        if side == "left" then
+            SCB.optionsPanel:SetPoint("TOPRIGHT", outerAnchor, "TOPLEFT", -2, 0)
+        else
+            SCB.optionsPanel:SetPoint("TOPLEFT", outerAnchor, "TOPRIGHT", 2, 0)
+        end
+    end
+
+    SCB_RefreshDrawerJustificationToggle()
+    if SCB_SetPresetToggleDirection then
+        SCB_SetPresetToggleDirection(presetShown)
+    end
+end
+
+function SCB_DrawerJustificationOnClick()
+    SCB_EnsureOptionsDB()
+    if SCB_GetDrawerJustification() == "left" then
+        SoloCraftBotsDB.options.drawerJustification = "right"
+    else
+        SoloCraftBotsDB.options.drawerJustification = "left"
+    end
+    SCB_LayoutSidePanels()
+end
+
 function SCB_SectionToggleOnClick()
     if not this or not this.scbSectionKey then
         return
@@ -474,6 +694,9 @@ function SCB_CreateCollapsibleSection(parent, key, titleText, contentHeight)
     section.scbCollapsedHeight = 26
 
     local toggle = SCB_CreateArrowButton(section, 18)
+    if key == "commands" or key == "assignments" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
+    end
     toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
     toggle.scbSectionKey = key
     toggle.scbTooltip = string.format(SCB_L("TIP_COLLAPSE_EXPAND"), titleText)
@@ -853,6 +1076,7 @@ end
 
 
 function SCB_DistanceOnClick()
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     SCB_EnsureSessionDB()
     if SoloCraftBotsDB.session.state.distance == "far" then
         if SCB_SendCommand("distance off") then
@@ -994,10 +1218,11 @@ end
 
 function SCB_CreateSummonUI(frame)
     local section, content = SCB_CreateCollapsibleSection(frame, "summon", SCB_L("SECTION_SUMMON"), 196)
+    SCB.manualAddButtons = {}
 
-    -- One state button: silver binoculars = Spawn Near (distance off, default),
-    -- gold binoculars = Spawn Far (distance on).
-    local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "distance_off.tga")
+    -- One state button: silver telescope = Spawn Near (distance off, default),
+    -- gold telescope = Spawn Far (distance on).
+    local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "lucide_telescope_off.tga")
     distance:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     distance:SetScript("OnClick", SCB_DistanceOnClick)
     distance:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1075,18 +1300,32 @@ function SCB_CreateSummonUI(frame)
             roleButton:SetScript("OnClick", SCB_SpawnOnClick)
             roleButton:SetScript("OnEnter", SCB_TooltipOnEnter)
             roleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+            table.insert(SCB.manualAddButtons, roleButton)
         end
     end
+    SCB_RefreshManualAddButtons()
 end
 
 function SCB_LayoutCommandUI()
     local layout = SCB.commandLayout
-    local options, gap, rowGap, groupGap, buttonSize, maxColumns, maxRowWidth, left, y
+    local options, gap, rowGap, groupGap, buttonSize, maxColumns, maxRowWidth, left, y, iconSize
     local r, i, row, button, standaloneWidth, standaloneLeft
     if not layout or not layout.content then return end
 
     SCB_EnsureOptionsDB()
     options = SoloCraftBotsDB.options
+    iconSize = SCB_GetLayoutValue("command", "iconSize")
+    if SCB.assignmentClearButton then SCB_SetArtButtonIconSize(SCB.assignmentClearButton, iconSize) end
+    if SCB.assignmentModeButton then SCB_SetArtButtonIconSize(SCB.assignmentModeButton, iconSize) end
+    if SCB.sections.commands and SCB.sections.commands.scbToggle then
+        SCB_SetTextureRenderSize(SCB.sections.commands.scbToggle.scbArrowTexture, iconSize, SCB.sections.commands.scbToggle)
+    end
+    if SCB.sections.assignments and SCB.sections.assignments.scbToggle then
+        SCB_SetTextureRenderSize(SCB.sections.assignments.scbToggle.scbArrowTexture, iconSize, SCB.sections.assignments.scbToggle)
+    end
+    if SCB.drawerJustificationToggle and SCB.drawerJustificationToggle.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.drawerJustificationToggle.scbArrowTexture, iconSize, SCB.drawerJustificationToggle)
+    end
     gap = SCB_GetLayoutValue("command", "horizontalSpacing")
     rowGap = SCB_GetLayoutValue("command", "verticalSpacing")
     groupGap = SCB_GetLayoutValue("command", "groupVerticalSpacing")
@@ -1350,14 +1589,20 @@ function SCB_CreateRaidmarkUI(frame)
 
     -- One always-highlighted state button. Focus is the default; clicking it
     -- swaps between Focus and CC assignment modes.
-    local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "bin.tga")
+    local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "lucide_eraser.tga")
+    SCB_SetArtButtonIconSize(clearMarks, SCB_GetLayoutValue("command", "iconSize"))
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
-    clearMarks:SetScript("OnClick", function() SCB_SendCommand("clearmarks") end)
+    clearMarks:SetScript("OnClick", function()
+        if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
+        SCB_SendCommand("clearmarks")
+    end)
     clearMarks:SetScript("OnEnter", SCB_TooltipOnEnter)
     clearMarks:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.assignmentClearButton = clearMarks
 
-    local mode = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "focus_h.tga")
+    local mode = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "lucide_crosshair.tga")
+    SCB_SetArtButtonIconSize(mode, SCB_GetLayoutValue("command", "iconSize"))
     mode:SetPoint("RIGHT", clearMarks, "LEFT", -4, 0)
     mode:SetScript("OnClick", SCB_RaidmarkModeOnClick)
     mode:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1450,15 +1695,25 @@ function SCB_CreateUI()
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", frame, "TOP", 0, -13)
     title:SetText(SCB_L("ADDON_TITLE") .. (string.find(SCB.version or "", "%-dev$") and SCB_L("DEV_SUFFIX") or ""))
+    SCB_SetFontColor(title, "header")
 
-    local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "close.tga")
+    local justification = SCB_CreateArrowButton(frame, 18)
+    SCB_SetTextureRenderSize(justification.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), justification)
+    justification:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -9)
+    justification:SetScript("OnClick", SCB_DrawerJustificationOnClick)
+    justification:SetScript("OnEnter", SCB_TooltipOnEnter)
+    justification:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.drawerJustificationToggle = justification
+    SCB_RefreshDrawerJustificationToggle()
+
+    local close = SCB_CreateArtButton(frame, "SoloCraftBotsCloseButton", 18, SCB.assetRoot .. "lucide_x.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -9)
     close.scbTooltip = SCB_L("TIP_CLOSE")
     close:SetScript("OnClick", SCB_CloseOnClick)
     close:SetScript("OnEnter", SCB_TooltipOnEnter)
     close:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    local config = SCB_CreateArtButton(frame, "SoloCraftBotsConfigButton", 18, SCB.assetRoot .. "config.tga")
+    local config = SCB_CreateArtButton(frame, "SoloCraftBotsConfigButton", 18, SCB.assetRoot .. "lucide_cog.tga")
     config:SetPoint("RIGHT", close, "LEFT", -2, 0)
     config.scbTooltip = SCB_L("TIP_CONFIG")
     config:SetScript("OnClick", SCB_ConfigOnClick)
@@ -1472,6 +1727,7 @@ function SCB_CreateUI()
     SCB_CreateSummonUI(frame)
     SCB_CreatePresetUI(frame)
     SCB_CreateOptionsUI(frame)
+    SCB_LayoutSidePanels()
     SCB_LayoutSections()
 
     local safety = CreateFrame("Frame", "SoloCraftBotsSafetyMessage", UIParent)
@@ -1673,6 +1929,10 @@ eventFrame:SetScript("OnEvent", function()
         end
     elseif event == "PARTY_LEADER_CHANGED" then
         SCB_ApplyAutoPromotePlayers()
+        -- Every client may observe the leadership event, but the existing
+        -- Auto Loot apply path mutates loot only when this client is now leader.
+        if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
+        if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
         local observed = SCB_HandleRosterChange()
         if SCB.presetPanel and SCB.presetPanel:IsShown()

@@ -3,8 +3,12 @@
 SoloCraftBotsLocale = SoloCraftBotsLocale or {}
 local T = SoloCraftBotsLocale
 
--- Master chat colours (RRGGBB)
+-- Master SCB presentation colours (RRGGBB).
+-- COLOR_SCB is shared by chat and the primary UI headers.
 T["COLOR_SCB"] = "88CCFF"
+T["COLOR_UI_GOLD"] = "FFD100"
+T["COLOR_UI_SILVER"] = "C0C0C0"
+T["COLOR_UI_WHITE"] = "FFFFFF"
 
 -- Vanilla class colours
 T["COLOR_CLASS_WARRIOR"] = "C79C6E"

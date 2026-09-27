@@ -50,7 +50,7 @@ function SCB_CreateAutoLootOption(parent)
     label:SetWidth(118)
     label:SetJustifyH("LEFT")
     label:SetText(SCB_L("OPTION_AUTO_LOOT"))
-    label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(label, "text")
     SCB.optionAutoLootLabel = label
 
     selector = SCB_CreateTextButton(parent, "SoloCraftBotsAutoLootSelector", 118, 22, SCB_L("LOOT_OFF"))
@@ -63,10 +63,10 @@ function SCB_CreateAutoLootOption(parent)
     SCB.optionAutoLootSelector = selector
 
     arrow = selector:CreateTexture(nil, "ARTWORK")
-    arrow:SetWidth(18)
-    arrow:SetHeight(18)
+    SCB_SetTextureRenderSize(arrow, SCB.LUCIDE_ICON_SIZE, selector)
+    arrow:ClearAllPoints()
     arrow:SetPoint("RIGHT", selector, "RIGHT", -2, 0)
-    arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    arrow:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
 
     menu = CreateFrame("Frame", "SoloCraftBotsAutoLootMenu", parent)
     menu:SetWidth(118)
@@ -114,7 +114,7 @@ function SCB_OptionCheckOnClick()
 end
 
 function SCB_CreateOptionCheck(parent, key, labelKey, y)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local check = SCB_CreateMiniCheckButton(parent, 24)
     check:SetWidth(24)
     check:SetHeight(24)
     check:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, y)
@@ -122,7 +122,7 @@ function SCB_CreateOptionCheck(parent, key, labelKey, y)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", check, "RIGHT", 4, 0)
     label:SetText(SCB_L(labelKey))
-    label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(label, "text")
     check.scbLabel = label
     check:SetScript("OnClick", SCB_OptionCheckOnClick)
     return check
@@ -205,10 +205,18 @@ function SCB_AdjustLayoutOption()
         minimum = this.scbUserMinimum or -20
         maximum = this.scbUserMaximum or 20
     end
-    value = (target[valueKey] or 0) + delta
-    if minimum and value < minimum then value = minimum end
-    if maximum and value > maximum then value = maximum end
-    target[valueKey] = value
+    if valueKey == "iconSize" and not (SCB.optionsDebugMode and SCB.optionsDebugMode[sectionKey]) then
+        value = SCB_GetLayoutValue(sectionKey, valueKey) + delta
+        if minimum and value < minimum then value = minimum end
+        if maximum and value > maximum then value = maximum end
+        local baseline = sectionKey == "command" and options.commandLayoutDebug[valueKey] or options.presetLayoutDebug[valueKey]
+        target[valueKey] = value - (baseline or 0)
+    else
+        value = (target[valueKey] or 0) + delta
+        if minimum and value < minimum then value = minimum end
+        if maximum and value > maximum then value = maximum end
+        target[valueKey] = value
+    end
     SCB_RefreshOptionsUI()
     if sectionKey == "command" and SCB_LayoutCommandUI then SCB_LayoutCommandUI() end
     if sectionKey == "preset" and SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
@@ -222,9 +230,10 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     label:SetWidth(116)
     label:SetJustifyH("LEFT")
     label:SetText(SCB_L(labelKey))
-    label:SetTextColor(0.82, 0.82, 0.82, 1)
+    SCB_SetFontColor(label, "text")
 
-    minus = SCB_CreateTextButton(parent, nil, 22, 20, "-")
+    minus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_minus.tga")
+    minus:SetWidth(22)
     minus:SetPoint("LEFT", label, "RIGHT", 2, 0)
     minus.scbLayoutSection = sectionKey
     minus.scbLayoutKey = valueKey
@@ -239,9 +248,10 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     value:SetPoint("LEFT", minus, "RIGHT", 3, 0)
     value:SetWidth(24)
     value:SetJustifyH("CENTER")
-    value:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(value, "text")
 
-    plus = SCB_CreateTextButton(parent, nil, 22, 20, "+")
+    plus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_plus.tga")
+    plus:SetWidth(22)
     plus:SetPoint("LEFT", value, "RIGHT", 3, 0)
     plus.scbLayoutSection = sectionKey
     plus.scbLayoutKey = valueKey
@@ -315,6 +325,11 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     section.scbExpandedHeight = expandedHeight
 
     toggle = SCB_CreateArrowButton(section, 18)
+    if sectionKey == "command" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
+    elseif sectionKey == "preset" then
+        SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("preset", "iconSize"), toggle)
+    end
     toggle:SetPoint("TOPLEFT", section, "TOPLEFT", 12, -3)
     toggle.scbOptionsSection = section
     toggle:SetScript("OnClick", SCB_OptionsSubsectionToggleOnClick)
@@ -326,7 +341,7 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     if sectionKey then
-        debugCheck = CreateFrame("CheckButton", nil, section, "UICheckButtonTemplate")
+        debugCheck = SCB_CreateMiniCheckButton(section, 20)
         debugCheck:SetWidth(20)
         debugCheck:SetHeight(20)
         debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
@@ -337,7 +352,7 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
         debugLabel = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         debugLabel:SetPoint("RIGHT", debugCheck, "LEFT", -2, 0)
         debugLabel:SetText(SCB_L("OPTION_DEBUG"))
-        debugLabel:SetTextColor(0.65, 0.65, 0.65, 1)
+        SCB_SetFontColor(debugLabel, "text")
         section.scbDebugLabel = debugLabel
     end
 
@@ -352,10 +367,10 @@ end
 function SCB_RefreshOptionsSectionArrow(section)
     if not section or not section.scbToggle or not section.scbToggle.scbArrowTexture then return end
     if section.scbExpanded then
-        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "down")
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "up")
         section.scbContent:Show()
     else
-        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "right")
+        SCB_SetArrowDirection(section.scbToggle.scbArrowTexture, "down")
         section.scbContent:Hide()
     end
 end
@@ -408,6 +423,20 @@ function SCB_RefreshOptionsUI()
     if SCB.optionPresetSection and SCB.optionPresetSection.scbDebugCheck then
         SCB.optionPresetSection.scbDebugCheck:SetChecked(SCB.optionsDebugMode.preset and 1 or nil)
     end
+    if SCB.optionCommandSection and SCB.optionCommandSection.scbToggle then
+        SCB_SetTextureRenderSize(
+            SCB.optionCommandSection.scbToggle.scbArrowTexture,
+            SCB_GetLayoutValue("command", "iconSize"),
+            SCB.optionCommandSection.scbToggle
+        )
+    end
+    if SCB.optionPresetSection and SCB.optionPresetSection.scbToggle then
+        SCB_SetTextureRenderSize(
+            SCB.optionPresetSection.scbToggle.scbArrowTexture,
+            SCB_GetLayoutValue("preset", "iconSize"),
+            SCB.optionPresetSection.scbToggle
+        )
+    end
     local debugControlsShown = SCB.developerDebugEnabled and true or false
     local sections = { SCB.optionCommandSection, SCB.optionPresetSection }
     local section
@@ -431,7 +460,11 @@ function SCB_RefreshOptionsUI()
         else
             target = sectionKey == "command" and options.commandLayoutUser or options.presetLayoutUser
         end
-        control.value:SetText(target[valueKey] or 0)
+        if valueKey == "iconSize" then
+            control.value:SetText(SCB_GetLayoutValue(sectionKey, valueKey))
+        else
+            control.value:SetText(target[valueKey] or 0)
+        end
     end
     SoloCraftBotsDB = SoloCraftBotsDB or {}
     SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
@@ -449,11 +482,11 @@ function SCB_SetOptionsPanelShown(show)
     if show then
         SCB_RefreshOptionsUI()
         SCB_LayoutOptionsUI()
-        SCB.optionsPanel:ClearAllPoints()
-        SCB.optionsPanel:SetPoint("TOPLEFT", SCB.frame, "TOPRIGHT", 2, 0)
         SCB.optionsPanel:Show()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
     else
         SCB.optionsPanel:Hide()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
     end
 end
 
@@ -484,9 +517,16 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionLayoutControls = {}
 
     heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -12)
+    heading:SetPoint("TOP", panel, "TOP", 0, -13)
     heading:SetText(SCB_L("OPTIONS_TITLE"))
-    heading:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(heading, "header")
+
+    SCB.optionsCloseButton = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_x.tga")
+    SCB.optionsCloseButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -9)
+    SCB.optionsCloseButton.scbTooltip = SCB_L("TIP_CLOSE")
+    SCB.optionsCloseButton:SetScript("OnClick", function() SCB_SetOptionsPanelShown(false) end)
+    SCB.optionsCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.optionsCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
     miscContent = SCB.optionMiscSection.scbContent
@@ -520,13 +560,14 @@ function SCB_CreateOptionsUI(frame)
     layoutContent:ClearAllPoints()
     layoutContent:SetPoint("TOPLEFT", SCB.optionLayoutSection, "TOPLEFT", 12, -26)
     layoutContent:SetWidth(panel:GetWidth() - 12)
-    SCB.optionCommandSection = SCB_CreateOptionsSubsection(layoutContent, "command", "OPTION_COMMAND_BUTTONS", 104)
+    SCB.optionCommandSection = SCB_CreateOptionsSubsection(layoutContent, "command", "OPTION_COMMAND_BUTTONS", 130)
     commandContent = SCB.optionCommandSection.scbContent
     control = SCB_CreateLayoutControl(commandContent, "command", "horizontalSpacing", "OPTION_COMMAND_H_SPACING", -2, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "verticalSpacing", "OPTION_COMMAND_V_SPACING", -28, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(commandContent, "command", "groupVerticalSpacing", "OPTION_COMMAND_GROUP_SPACING", -54, -10, 10, -10, 10); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(commandContent, "command", "iconSize", "OPTION_ICON_SIZE", -80, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
-    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 286)
+    SCB.optionPresetSection = SCB_CreateOptionsSubsection(layoutContent, "preset", "OPTION_PRESET_GROUPS", 320)
     presetContent = SCB.optionPresetSection.scbContent
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupWidth", "OPTION_GROUP_WIDTH", -2, 60, 160, -30, 30); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "groupHeight", "OPTION_GROUP_HEIGHT", -26, 100, 240, -50, 50); table.insert(SCB.optionLayoutControls, control)
@@ -537,20 +578,21 @@ function SCB_CreateOptionsUI(frame)
     sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -130)
     sublabel:SetText(SCB_L("OPTION_BORDER_OFFSET"))
-    sublabel:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(sublabel, "subheader")
     control = SCB_CreateLayoutControl(presetContent, "preset", "borderHorizontal", "OPTION_HORIZONTAL", -150, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "borderVertical", "OPTION_VERTICAL", -174, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
 
     sublabel = presetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sublabel:SetPoint("TOPLEFT", presetContent, "TOPLEFT", 16, -202)
     sublabel:SetText(SCB_L("OPTION_ICON_SPACING"))
-    sublabel:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(sublabel, "subheader")
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconHorizontal", "OPTION_HORIZONTAL", -222, -10, 20, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconVertical", "OPTION_VERTICAL", -246, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
+    control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
-    SCB.optionVersion:SetTextColor(0.6, 0.6, 0.6, 1)
+    SCB_SetFontColor(SCB.optionVersion, "text")
 
     SCB_RefreshOptionsUI()
     SCB_LayoutOptionsUI()
@@ -1129,7 +1171,7 @@ function SCB_DebugOnUpdate()
 end
 
 function SCB_DebugMakeCheck(parent, label)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local check = SCB_CreateMiniCheckButton(parent, 22)
     check:SetWidth(22)
     check:SetHeight(22)
     check:SetChecked(1)
@@ -1164,9 +1206,12 @@ function SCB_CreateDebugUI()
     title:SetText(SCB_L("DEBUG_TITLE"))
     title:SetTextColor(1, 0.82, 0, 1)
 
-    local close = SCB_CreateTextButton(frame, nil, 24, 22, SCB_L("DEBUG_CLOSE"))
+    local close = SCB_CreateArtButton(frame, nil, 22, SCB.assetRoot .. "lucide_x.tga")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -10)
+    close.scbTooltip = SCB_L("DEBUG_CLOSE")
     close:SetScript("OnClick", function() frame:Hide() end)
+    close:SetScript("OnEnter", SCB_TooltipOnEnter)
+    close:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     local inputLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     inputLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -42)

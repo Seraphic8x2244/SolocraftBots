@@ -13,6 +13,7 @@ SCB.presetNameMenuButtons = SCB.presetNameMenuButtons or {}
 SCB.presetEditorPlayerRoles = SCB.presetEditorPlayerRoles or {}
 SCB.presetGroupFrames = SCB.presetGroupFrames or {}
 SCB.presetGroupTitles = SCB.presetGroupTitles or {}
+SCB.presetGroupResummonButtons = SCB.presetGroupResummonButtons or {}
 SCB.dragGhost = SCB.dragGhost or nil
 
 local SCB_DEFAULT_PRESET_GROUPS = {
@@ -480,7 +481,7 @@ local SCB_RefreshPresetSummonWarning
 
 function SCB_SetPresetButtonGrey(button)
     if not button or not button.label then return end
-    button.label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(button.label, "content")
     button:SetBackdropBorderColor(0.45, 0.45, 0.45, 1)
 end
 
@@ -591,13 +592,9 @@ function SCB_UpdatePresetSelectorText()
     group = SCB_CurrentPresetGroup()
     preset = SCB_CurrentPreset()
     SCB.presetGroupSelector.label:SetText(group and group.name or SCB_L("NO_GROUP"))
-    if group and group.isDefault then
-        SCB.presetGroupSelector.label:SetTextColor(1, 0.82, 0, 1)
-    else
-        SCB.presetGroupSelector.label:SetTextColor(0.82, 0.82, 0.82, 1)
-    end
+    SCB_SetFontColor(SCB.presetGroupSelector.label, "content")
     SCB.presetSelector.label:SetText(preset and preset.name or SCB_L("NO_PRESET"))
-    SCB.presetSelector.label:SetTextColor(0.90, 0.90, 0.90, 1)
+    SCB_SetFontColor(SCB.presetSelector.label, "content")
 end
 
 function SCB_RefreshPresetSlots()
@@ -715,6 +712,103 @@ function SCB_SetPresetGroupDragHighlight(groupIndex, alpha)
     end
 end
 
+local function SCB_EnsurePresetLayoutMismatchHighlight(row)
+    local texture
+    if not row then return nil end
+    texture = row.scbLayoutMismatchHighlight
+    if not texture then
+        texture = row:CreateTexture(nil, "BACKGROUND")
+        texture:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
+        texture:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        texture:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        texture:SetVertexColor(1.00, 0.72, 0.05, 1.00)
+        texture:Hide()
+        row.scbLayoutMismatchHighlight = texture
+    end
+    return texture
+end
+
+function SCB_PresetLayoutMismatchPulseOnUpdate()
+    local elapsed, pulse, alpha
+    local i, row, highlight
+    if not SCB.presetPanel or not SCB.presetPanel:IsShown() then
+        this:Hide()
+        return
+    end
+    elapsed = (this.scbElapsed or 0) + (arg1 or 0)
+    this.scbElapsed = elapsed
+    pulse = 0.5 + (0.5 * math.sin(elapsed * 1.6))
+    alpha = 0.25 + (pulse * 0.45)
+
+    for i = 1, 40 do
+        row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+        if row and row.scbLayoutMismatchKind then
+            highlight = SCB_EnsurePresetLayoutMismatchHighlight(row)
+            if highlight then
+                highlight:SetAlpha(alpha)
+                highlight:Show()
+            end
+        end
+    end
+end
+
+function SCB_RefreshPresetLayoutMismatchPresentation(observed)
+    local mismatches = {}
+    local slots = {}
+    local any = false
+    local i, frame, row, highlight, kind
+
+    if SCB_GetPresetLiveLayoutMismatches then
+        mismatches = SCB_GetPresetLiveLayoutMismatches(observed) or {}
+        slots = mismatches.slots or {}
+    end
+
+    for i = 1, 8 do
+        frame = SCB.presetGroupFrames and SCB.presetGroupFrames[i] or nil
+        if frame then
+            kind = mismatches[i]
+            frame.scbLayoutMismatchKind = kind
+            frame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+            if kind == "regrouped" then
+                frame.scbTooltip = SCB_L("TIP_PRESET_LAYOUT_REGROUPED")
+            else
+                frame.scbTooltip = nil
+            end
+
+            if frame.scbTooltip then
+                SCB_RefreshVisibleTooltip(frame)
+            elseif GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(frame) then
+                GameTooltip:Hide()
+            end
+        end
+    end
+
+    for i = 1, 40 do
+        row = SCB.presetSlotRows and SCB.presetSlotRows[i] or nil
+        if row then
+            kind = slots[i]
+            row.scbLayoutMismatchKind = kind
+            highlight = SCB_EnsurePresetLayoutMismatchHighlight(row)
+            if kind == "regrouped" then
+                any = true
+                highlight:SetAlpha(0.70)
+                highlight:Show()
+            else
+                highlight:Hide()
+            end
+        end
+    end
+
+    if SCB.presetLayoutMismatchPulseFrame then
+        if any and SCB.presetPanel and SCB.presetPanel:IsShown() then
+            SCB.presetLayoutMismatchPulseFrame.scbElapsed = 0
+            SCB.presetLayoutMismatchPulseFrame:Show()
+        else
+            SCB.presetLayoutMismatchPulseFrame:Hide()
+        end
+    end
+end
+
 function SCB_UpdateDragGhost()
     local x, y, scale
     if not SCB.dragGhost or not SCB.dragGhost:IsShown() or not GetCursorPosition then
@@ -801,11 +895,8 @@ end
 function SCB_PresetPlayerDragStart()
     if SCB_StopPresetTutorial then SCB_StopPresetTutorial(true) end
     local present, originSlot
-    if SCB_CurrentPresetSize() <= 5 then
-        return
-    end
     SCB.draggedPresetPlayer = this.scbPlayerKey
-    originSlot = SCB.presetEditorPlayers and SCB.presetEditorPlayers[this.scbPlayerKey]
+    originSlot = SCB.presetEditorPlayerSlots and SCB.presetEditorPlayerSlots[this.scbPlayerKey]
     SCB.draggedPresetPlayerOriginSlot = originSlot
     present = SCB_GetPresentHumanMap()
     if present[this.scbPlayerKey] then
@@ -875,7 +966,7 @@ function SCB_PresetPlayerOnClick()
         return
     end
 
-    if arg1 == "RightButton" and SCB_CurrentPresetSize() > 5 and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
+    if arg1 == "RightButton" and this.scbPlayerKey and this.scbPlayerKey ~= "$self" then
         SCB.presetEditorPlayers[this.scbPlayerKey] = nil
         SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
         SCB.presetEditorPlayerSlots[this.scbPlayerKey] = nil
@@ -929,26 +1020,6 @@ function SCB_CreatePresetPlayerNameButton(parent, width, height)
     return button
 end
 
-function SCB_AutoPartyPlayerSlots(roster)
-    local slots = {}
-    local i, info, partyIndex
-    -- In a five-player party the client fixes self at slot 1 and party1..4
-    -- are the actual invite-order positions. Preserve those positions even
-    -- when bots are interspersed between human players.
-    slots["$self"] = 1
-    for i = 1, table.getn(roster) do
-        info = roster[i]
-        if info.key ~= "$self" and info.unit then
-            local _, _, capturedIndex = string.find(info.unit, "party(%d+)")
-            partyIndex = tonumber(capturedIndex)
-            if partyIndex then
-                slots[info.key] = partyIndex + 1
-            end
-        end
-    end
-    return slots
-end
-
 -- One authoritative map from live human players to the preset rows they cover.
 -- The player overlay, hidden bot controls, blessing allocation and spawn occupancy
 -- must all agree on this map.  Human placement never mutates the bot assignment
@@ -956,7 +1027,7 @@ end
 
 SCB_RefreshPresetPlayers = function()
     local size, roster, present, assignedPresent, playerRows
-    local i, info, key, slotIndex, row, button, poolIndex, poolRows, draggable
+    local i, info, key, slotIndex, row, button, poolIndex, draggable
 
     if not SCB.presetPanel then return end
     size = SCB_CurrentPresetSize()
@@ -985,7 +1056,7 @@ SCB_RefreshPresetPlayers = function()
                     row.playerOverlay:SetPoint("LEFT", row.classButton, "LEFT", 0, 0)
                     row.playerOverlay:SetFrameLevel(row:GetFrameLevel() + 4)
                 end
-                draggable = size > 5
+                draggable = true
                 SCB_SetPlayerNameIdentity(row.playerOverlay, present[key], draggable)
                 row.playerOverlay.scbSlotIndex = slotIndex
                 row.playerOverlay:SetAlpha(1); row.playerOverlay:Show(); row.classButton:Hide()
@@ -1003,26 +1074,22 @@ SCB_RefreshPresetPlayers = function()
     end
 
     poolIndex = 0
-    if size > 5 then
-        for i = 1, table.getn(roster) do
-            info = roster[i]
-            if not assignedPresent[info.key] then
-                poolIndex = poolIndex + 1
-                button = SCB.presetPlayerPoolButtons[poolIndex]
-                if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
-                button:ClearAllPoints()
-                button:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", ((poolIndex - 1) - math.floor((poolIndex - 1) / 2) * 2) * 112, -14 - (math.floor((poolIndex - 1) / 2) * 24))
-                SCB_SetPlayerNameIdentity(button, info, true)
-                button.scbSlotIndex = nil
-                button:Show()
-            end
+    for i = 1, table.getn(roster) do
+        info = roster[i]
+        if not assignedPresent[info.key] then
+            poolIndex = poolIndex + 1
+            button = SCB.presetPlayerPoolButtons[poolIndex]
+            if not button then button = SCB_CreatePresetPlayerNameButton(SCB.presetPlayerPool, 108, 22); SCB.presetPlayerPoolButtons[poolIndex] = button end
+            button:ClearAllPoints()
+            SCB_SetPlayerNameIdentity(button, info, true)
+            button.scbSlotIndex = nil
+            button:Show()
         end
     end
     for i = poolIndex + 1, table.getn(SCB.presetPlayerPoolButtons) do SCB.presetPlayerPoolButtons[i]:Hide() end
     SCB.presetPlayerPoolVisibleCount = poolIndex
     if poolIndex > 0 then
-        poolRows = math.floor((poolIndex - 1) / 2) + 1
-        SCB.presetPlayerPool:Show(); SCB.presetPlayerPoolLabel:Show(); SCB.presetPlayerPool:SetHeight(16 + (poolRows * 24))
+        SCB.presetPlayerPool:Show(); SCB.presetPlayerPoolLabel:Show()
     else
         SCB.presetPlayerPool:Hide(); SCB.presetPlayerPoolLabel:Hide(); SCB.presetPlayerPool:SetHeight(1)
     end
@@ -1050,15 +1117,14 @@ end
 
 function SCB_LoadPreset(groupIndex, presetIndex)
     local group, preset, size, key, slotIndex
-    SCB.presetEditorPlayerSlots = {}
     SCB_EnsurePresetDB()
     group = SoloCraftBotsDB.presetGroups[groupIndex]
     if not group then
         group = SCB_CurrentPresetGroup()
         preset = SCB_CurrentPreset()
         size = group and group.size or SCB_CurrentPresetSize()
-        SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
-        SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
+        SCB.presetEditorPlayerSlots = SCB_CopyPlayerSlots(preset and preset.playerSlots or nil, size)
+        SCB.presetEditorPlayers = {}
         for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
             SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
         end
@@ -1074,7 +1140,7 @@ function SCB_LoadPreset(groupIndex, presetIndex)
 
     if preset then
         SCB.presetEditorSlots = SCB_NormalizePresetSlots(preset.slots, size)
-        SCB.presetEditorPlayers = SCB_CopyPlayerGroups(preset.playerGroups or preset.playerSlots, size, preset.playerGroups == nil)
+        SCB.presetEditorPlayerSlots = SCB_CopyPlayerSlots(preset.playerSlots, size)
         SCB.presetEditorPlayerRoles = SCB_CopyPlayerRoles(preset.playerRoles)
         -- Old presets did not necessarily persist self role. Seed it once from
         -- this character's default, then it becomes an ordinary preset value.
@@ -1085,8 +1151,15 @@ function SCB_LoadPreset(groupIndex, presetIndex)
         end
     else
         SCB.presetEditorSlots = SCB_DefaultPresetSlots(size)
-        SCB.presetEditorPlayers = { ["$self"] = 1 }
+        SCB.presetEditorPlayerSlots = { ["$self"] = 1 }
         SCB.presetEditorPlayerRoles = { ["$self"] = SCB_GetCharacterDefaultRoleTable() }
+    end
+
+    -- Exact logical slots are the editor source of truth at every preset size.
+    -- playerGroups remains a derived compatibility field for saved/protocol data.
+    SCB.presetEditorPlayers = {}
+    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
+        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
     end
 
     SCB_UpdatePresetSelectorText()
@@ -1096,13 +1169,9 @@ function SCB_LoadPreset(groupIndex, presetIndex)
     if SCB_RefreshPresetSummonWarning then
         SCB_RefreshPresetSummonWarning()
     end
-
-    SCB.presetEditorPlayerSlots = SCB_CopyExactPresetPlayerSlots(preset and preset.playerSlots or nil, size)
-    SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
-    for key, slotIndex in pairs(SCB.presetEditorPlayerSlots) do
-        SCB.presetEditorPlayers[key] = SCB_PresetPlayerSlotGroup(slotIndex)
+    if SCB_RefreshPresetLayoutMismatchPresentation then
+        SCB_RefreshPresetLayoutMismatchPresentation()
     end
-    if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() end
 end
 
 function SCB_SaveCurrentPreset()
@@ -1780,8 +1849,8 @@ function SCB_SetMenuDeleteButton(button, show, index, deleteScript)
         del:SetHeight(16)
         del:SetPoint("RIGHT", button, "RIGHT", -2, 0)
         local tex = del:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints(del)
-        tex:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        SCB_SetTextureRenderSize(tex, SCB_GetLayoutValue("preset", "iconSize"), del)
+        tex:SetTexture(SCB.assetRoot .. "lucide_trash.tga")
         del.icon = tex
         del:SetScript("OnEnter", function()
             GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -1806,8 +1875,8 @@ function SCB_SetMenuRenameButton(button, show, index)
         rename:SetHeight(16)
         rename:SetPoint("RIGHT", button, "RIGHT", -20, 0)
         local tex = rename:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints(rename)
-        tex:SetTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+        SCB_SetTextureRenderSize(tex, SCB_GetLayoutValue("preset", "iconSize"), rename)
+        tex:SetTexture(SCB.assetRoot .. "lucide_pencil.tga")
         rename.icon = tex
         rename.scbTooltip = SCB_L("TIP_RENAME_PRESET")
         rename:SetScript("OnClick", SCB_PresetRenameOnClick)
@@ -1848,9 +1917,9 @@ end
 
 function SCB_SetMenuMoveButtons(button, show, index, count)
     if not button.moveUpButton then
-        local up = SCB_CreateArrowButton(button, 14)
+        local up = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_up.tga")
+        SCB_SetArtButtonIconSize(up, SCB_GetLayoutValue("preset", "iconSize"))
         up:SetPoint("RIGHT", button, "RIGHT", -56, 0)
-        SCB_SetArrowDirection(up.scbArrowTexture, "up")
         up.scbPresetMoveDirection = -1
         up.scbTooltip = SCB_L("TIP_MOVE_PRESET_UP")
         up:SetScript("OnClick", SCB_MovePresetOnClick)
@@ -1858,9 +1927,9 @@ function SCB_SetMenuMoveButtons(button, show, index, count)
         up:SetScript("OnLeave", SCB_TooltipOnLeave)
         button.moveUpButton = up
 
-        local down = SCB_CreateArrowButton(button, 14)
+        local down = SCB_CreateArtButton(button, nil, 14, SCB.assetRoot .. "lucide_arrow_down.tga")
+        SCB_SetArtButtonIconSize(down, SCB_GetLayoutValue("preset", "iconSize"))
         down:SetPoint("RIGHT", button, "RIGHT", -38, 0)
-        SCB_SetArrowDirection(down.scbArrowTexture, "down")
         down.scbPresetMoveDirection = 1
         down.scbTooltip = SCB_L("TIP_MOVE_PRESET_DOWN")
         down:SetScript("OnClick", SCB_MovePresetOnClick)
@@ -1894,7 +1963,7 @@ function SCB_RebuildPresetGroupMenu()
         end
         if i == 1 then
             button.label:SetText(SCB_L("ADD_NEW_GROUP"))
-            button.label:SetTextColor(0.82, 0.82, 0.82, 1)
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = true
             button.scbGroupIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetGroupOnClick)
@@ -1902,11 +1971,7 @@ function SCB_RebuildPresetGroupMenu()
         else
             group = SoloCraftBotsDB.presetGroups[i - 1]
             button.label:SetText(group.name)
-            if group.isDefault then
-                button.label:SetTextColor(1, 0.82, 0, 1)
-            else
-                button.label:SetTextColor(0.82, 0.82, 0.82, 1)
-            end
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = nil
             button.scbGroupIndex = i - 1
             SCB_SetMenuDeleteButton(button, not group.isDefault, i - 1, SCB_DeletePresetGroupOnClick)
@@ -1939,6 +2004,7 @@ SCB_RebuildPresetMenu = function()
         end
         if i == 1 then
             button.label:SetText(SCB_L("ADD_NEW_PRESET"))
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = true
             button.scbPresetIndex = nil
             SCB_SetMenuDeleteButton(button, false, nil, SCB_DeletePresetOnClick)
@@ -1947,6 +2013,7 @@ SCB_RebuildPresetMenu = function()
         else
             preset = group.presets[i - 1]
             button.label:SetText(preset.name or string.format(SCB_L("PRESET_NUMBER"), i - 1))
+            SCB_SetFontColor(button.label, "content")
             button.scbAddNew = nil
             button.scbPresetIndex = i - 1
             SCB_SetMenuDeleteButton(button, true, i - 1, SCB_DeletePresetOnClick)
@@ -1992,7 +2059,7 @@ SCB.PRESET_WAIT_SURVIVOR_GONE = "__SCB_WAIT_SURVIVOR_GONE__"
 SCB.PRESET_WAIT_GROUP = "__SCB_WAIT_GROUP__"
 SCB.PRESET_WAIT_FINAL_ROSTER = "__SCB_WAIT_FINAL_ROSTER__"
 SCB.PRESET_CHECK_COMBAT = "__SCB_CHECK_COMBAT__"
-SCB.PRESET_ARRANGE_PLAYERS = "__SCB_ARRANGE_PLAYERS__"
+SCB.PRESET_PREPARE_RAID_BOTS = "__SCB_PREPARE_RAID_BOTS__"
 SCB.PRESET_TRACK_ROSTER = "__SCB_TRACK_ROSTER__"
 
 function SCB_PresetGroupHasCombat()
@@ -2024,52 +2091,6 @@ function SCB_PresetGroupHasCombat()
     return false
 end
 
-function SCB_ArrangePresetPlayers()
-    local desired = SCB.presetHumanGroups or {}
-    local key, wantedGroup, wantedName, i, name, _, currentGroup
-    if not SetRaidSubgroup or not GetRaidRosterInfo or not GetNumRaidMembers then return true end
-    if GetNumRaidMembers() == 0 then return false end
-
-    -- Resolve each human by name immediately before moving them. Raid indices
-    -- can change after SetRaidSubgroup(), so never cache an index across moves.
-    for key, wantedGroup in pairs(desired) do
-        wantedName = SCB_PresetPlayerDisplayName(key)
-        if wantedName then
-            for i = 1, GetNumRaidMembers() do
-                name, _, currentGroup = GetRaidRosterInfo(i)
-                if name == wantedName then
-                    if currentGroup ~= wantedGroup then
-                        if SCB_RecordPresetSubgroupMoveBarrier then
-                            SCB_RecordPresetSubgroupMoveBarrier()
-                        end
-                        SetRaidSubgroup(i, wantedGroup)
-                    end
-                    break
-                end
-            end
-        end
-    end
-
-    -- Verify from a fresh roster snapshot. If the server has not reflected the
-    -- moves yet, leave the queue parked here and try again next frame.
-    for key, wantedGroup in pairs(desired) do
-        wantedName = SCB_PresetPlayerDisplayName(key)
-        if wantedName then
-            local found = false
-            for i = 1, GetNumRaidMembers() do
-                name, _, currentGroup = GetRaidRosterInfo(i)
-                if name == wantedName then
-                    found = true
-                    if currentGroup ~= wantedGroup then return false end
-                    break
-                end
-            end
-            if not found then return false end
-        end
-    end
-    return true
-end
-
 function SCB_ProbeSurvivorWorldPresence(name)
     local hadTarget, oldTargetName, found
     if not name or name == "" or not TargetByName or not UnitName then
@@ -2098,12 +2119,16 @@ function SCB_ProbeSurvivorWorldPresence(name)
 end
 
 -- Authoritative preset role tracking ----------------------------------------------
--- Initial preset spawning establishes bot-relative order in Blizzard's own group
--- roster. Raids use authoritative subgroup order; five-player parties use
--- player/party1..party4 order. Roles still come only from the preset: roster order
--- is used solely to bind each bot name to its logical preset assignment.
+-- Initial preset spawning establishes deterministic bot-relative order while
+-- ignoring human row insertion. Logical human slots suppress composition intents
+-- only; observed Blizzard player placement never chooses a logical assignment.
 function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+    -- A full rebuild starts a fresh validation epoch. Evidence and one-shot
+    -- mismatch warnings from the previous roster must not leak into new names.
+    SCB.roleEvidenceByName = {}
+    SCB.roleEvidenceRecent = {}
+    SCB.roleMismatchWarnings = {}
     local tracker = {
         version = 5,
         mode = size <= 5 and "party" or "raid",
@@ -2179,12 +2204,14 @@ end
 -- refreshes can never accidentally turn a tank off.
 
 local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
-    local reconciledNow = false
     if not tracker or not tracker.ready then return false end
-    if SCB_ReconcileTrackerFromAssumedRoles then
-        reconciledNow = SCB_ReconcileTrackerFromAssumedRoles(tracker, observed) == true
-    end
-    if initial or reconciledNow then
+
+    -- Finalization has already bound each uncovered logical assignment from the
+    -- settled bot-only Blizzard order inside its group. Join-name assumptions
+    -- remain provisional operational hints and must never overwrite that mapping.
+    tracker.scbRoleIdentityReconciled = true
+
+    if initial then
         if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker, observed) end
         if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout(observed) end
     end
@@ -2934,7 +2961,6 @@ function SCB_AbortBotSpawnOperationsCore()
     SCB.presetCombatRetryResetPending = nil
     SCB.presetLastBurstCommands = nil
     SCB.presetLastBurstRequeued = nil
-    SCB.presetHumanGroups = nil
     SCB.presetExpectedBotCountBeforeHandoff = nil
     SCB.presetSurvivorProbeRemaining = nil
     SCB.presetBootstrapBotName = nil
@@ -3060,11 +3086,13 @@ function SCB_MaybeStartPresetTutorial()
 end
 
 function SCB_SetPresetToggleDirection(open)
+    local side
     if not SCB.presetToggle or not SCB.presetToggle.scbArrowTexture then return end
-    if open then
-        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, "right")
+    side = SCB_GetDrawerJustification and SCB_GetDrawerJustification() or "right"
+    if side == "left" then
+        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, open and "right" or "left")
     else
-        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, "left")
+        SCB_SetArrowDirection(SCB.presetToggle.scbArrowTexture, open and "left" or "right")
     end
 end
 
@@ -3076,12 +3104,12 @@ function SCB_SetPresetPanelShown(show)
     SCB.presetPanel:SetScript("OnUpdate", nil)
 
     if show then
-        SCB.presetPanel:ClearAllPoints()
-        SCB.presetPanel:SetPoint("TOPRIGHT", SCB.frame, "TOPLEFT", -2, 0)
         SCB_RefreshPresetPlayers()
         SCB_RefreshPresetSummonWarning()
         SCB.presetPanel:Show()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
         if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
+        if SCB_RefreshPresetLayoutMismatchPresentation then SCB_RefreshPresetLayoutMismatchPresentation() end
         SCB_SetPresetToggleDirection(true)
         if SCB_MaybeStartPresetTutorial then SCB_MaybeStartPresetTutorial() end
     else
@@ -3089,6 +3117,7 @@ function SCB_SetPresetPanelShown(show)
         SCB_CancelPresetPlayerDrag()
         SCB_HidePresetMenus()
         SCB.presetPanel:Hide()
+        if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
         SCB_SetPresetToggleDirection(false)
     end
 
@@ -3128,8 +3157,9 @@ function SCB_CreateDropdownArrow(parent)
     arrow:SetPoint("RIGHT", parent, "RIGHT", -2, 0)
     arrow:EnableMouse(false)
     local texture = arrow:CreateTexture(nil, "ARTWORK")
-    texture:SetAllPoints(arrow)
-    texture:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    SCB_SetTextureRenderSize(texture, SCB_GetLayoutValue("preset", "iconSize"), arrow)
+    texture:SetTexture(SCB.assetRoot .. "lucide_chevron_down.tga")
+    arrow.scbArrowTexture = texture
     parent.arrow = arrow
 end
 
@@ -3205,6 +3235,7 @@ function SCB_LayoutPresetRowGeometry()
     local iconH = SCB_GetLayoutValue("preset", "iconHorizontal")
     local iconV = SCB_GetLayoutValue("preset", "iconVertical")
     local rowWidth, rowHeight, roleX, classX, buffX, groupIndex, localIndex, slotIndex, groupFrame, row, totemSize, totemIndex
+    local headerHeight = 18
 
     if groupWidth < 1 then groupWidth = 1 end
     if groupHeight < 1 then groupHeight = 1 end
@@ -3227,7 +3258,7 @@ function SCB_LayoutPresetRowGeometry()
         groupFrame = SCB.presetGroupFrames and SCB.presetGroupFrames[groupIndex]
         if groupFrame then
             groupFrame:SetWidth(groupWidth)
-            groupFrame:SetHeight(groupHeight)
+            groupFrame:SetHeight(groupHeight + headerHeight)
         end
         for localIndex = 1, 5 do
             slotIndex = ((groupIndex - 1) * 5) + localIndex
@@ -3236,7 +3267,7 @@ function SCB_LayoutPresetRowGeometry()
                 row:ClearAllPoints()
                 row:SetWidth(rowWidth)
                 row:SetHeight(rowHeight)
-                row:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", borderH, -borderV - ((localIndex - 1) * (rowHeight + iconV)))
+                row:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", borderH, -headerHeight - borderV - ((localIndex - 1) * (rowHeight + iconV)))
 
                 row.roleButton:ClearAllPoints()
                 row.roleButton:SetWidth(roleSize)
@@ -3281,9 +3312,11 @@ SCB_LayoutPresetGroups = function()
     local size = SCB_CurrentPresetSize()
     local groupCount = math.floor((size + 4) / 5)
     local columns = 2
-    local rows, panelWidth, panelHeight, groupFrame, title
+    local rows, panelWidth, panelHeight, groupFrame, title, resummon
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
-    local headerHeight, twoGroupWidth, contentWidth, menuWidth
+    local headerHeight, twoGroupWidth, contentWidth, menuWidth, iconSize, menuButton
+    local poolCount, poolColumns, poolHeight, poolButton, groupAnchor
+    local boxHeaderHeight, groupBoxHeight
 
     if groupCount == 1 then
         columns = 1
@@ -3294,12 +3327,25 @@ SCB_LayoutPresetGroups = function()
 
     groupWidth = SCB_GetLayoutValue("preset", "groupWidth")
     groupHeight = SCB_GetLayoutValue("preset", "groupHeight")
+    iconSize = SCB_GetLayoutValue("preset", "iconSize")
+    boxHeaderHeight = 18
+    groupBoxHeight = groupHeight + boxHeaderHeight
     SCB_LayoutPresetRowGeometry()
 
-    -- Bordered controls use 6 frame units for the intended visible 12px gap.
-    -- The Group-title row clearance stays at the existing 20 units.
+    if SCB.presetToggle and SCB.presetToggle.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetToggle.scbArrowTexture, iconSize, SCB.presetToggle)
+    end
+    if SCB.presetGroupSelector and SCB.presetGroupSelector.arrow and SCB.presetGroupSelector.arrow.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetGroupSelector.arrow.scbArrowTexture, iconSize, SCB.presetGroupSelector.arrow)
+    end
+    if SCB.presetSelector and SCB.presetSelector.arrow and SCB.presetSelector.arrow.scbArrowTexture then
+        SCB_SetTextureRenderSize(SCB.presetSelector.arrow.scbArrowTexture, iconSize, SCB.presetSelector.arrow)
+    end
+
+    -- Group headers now live inside their bordered boxes, so both horizontal
+    -- and vertical box spacing use the same compact 6-unit gap.
     gapX = 6
-    gapY = 20
+    gapY = 6
 
     twoGroupWidth = (2 * groupWidth) + gapX
     contentWidth = (columns * groupWidth) + ((columns - 1) * gapX)
@@ -3307,9 +3353,30 @@ SCB_LayoutPresetGroups = function()
     panelWidth = contentWidth + 24
 
     poolExtra = 0
+    groupAnchor = SCB.presetCounterBox
     if SCB.presetPlayerPool and SCB.presetPlayerPool:IsShown() then
-        poolRows = math.floor(((SCB.presetPlayerPoolVisibleCount or 0) + 1) / 2)
-        poolExtra = 18 + (poolRows * 24)
+        poolCount = SCB.presetPlayerPoolVisibleCount or 0
+        poolColumns = math.floor((contentWidth - 8) / 112)
+        if poolColumns < 1 then poolColumns = 1 end
+        if poolColumns > poolCount then poolColumns = poolCount end
+        poolRows = math.floor((poolCount + poolColumns - 1) / poolColumns)
+        poolHeight = 24 + (poolRows * 24)
+        SCB.presetPlayerPool:SetWidth(contentWidth)
+        SCB.presetPlayerPool:SetHeight(poolHeight)
+        SCB.presetPlayerPool:ClearAllPoints()
+        SCB.presetPlayerPool:SetPoint("TOPLEFT", SCB.presetCounterBox, "BOTTOMLEFT", 0, -6)
+        groupAnchor = SCB.presetPlayerPool
+        for i = 1, poolCount do
+            poolButton = SCB.presetPlayerPoolButtons[i]
+            if poolButton then
+                col = math.mod(i - 1, poolColumns)
+                row = math.floor((i - 1) / poolColumns)
+                poolButton:SetWidth(108)
+                poolButton:ClearAllPoints()
+                poolButton:SetPoint("TOPLEFT", SCB.presetPlayerPool, "TOPLEFT", 6 + (col * 112), -21 - (row * 24))
+            end
+        end
+        poolExtra = 6 + poolHeight
     end
 
     headerHeight = 20
@@ -3320,9 +3387,10 @@ SCB_LayoutPresetGroups = function()
 
     -- Fixed vertical chain:
     -- 12 top inset + header + 12 + dropdown(24) + 6 + action(24)
-    -- + 6 + counter(34) + 20 title clearance + groups + 12 bottom inset.
-    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 34 + 20
-        + (rows * groupHeight) + ((rows - 1) * gapY) + 12 + poolExtra
+    -- + 6 + counter(34) + 6 + boxed groups + 12 bottom inset.
+    -- poolExtra contributes the optional counter->pool box plus pool->groups gap.
+    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 34 + 6
+        + (rows * groupBoxHeight) + ((rows - 1) * gapY) + 12 + poolExtra
 
     SCB.presetPanel:SetWidth(panelWidth)
     SCB.presetPanel:SetHeight(panelHeight)
@@ -3330,7 +3398,15 @@ SCB_LayoutPresetGroups = function()
     -- Header furniture follows the group geometry. Selectors/actions remain a
     -- two-column strip; the role counter expands to the live group-grid width.
     if SCB.presetGroupSelector then SCB.presetGroupSelector:SetWidth(groupWidth) end
-    if SCB.presetSelector then SCB.presetSelector:SetWidth(groupWidth) end
+    if SCB.presetSelector then
+        SCB.presetSelector:SetWidth(groupWidth)
+        SCB.presetSelector:ClearAllPoints()
+        SCB.presetSelector:SetPoint("TOPRIGHT", SCB.presetPanel, "TOPRIGHT", -12, -(24 + headerHeight))
+    end
+    if SCB.presetGroupSelector and SCB.presetSelector then
+        SCB.presetGroupSelector:ClearAllPoints()
+        SCB.presetGroupSelector:SetPoint("RIGHT", SCB.presetSelector, "LEFT", -6, 0)
+    end
     local actionGap = 3
     local actionWidth = (twoGroupWidth - (3 * actionGap)) / 4
     if SCB.presetSaveButton then SCB.presetSaveButton:SetWidth(actionWidth) end
@@ -3362,12 +3438,31 @@ SCB_LayoutPresetGroups = function()
         SCB.presetMenu:ClearAllPoints()
         SCB.presetMenu:SetPoint("TOPLEFT", SCB.presetGroupSelector, "BOTTOMLEFT", 0, -1)
     end
-    for i = 1, table.getn(SCB.presetGroupMenuButtons or {}) do SCB.presetGroupMenuButtons[i]:SetWidth(menuWidth - 8) end
-    for i = 1, table.getn(SCB.presetNameMenuButtons or {}) do SCB.presetNameMenuButtons[i]:SetWidth(menuWidth - 8) end
+    for i = 1, table.getn(SCB.presetGroupMenuButtons or {}) do
+        menuButton = SCB.presetGroupMenuButtons[i]
+        menuButton:SetWidth(menuWidth - 8)
+        if menuButton.deleteButton and menuButton.deleteButton.icon then
+            SCB_SetTextureRenderSize(menuButton.deleteButton.icon, iconSize, menuButton.deleteButton)
+        end
+    end
+    for i = 1, table.getn(SCB.presetNameMenuButtons or {}) do
+        menuButton = SCB.presetNameMenuButtons[i]
+        menuButton:SetWidth(menuWidth - 8)
+        if menuButton.deleteButton and menuButton.deleteButton.icon then
+            SCB_SetTextureRenderSize(menuButton.deleteButton.icon, iconSize, menuButton.deleteButton)
+        end
+        if menuButton.renameButton and menuButton.renameButton.icon then
+            SCB_SetTextureRenderSize(menuButton.renameButton.icon, iconSize, menuButton.renameButton)
+        end
+        if menuButton.moveUpButton then SCB_SetArtButtonIconSize(menuButton.moveUpButton, iconSize) end
+        if menuButton.moveDownButton then SCB_SetArtButtonIconSize(menuButton.moveDownButton, iconSize) end
+    end
 
     for i = 1, 8 do
         groupFrame = SCB.presetGroupFrames[i]
         title = SCB.presetGroupTitles[i]
+        resummon = SCB.presetGroupResummonButtons[i]
+        if resummon then SCB_SetArtButtonIconSize(resummon, iconSize) end
         if i <= groupCount then
             col = math.mod(i - 1, columns)
             row = math.floor((i - 1) / columns)
@@ -3375,43 +3470,40 @@ SCB_LayoutPresetGroups = function()
             groupFrame:ClearAllPoints()
             groupFrame:SetPoint(
                 "TOPLEFT",
-                SCB.presetCounterBox,
+                groupAnchor,
                 "BOTTOMLEFT",
                 col * (groupWidth + gapX),
-                -20 - (row * (groupHeight + gapY))
+                -6 - (row * (groupBoxHeight + gapY))
             )
             groupFrame:Show()
 
             title:ClearAllPoints()
-            title:SetPoint("BOTTOMLEFT", groupFrame, "TOPLEFT", 8, 2)
+            title:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 6, -5)
             title:Show()
+            if resummon then
+                resummon:ClearAllPoints()
+                resummon:SetPoint("CENTER", groupFrame, "TOPRIGHT", -11, -(boxHeaderHeight / 2) - 1)
+                resummon:Show()
+            end
         else
             groupFrame:Hide()
             title:Hide()
+            if resummon then resummon:Hide() end
         end
     end
 
-    if SCB.presetPlayerPool then
-        SCB.presetPlayerPool:ClearAllPoints()
-        SCB.presetPlayerPool:SetPoint(
-            "TOPLEFT",
-            SCB.presetCounterBox,
-            "BOTTOMLEFT",
-            3,
-            -20 - (rows * groupHeight) - ((rows - 1) * gapY) - 8
-        )
-    end
     SCB_UpdateLayoutDebugBorders()
 end
 function SCB_CreatePresetUI(frame)
     local toggle = SCB_CreateArrowButton(frame, 18)
+    SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("preset", "iconSize"), toggle)
     toggle:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -41)
     toggle:SetScript("OnClick", SCB_PresetToggleOnClick)
     toggle.scbTooltip = SCB_L("TIP_PRESETS")
     toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
     toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
-    SCB_SetArrowDirection(toggle.scbArrowTexture, "left")
     SCB.presetToggle = toggle
+    SCB_SetPresetToggleDirection(false)
     SCB.presetHeading = SCB_CreateSectionTitle(frame, SCB_L("SECTION_PRESETS"), 36, -42)
 
     local panel = CreateFrame("Frame", "SoloCraftBotsPresetPanel", UIParent)
@@ -3432,10 +3524,17 @@ function SCB_CreatePresetUI(frame)
     SCB.presetPanel = panel
 
     local presetHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    presetHeader:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -12)
+    presetHeader:SetPoint("TOP", panel, "TOP", 0, -13)
     presetHeader:SetText(SCB_L("PRESET_CONFIGURATION"))
-    presetHeader:SetTextColor(1, 0.82, 0, 1)
+    SCB_SetFontColor(presetHeader, "header")
     SCB.presetConfigurationHeading = presetHeader
+
+    SCB.presetCloseButton = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_x.tga")
+    SCB.presetCloseButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -9)
+    SCB.presetCloseButton.scbTooltip = SCB_L("TIP_CLOSE")
+    SCB.presetCloseButton:SetScript("OnClick", function() SCB_SetPresetPanelShown(false) end)
+    SCB.presetCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+    SCB.presetCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
     -- Per-character preset identity: actual class is read-only; role is this
     -- character's default used only to seed newly-created presets.
@@ -3456,6 +3555,11 @@ function SCB_CreatePresetUI(frame)
     SCB.presetSelfRoleButton:SetScript("OnLeave", SCB_TooltipOnLeave)
     SCB_RefreshCharacterPresetIdentity()
 
+    -- Retain the per-character identity controls and their state logic, but
+    -- remove them from the visible Preset Manager header.
+    SCB.presetSelfClassFrame:Hide()
+    SCB.presetSelfRoleButton:Hide()
+
     local groupSelector = SCB_CreatePresetDropdown(panel, "SoloCraftBotsPresetGroupSelector", 92, SCB_L("PRESET_GROUP_PLACEHOLDER"), SCB_PresetGroupSelectorOnClick)
     groupSelector.scbTooltip = SCB_L("TIP_PRESET_GROUP")
     groupSelector:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -3468,7 +3572,7 @@ function SCB_CreatePresetUI(frame)
     selector:SetScript("OnEnter", SCB_TooltipOnEnter)
     selector:SetScript("OnLeave", SCB_TooltipOnLeave)
     selector:ClearAllPoints()
-    selector:SetPoint("TOPRIGHT", presetHeader, "BOTTOMRIGHT", 0, -12)
+    selector:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -12, -44)
     SCB.presetSelector = selector
 
     -- Group selector depends on the Preset selector, so anchor it only after
@@ -3519,16 +3623,11 @@ function SCB_CreatePresetUI(frame)
     SCB.presetMenu = menu
 
     local groupWidth, groupHeight = 92, 158
-    local g, groupFrame, groupTitle, i, localIndex, row, classButton, roleButton
+    local g, groupFrame, groupTitle, groupDivider, i, localIndex, row, classButton, roleButton
     for g = 1, 8 do
-        groupTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        groupTitle:SetText(string.format(SCB_L("GROUP_NUMBER"), g))
-        groupTitle:SetTextColor(1, 0.82, 0, 1)
-        SCB.presetGroupTitles[g] = groupTitle
-
         groupFrame = CreateFrame("Frame", nil, panel)
         groupFrame:SetWidth(groupWidth)
-        groupFrame:SetHeight(groupHeight)
+        groupFrame:SetHeight(groupHeight + 18)
         groupFrame:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -3537,7 +3636,30 @@ function SCB_CreatePresetUI(frame)
         })
         groupFrame:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
         groupFrame:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+        groupFrame:EnableMouse(true)
+        groupFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
+        groupFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.presetGroupFrames[g] = groupFrame
+
+        groupTitle = groupFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        groupTitle:SetText(string.format(SCB_L("GROUP_NUMBER"), g))
+        SCB_SetFontColor(groupTitle, "subheader")
+        SCB.presetGroupTitles[g] = groupTitle
+
+        groupDivider = groupFrame:CreateTexture(nil, "ARTWORK")
+        groupDivider:SetHeight(1)
+        groupDivider:SetPoint("TOPLEFT", groupFrame, "TOPLEFT", 3, -18)
+        groupDivider:SetPoint("TOPRIGHT", groupFrame, "TOPRIGHT", -3, -18)
+        groupDivider:SetTexture(0.45, 0.45, 0.45, 0.55)
+
+        local resummonButton = SCB_CreateArtButton(groupFrame, nil, 16, SCB.assetRoot .. "lucide_rotate_ccw.tga")
+        resummonButton.scbGroupIndex = g
+        resummonButton.scbTooltip = string.format(SCB_L("TIP_RESUMMON_GROUP"), g)
+        resummonButton:SetScript("OnClick", SCB_MaintenanceResummonGroupOnClick)
+        resummonButton:SetScript("OnEnter", SCB_TooltipOnEnter)
+        resummonButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+        resummonButton:Hide()
+        SCB.presetGroupResummonButtons[g] = resummonButton
 
         for localIndex = 1, 5 do
             i = ((g - 1) * 5) + localIndex
@@ -3614,21 +3736,40 @@ function SCB_CreatePresetUI(frame)
         end
     end
 
+    SCB.presetLayoutMismatchPulseFrame = CreateFrame("Frame", "SoloCraftBotsPresetLayoutMismatchPulseFrame", panel)
+    SCB.presetLayoutMismatchPulseFrame.scbElapsed = 0
+    SCB.presetLayoutMismatchPulseFrame:SetScript("OnUpdate", SCB_PresetLayoutMismatchPulseOnUpdate)
+    SCB.presetLayoutMismatchPulseFrame:Hide()
+
     SCB_LayoutPresetRowGeometry()
     SCB_UpdateLayoutDebugBorders()
 
     local playerPool = CreateFrame("Frame", nil, panel)
     playerPool:SetWidth(224)
     playerPool:SetHeight(1)
+    playerPool:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    playerPool:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+    playerPool:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
     playerPool:Hide()
     SCB.presetPlayerPool = playerPool
 
     local playerPoolLabel = playerPool:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 2, 0)
-    playerPoolLabel:SetText(SCB_L("PLAYERS"))
-    playerPoolLabel:SetTextColor(0.72, 0.72, 0.72, 1)
+    playerPoolLabel:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 6, -5)
+    playerPoolLabel:SetText(SCB_L("UNASSIGNED_PLAYERS"))
+    playerPoolLabel:SetTextColor(1, 0.2, 0.2, 1)
     playerPoolLabel:Hide()
     SCB.presetPlayerPoolLabel = playerPoolLabel
+
+    local playerPoolDivider = playerPool:CreateTexture(nil, "ARTWORK")
+    playerPoolDivider:SetHeight(1)
+    playerPoolDivider:SetPoint("TOPLEFT", playerPool, "TOPLEFT", 3, -18)
+    playerPoolDivider:SetPoint("TOPRIGHT", playerPool, "TOPRIGHT", -3, -18)
+    playerPoolDivider:SetTexture(0.45, 0.45, 0.45, 0.55)
 
     local summon = SCB_CreateTextButton(panel, "SoloCraftBotsPresetSummon", 42, 24, SCB_L("PRESET_SUMMON"))
     summon:ClearAllPoints()
@@ -3694,6 +3835,7 @@ function SCB_CreatePresetUI(frame)
         counterText:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX + 26, 0)
         counterText:SetJustifyH("CENTER")
         counterText:SetText("0")
+        SCB_SetFontColor(counterText, "text")
         SCB.presetCounterLabels[counterInfo.key] = counterText
 
         counterX = counterX + 44
@@ -3874,6 +4016,22 @@ function SCB_GetLocationMaxCapacity(context)
     return tiers[table.getn(tiers)] or 5
 end
 
+-- Requested preset execution is owned by the receiving summoner's client.
+-- The requester's location is irrelevant: validate the requested maintained
+-- group size against the receiver's current local capacity before any
+-- conversion or destructive work begins.
+function SCB_ValidateRequestedPresetLocalCapacity(snapshot)
+    local size = snapshot and tonumber(snapshot.size) or 0
+    local context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    local maximum = SCB_GetLocationMaxCapacity and SCB_GetLocationMaxCapacity(context) or 5
+
+    if size <= 0 then return false, SCB_L("ERR_SNAPSHOT_SIZE") end
+    if size > maximum then
+        return false, string.format(SCB_L("ERR_REQUEST_LOCATION_CAPACITY"), size, maximum)
+    end
+    return true
+end
+
 -- previousCap makes normal observation sticky upward. explicitSize is the one
 -- deliberate shrink path: pressing Summon with a smaller preset is the user's
 -- authoritative statement that the maintained roster should become smaller.
@@ -3953,6 +4111,9 @@ function SCB_HandleLocationRefresh()
     local signature = SCB_GetLocationSignature(context)
 
     SCB.locationContext = context
+    if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+        SCB_RefreshCommandAvailability()
+    end
     if signature == SCB.lastLocationSignature then return end
     SCB.lastLocationSignature = signature
 

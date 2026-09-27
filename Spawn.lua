@@ -93,6 +93,10 @@ local function SCB_TryParkSurvivorInGroupEight(name)
 
     group, raidIndex = SCB_FindRaidMemberGroup(name)
     if not raidIndex then return false end
+    -- This path is allowed to park only the retained/generated bot bootstrap.
+    -- Never let stale safety state turn a logical human assignment into a
+    -- physical subgroup move.
+    if not SCB_IsBotName or not SCB_IsBotName(name) then return false end
     if group == 8 then
         if SCB.developerDebugEnabled then SCB_BurstDebug("Safety " .. tostring(name) .. " parked in G8") end
         return true
@@ -187,6 +191,66 @@ SCB.scb072TryParkSurvivorInGroupEight = SCB_TryParkSurvivorInGroupEight
 SCB.scb072TryRemoveParkedSurvivorBase = SCB_TryRemoveParkedSurvivor
 SCB.scb072TryRemoveParkedSurvivor = SCB_TryRemoveParkedSurvivor
 
+function SCB_ArrangePresetHumanGroups()
+    local tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    local i, player, wantedGroup, wantedName, raidIndex, name, _, currentGroup
+    local groupCount
+
+    if not tracker or tracker.mode ~= "raid" or (tracker.size or 0) <= 5 then return true end
+    if not SetRaidSubgroup or not GetRaidRosterInfo or not GetNumRaidMembers then return true end
+    if GetNumRaidMembers() == 0 then return false end
+    if SCB_PresetGroupHasCombat and SCB_PresetGroupHasCombat() then return false end
+
+    groupCount = math.ceil((tracker.size or 0) / 5)
+
+    -- A configured human slot determines the Blizzard subgroup, but never the
+    -- row inside that subgroup. Resolve the raid index again before every move:
+    -- SetRaidSubgroup() can change raid indices as the roster is rearranged.
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        wantedName = player and player.name or nil
+        wantedGroup = player and tonumber(player.group) or nil
+        if wantedName and wantedGroup and wantedGroup >= 1 and wantedGroup <= groupCount then
+            raidIndex = nil
+            currentGroup = nil
+            local r
+            for r = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(r)
+                if name == wantedName then
+                    raidIndex = r
+                    break
+                end
+            end
+            if not raidIndex then return false end
+            if currentGroup ~= wantedGroup then
+                if SCB_RecordPresetSubgroupMoveBarrier then SCB_RecordPresetSubgroupMoveBarrier() end
+                SetRaidSubgroup(raidIndex, wantedGroup)
+            end
+        end
+    end
+
+    -- Verify subgroup only. Blizzard owns the row/order within each subgroup.
+    for i = 1, table.getn(tracker.players or {}) do
+        player = tracker.players[i]
+        wantedName = player and player.name or nil
+        wantedGroup = player and tonumber(player.group) or nil
+        if wantedName and wantedGroup and wantedGroup >= 1 and wantedGroup <= groupCount then
+            raidIndex = nil
+            currentGroup = nil
+            local r
+            for r = 1, GetNumRaidMembers() do
+                name, _, currentGroup = GetRaidRosterInfo(r)
+                if name == wantedName then
+                    raidIndex = r
+                    break
+                end
+            end
+            if not raidIndex or currentGroup ~= wantedGroup then return false end
+        end
+    end
+    return true
+end
+
 -- -------------------------------------------------------------------------
 -- Maintenance coordinator (absorbed from RaidRefill.lua in 0.8.28).
 -- -------------------------------------------------------------------------
@@ -250,6 +314,13 @@ local function SCB_0826FinishMaintenance(status, reason, userText)
     if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
     if userText and SCB_Print then SCB_Print(userText) end
+end
+
+local function SCB_0826MaintenanceRetryHint(state)
+    if state and state.action == "resummon-group" then
+        return SCB_L("RESUMMON_GROUP_RETRY")
+    end
+    return "Replace Missing can be retried."
 end
 
 local function SCB_0826MaintenanceCombatBlocked(state, now)
@@ -472,8 +543,197 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
 end
 
+function SCB_MaintenanceResummonGroup(group)
+    local operation, roster, observed, members
+    local assignments, removedNames = {}, {}
+    local survivorName, survivorRecord
+    local botCount, otherHumans, targetedLiveCount, unavailableCount = 0, 0, 0, 0
+    local destinationOccupants, destinationAssignments = 0, 0
+    local id, slot, record, member, i, now, readyAt, state
+
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
+    if (SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation())
+        or (SCB_IsKickQueueActive and SCB_IsKickQueueActive())
+        or SCB_0826PendingBotAddsStillActive() then
+        SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    group = tonumber(group)
+    if not group or group < 1 or group > 8 then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
+        return
+    end
+
+    if SCB_SyncActiveRosterFromObserved then SCB_SyncActiveRosterFromObserved() end
+    roster = SCB_GetActiveRoster and SCB_GetActiveRoster() or nil
+    observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
+    if not roster or not roster.active then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
+        return
+    end
+
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if member.isBot then
+            botCount = botCount + 1
+        elseif not member.isSelf then
+            otherHumans = otherHumans + 1
+        end
+    end
+
+    now = GetTime and GetTime() or 0
+    readyAt = now
+    for id, slot in pairs(roster.slots or {}) do
+        if slot and slot.expected and (slot.intendedGroup or slot.currentGroup or 1) == group then
+            record = SCB_BuildActiveReplacementRecord and SCB_BuildActiveReplacementRecord(slot) or nil
+            if not record then
+                unavailableCount = unavailableCount + 1
+            else
+                record = SCB_0826CopyMaintenanceAssignment(record)
+                record.group = slot.intendedGroup or slot.currentGroup or group
+                table.insert(assignments, record)
+                destinationAssignments = destinationAssignments + 1
+
+                member = slot.currentName and observed and observed.byName and observed.byName[slot.currentName] or nil
+                if member and member.isBot then
+                    removedNames[slot.currentName] = true
+                    targetedLiveCount = targetedLiveCount + 1
+                elseif record.missingSince then
+                    local missingReadyAt = record.missingSince + (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0)
+                    if missingReadyAt > readyAt then readyAt = missingReadyAt end
+                end
+            end
+        end
+    end
+
+    if unavailableCount > 0 then
+        SCB_Print(string.format(SCB_L("RESUMMON_GROUP_UNAVAILABLE"), unavailableCount))
+        return
+    end
+
+    -- Anything already in the destination subgroup that is not one of the
+    -- tracked bots we are about to remove must remain there. Refuse before any
+    -- destructive action if those occupants plus the rebuilt tracked
+    -- assignments cannot fit in the five-player subgroup/party capacity.
+    for i = 1, table.getn(members) do
+        member = members[i]
+        if (member.subgroup or member.currentGroup or 1) == group
+            and (not member.isBot or not removedNames[member.name]) then
+            destinationOccupants = destinationOccupants + 1
+        end
+    end
+    if destinationOccupants + destinationAssignments > 5 then
+        SCB_Print(string.format(
+            SCB_L("RESUMMON_GROUP_CAPACITY"),
+            group,
+            destinationOccupants,
+            destinationAssignments
+        ))
+        return
+    end
+
+    if table.getn(assignments) == 0 then
+        SCB_Print(SCB_L("RESUMMON_GROUP_NONE"))
+        return
+    end
+    if next(removedNames) ~= nil and not UninviteByName then
+        SCB_Print(SCB_L("KICK_NATIVE_UNAVAILABLE"))
+        return
+    end
+
+    if otherHumans == 0 and targetedLiveCount == botCount and botCount > 0
+        and SCB_SurvivorSafetyRequired and SCB_SurvivorSafetyRequired() then
+        survivorName = SCB_FindGroupOneSurvivor and SCB_FindGroupOneSurvivor(members) or nil
+        if survivorName then
+            for i = 1, table.getn(assignments) do
+                record = assignments[i]
+                if record and record.sourceName == survivorName then
+                    survivorRecord = record
+                    table.remove(assignments, i)
+                    removedNames[survivorName] = nil
+                    break
+                end
+            end
+        end
+    end
+
+    if table.getn(assignments) == 0 and survivorRecord then
+        SCB_Print(SCB_L("RESUMMON_GROUP_LAST_UNSAFE"))
+        return
+    end
+
+    SCB_0826SortMaintenanceAssignments(assignments)
+    operation = SCB_BeginBotOperation and SCB_BeginBotOperation("maintenance", {
+        kind = "maintenance",
+        action = "resummon-group",
+        group = group,
+        assignmentCount = table.getn(assignments) + (survivorRecord and 1 or 0),
+    }) or nil
+    if not operation then
+        SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    state = {
+        action = "resummon-group",
+        targetGroup = group,
+        phase = "nextgroup",
+        remaining = assignments,
+        remainingHead = 1,
+        removedNames = removedNames,
+        survivorAssignment = survivorRecord,
+        survivorName = survivorName,
+        readyAt = readyAt,
+        lastUnsafeTextKey = "RESUMMON_GROUP_LAST_UNSAFE",
+    }
+    operation.maintenance = state
+    SCB_0826SetMaintenanceSentinel(operation, true)
+    if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
+
+    SCB_0826MaintenanceDebug(
+        "resummon group=" .. tostring(group)
+        .. " assignments=" .. tostring(table.getn(assignments) + (survivorRecord and 1 or 0))
+        .. " liveRemovals=" .. tostring(targetedLiveCount)
+        .. " survivor=" .. tostring(survivorName or "none")
+    )
+
+    if not SCB_KickBots or not SCB_KickBots("all", {
+        names = removedNames,
+        manageSafety = false,
+        preserveName = survivorName,
+        silent = true,
+    }) then
+        SCB_0826FinishMaintenance("failed", "shared resummon removal queue unavailable",
+            SCB_L("REPLACE_DEAD_BUSY"))
+        return
+    end
+
+    if next(removedNames) ~= nil then
+        state.phase = "waitremoved"
+        state.removalStartedAt = now
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-remove") end
+    elseif readyAt > now then
+        state.phase = "settle"
+        state.settleUntil = readyAt
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-settle") end
+    else
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
+    end
+
+    if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
+end
+
+function SCB_MaintenanceResummonGroupOnClick()
+    local group = this and this.scbGroupIndex or nil
+    SCB_MaintenanceResummonGroup(group)
+end
+
 function SCB_MaintenanceReplaceOnClick()
-    local missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
+    local missing, dead, unavailableMissing, unavailableDead
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
+    missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
     local members = SCB_CollectGroupMembers and SCB_CollectGroupMembers() or {}
     local botCount, otherHumans = 0, 0
     local survivorName, survivorRecord
@@ -632,7 +892,8 @@ function SCB_MaintenanceReplaceOnUpdate()
             if state.removalStartedAt
                 and (now - state.removalStartedAt) >= SCB.MAINTENANCE_REMOVAL_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "removed bot never left roster",
-                    "Bot maintenance stopped because a removed bot never left the roster. Replace Missing can be retried.")
+                    "Bot maintenance stopped because a removed bot never left the roster. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
@@ -665,7 +926,7 @@ function SCB_MaintenanceReplaceOnUpdate()
             if state.survivorAssignment and state.survivorName then
                 if SCB_CountGroupBots and SCB_CountGroupBots() <= 1 then
                     SCB_0826FinishMaintenance("failed", "last safety bot could not be replaced safely",
-                        SCB_L("REPLACE_DEAD_LAST_UNSAFE"))
+                        SCB_L(state.lastUnsafeTextKey or "REPLACE_DEAD_LAST_UNSAFE"))
                     return
                 end
 
@@ -712,7 +973,8 @@ function SCB_MaintenanceReplaceOnUpdate()
         if table.getn(newBots) < expected then
             if state.burstStartedAt and (now - state.burstStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "replacement burst timed out",
-                    "Bot maintenance stopped because a replacement did not join. Replace Missing can be retried.")
+                    "Bot maintenance stopped because a replacement did not join. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
@@ -729,7 +991,8 @@ function SCB_MaintenanceReplaceOnUpdate()
         if not resolvedBots then
             if state.burstStartedAt and (now - state.burstStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
                 SCB_0826FinishMaintenance("failed", "replacement identity timed out",
-                    "Bot maintenance stopped because replacement identity could not be confirmed. Replace Missing can be retried.")
+                    "Bot maintenance stopped because replacement identity could not be confirmed. "
+                    .. SCB_0826MaintenanceRetryHint(state))
             end
             return
         end
@@ -1019,27 +1282,19 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
         and SCB_IsT3RaidLocation and SCB_IsT3RaidLocation()
 
     if size > 5 then
-        SCB.presetHumanGroups = {}
-        for i = 1, table.getn(snapshot.players or {}) do
-            player = snapshot.players[i]
-            if player.group and player.group >= 1 and player.group <= groupCount then
-                SCB.presetHumanGroups[player.name] = player.group
-            end
-        end
-
         if startBotState == "survivor" then
             if table.getn(groups[1] or {}) == 0 then
                 return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
             end
             if raidCount == 0 then table.insert(queue, SCB_CONVERT_NOW) end
-            safety.parkBeforeArrange = true
+            safety.parkBeforeBotBursts = true
             safety.removeAfterGroupOne = true
         elseif raidCount > 0 then
         elseif partyCount > 0 then
             table.insert(queue, SCB_CONVERT_NOW)
         elseif needsT3Bootstrap then
             SCB_QueueBootstrapBurst(queue, plans)
-            safety.parkBeforeArrange = true
+            safety.parkBeforeBotBursts = true
             safety.removeAfterGroupOne = true
         else
             firstAssignment = groups[1] and groups[1][1] or nil
@@ -1051,10 +1306,8 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
             table.insert(queue, SCB_WAIT_REAL_RAID_START)
         end
 
-        table.insert(queue, SCB.PRESET_ARRANGE_PLAYERS)
+        table.insert(queue, SCB.PRESET_PREPARE_RAID_BOTS)
     else
-        SCB.presetHumanGroups = nil
-
         if startBotState == "survivor" then
             if table.getn(groups[1] or {}) == 0 then
                 return false, SCB_L("ERR_SURVIVOR_NO_SLOT")
@@ -1071,6 +1324,9 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
         end
     end
 
+    -- Full rebuilds intentionally burst one logical group at a time;
+    -- cross-group packing saves negligible time but weakens deterministic
+    -- bot-order inference.
     for g = 1, groupCount do
         if table.getn(groups[g] or {}) > 0 then
             SCB_QueuePlannedBurst(queue, plans, "preset", g, groups[g])
@@ -1172,22 +1428,26 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             SCB.presetSpawnElapsed = 0
             return
 
-        elseif head == SCB.PRESET_ARRANGE_PLAYERS then
+        elseif head == SCB.PRESET_PREPARE_RAID_BOTS then
             safety = SCB_GetPresetSafety(false)
-            if safety and safety.parkBeforeArrange then
+            if safety and safety.parkBeforeBotBursts then
                 if not SCB.scb072TryParkSurvivorInGroupEight
                     or not SCB.scb072TryParkSurvivorInGroupEight() then
                     return
                 end
-                safety.parkBeforeArrange = nil
+                safety.parkBeforeBotBursts = nil
             end
-            if SCB_ArrangePresetPlayers and SCB_ArrangePresetPlayers() then
-                if not SCB_PresetSubgroupMoveBarrierPassed() then return end
-                SCB_PresetSpawnQueuePop()
-                SCB.presetSpawnElapsed = 0
-            else
+
+            -- Human logical slots determine their raid subgroup, not their row.
+            -- Arrange humans before deterministic bot bursts so each subgroup has
+            -- the correct human capacity while Blizzard remains free to choose
+            -- row/order inside that subgroup.
+            if not SCB_ArrangePresetHumanGroups or not SCB_ArrangePresetHumanGroups() then
                 return
             end
+            if not SCB_PresetSubgroupMoveBarrierPassed() then return end
+            SCB_PresetSpawnQueuePop()
+            SCB.presetSpawnElapsed = 0
 
         elseif head == SCB.PRESET_TRACK_ROSTER then
             if SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker then
@@ -1443,6 +1703,14 @@ function SCB_GetActiveBotOperation()
     return nil
 end
 
+function SCB_IsManualAddAvailable()
+    if SCB_GetActiveBotOperation() then return false end
+    if SCB_HasLegacyPhysicalBotRuntime() then return false end
+    if SCB_IsKickQueueActive and SCB_IsKickQueueActive() then return false end
+    if SCB_PendingBotAddsStillActive() then return false end
+    return true
+end
+
 function SCB_GetBotOperationSafety(create)
     return SCB_GetPresetSafety(create)
 end
@@ -1474,6 +1742,7 @@ function SCB_BeginBotOperation(kind, intent)
         updatedAt = SCB_OperationNow(),
     }
     SCB.botOperation = operation
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
     if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return operation
 end
@@ -1519,6 +1788,14 @@ function SCB_EndBotOperation(status, reason)
         reason = reason,
     }
     SCB.botOperation = nil
+    if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
+    -- Tracker finalization occurs while the preset operation still owns the
+    -- physical roster, so mismatch presentation is deliberately suppressed at
+    -- that moment. Refresh once ownership is released so the final stable
+    -- party/raid layout is immediately classified even if no roster event follows.
+    if operation.kind == "preset" and SCB_RefreshPresetLayoutMismatchPresentation then
+        SCB_RefreshPresetLayoutMismatchPresentation(SCB.liveRoster)
+    end
     return operation
 end
 
@@ -1528,6 +1805,17 @@ end
 
 function SCB_AbortBotSpawnOperations(preserveOperation)
     local operation = SCB_GetActiveBotOperation()
+
+    if operation and operation.kind == "manual-add" then
+        if operation.manualAdd and operation.manualAdd.burstID
+            and SCB_RemovePendingAssumedSpawnBurst then
+            SCB_RemovePendingAssumedSpawnBurst(operation.manualAdd.burstID)
+        end
+        SCB.pendingBotAdds = 0
+        SCB.pendingBotAddsExpires = 0
+        SCB_EndBotOperation("aborted", "manual add aborted")
+        return
+    end
 
     if operation and operation.kind == "maintenance" then
         SCB_ResetSpawnRuntimeState()
@@ -1556,6 +1844,165 @@ function SCB_AbortBotSpawnOperations(preserveOperation)
     if SCB_ClearPendingAssumedSpawns then SCB_ClearPendingAssumedSpawns() end
     if not preserveOperation then SCB_AbortBotOperation("spawn runtime aborted") end
     return result
+end
+
+SCB.MANUAL_ADD_MIN_COOLDOWN = 1.0
+
+local function SCB_FindManualAddArrival(state)
+    local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local name, intent, member
+    if not state or not state.burstID or not roster then return nil end
+
+    for name, intent in pairs(SCB.assumedRolesByName or {}) do
+        if intent and intent.burstID == state.burstID then
+            member = roster.byName and roster.byName[name] or nil
+            if member and member.isBot then return name end
+        end
+    end
+    return nil
+end
+
+local function SCB_RecordManualAddArrival(state)
+    local roster, member, intent, slot
+    if not state or not state.botName or state.adopted then return end
+
+    roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    member = roster and roster.byName and roster.byName[state.botName] or nil
+    if not member or not member.isBot then return end
+
+    if SCB_EnsureSessionDB then
+        SCB_EnsureSessionDB()
+        SoloCraftBotsDB.session.knownBots[state.botName] = true
+    end
+
+    if SCB_SyncActiveRosterFromObserved then
+        SCB_SyncActiveRosterFromObserved(roster)
+    end
+
+    -- Preserve the exact requested identity in an adopted manual slot. Combat
+    -- confirmation may later refine role/extra, but a fresh manual bot must be
+    -- maintainable immediately even when no confirmation evidence exists yet.
+    intent = SCB.assumedRolesByName and SCB.assumedRolesByName[state.botName] or nil
+    if SCB_GetActiveSlotByName then slot = SCB_GetActiveSlotByName(state.botName) end
+    if slot and intent then
+        slot.class = slot.class or intent.class
+        slot.assumedRole = intent.role
+        slot.role = intent.role
+        slot.extra = intent.extra
+        slot.updatedAt = SCB_OperationNow()
+    end
+
+    if SCB_ApplyAutoLootMethod then SCB_ApplyAutoLootMethod() end
+    if SCB_QueueAutoLootApply then SCB_QueueAutoLootApply() end
+    state.adopted = true
+end
+
+local function SCB_FinishManualAddOperation(status, reason)
+    local operation = SCB_GetActiveBotOperation()
+    local state = operation and operation.kind == "manual-add" and operation.manualAdd or nil
+
+    if not operation or operation.kind ~= "manual-add" then return end
+    if state and state.burstID and SCB_RemovePendingAssumedSpawnBurst then
+        SCB_RemovePendingAssumedSpawnBurst(state.burstID)
+    end
+
+    -- A manual-add operation owns exactly one registered pending add. Once its
+    -- named arrival or timeout resolves, do not leave the generic pending-add
+    -- fallback blocking the next manual request.
+    SCB.pendingBotAdds = 0
+    SCB.pendingBotAddsExpires = 0
+    SCB_EndBotOperation(status or "complete", reason)
+end
+
+function SCB_RequestManualAdd(classKey, role, extra)
+    local command, operation, plan, state, now
+    local parsedClass, parsedRole, parsedExtra
+
+    if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return false end
+    command = SCB_BuildSpawnCommand and SCB_BuildSpawnCommand(classKey, role, extra) or nil
+    if not command or not SCB_IsValidatedSpawnCommand(command) then return false end
+    parsedClass, parsedRole, parsedExtra = SCB_ParseSpawnCommand(command)
+    if not parsedClass or not parsedRole then return false end
+    classKey, role, extra = parsedClass, parsedRole, parsedExtra
+    if not SCB_IsManualAddAvailable() then return false end
+
+    operation = SCB_BeginBotOperation("manual-add", {
+        kind = "manual-add",
+        class = classKey,
+        role = role,
+        extra = extra,
+        command = command,
+    })
+    if not operation then return false end
+
+    plan = {
+        kind = "manual-add",
+        assignments = {
+            {
+                command = command,
+                class = classKey,
+                role = role,
+                extra = extra,
+            },
+        },
+    }
+    if not SCB_BeginAssumedSpawnBurst or not SCB_BeginAssumedSpawnBurst(plan) then
+        SCB_EndBotOperation("failed", "manual add identity burst could not start")
+        return false
+    end
+
+    now = SCB_OperationNow()
+    state = {
+        burstID = plan.burstID,
+        sentAt = now,
+        floorUntil = now + (SCB.MANUAL_ADD_MIN_COOLDOWN or 1.0),
+        timeoutAt = nil,
+        botName = nil,
+    }
+    operation.manualAdd = state
+    SCB_SetBotOperationPhase("manual-add-send")
+
+    if SCB_AllowActiveRosterAdoption then SCB_AllowActiveRosterAdoption() end
+    if not SCB_SendSpawnCommand(command) then
+        SCB_FinishManualAddOperation("failed", "manual add payload rejected")
+        return false
+    end
+
+    state.timeoutAt = tonumber(SCB.pendingBotAddsExpires) or (now + 5.0)
+    SCB_SetBotOperationPhase("manual-add-wait")
+    return true, command
+end
+
+function SCB_ManualAddOnUpdate()
+    local operation = SCB_GetActiveBotOperation()
+    local state = operation and operation.kind == "manual-add" and operation.manualAdd or nil
+    local now, botName
+
+    if not operation or operation.kind ~= "manual-add" then return end
+    if not state then
+        SCB_FinishManualAddOperation("failed", "manual add state missing")
+        return
+    end
+
+    now = SCB_OperationNow()
+    if not state.botName then
+        botName = SCB_FindManualAddArrival(state)
+        if botName then
+            state.botName = botName
+            state.observedAt = now
+            SCB_RecordManualAddArrival(state)
+            SCB_SetBotOperationPhase("manual-add-bound")
+        end
+    end
+
+    if state.botName and now >= (state.floorUntil or now) then
+        SCB_FinishManualAddOperation("complete", nil)
+        return
+    end
+
+    if state.timeoutAt and now >= state.timeoutAt then
+        SCB_FinishManualAddOperation("timeout", "manual add join timeout")
+    end
 end
 
 function SCB_ResetSessionState()
@@ -1646,6 +2093,10 @@ end
 function SCB_RequestPresetOperation(snapshot, forced)
     local operation, ok, errorText
     local intent = SCB_PresetOperationIntent(snapshot, forced)
+
+    if SCB_CanOperateBots and not SCB_CanOperateBots(false) then
+        return false, SCB_L("ERR_TAXI_OPERATION")
+    end
 
     if forced then
         operation = SCB_ReplaceBotOperationIntent("preset", intent)
@@ -1956,6 +2407,7 @@ end
 function SCB_PresetSpawnQueueOnUpdate()
     local elapsed = arg1 or 0
     if SCB_PollOperationRosterFallback then SCB_PollOperationRosterFallback(elapsed, 0.25) end
+    if SCB_ManualAddOnUpdate then SCB_ManualAddOnUpdate() end
     SCB_0823PollBootstrapRemoval()
     SCB_SyncPresetOperationPhase()
     local result = SCB_PresetSpawnQueueOnUpdateCore()
