@@ -4111,6 +4111,9 @@ function SCB_HandleLocationRefresh()
     local signature = SCB_GetLocationSignature(context)
 
     SCB.locationContext = context
+    if SCB.frame and SCB.frame:IsShown() and SCB_RefreshCommandAvailability then
+        SCB_RefreshCommandAvailability()
+    end
     if signature == SCB.lastLocationSignature then return end
     SCB.lastLocationSignature = signature
 

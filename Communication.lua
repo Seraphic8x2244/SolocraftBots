@@ -1274,9 +1274,16 @@ end
 
 function SCB_IsCommandRequestAvailable(commandKey, scope)
     local commandInfo, route = SCB_GetCommandRoute(commandKey, scope)
-    local group, roster
+    local group, roster, context
     if not commandInfo or not route or not SCB_IsCommandTargetContextValid(commandKey, scope) then
         return false
+    end
+    if commandKey == "object" then
+        roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+        context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+        if not roster or (roster.botCount or 0) == 0 or not context or not context.inInstance then
+            return false
+        end
     end
     if scope == "group" then
         group, roster = SCB_GetTargetLiveGroup()
