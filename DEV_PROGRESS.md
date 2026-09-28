@@ -6,9 +6,9 @@
 - Branch: `dev`
 - TOC version: `0.9.4-dev`
 - Current implementation head: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
-- Current handoff/status head before this final handoff commit: `6b234322358eb270cec2c0484b28be2607836fe4`
+- Current handoff/status head before this final handoff commit: `b72f6b84caaff94559a50d013cf09110ed9944bf`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
+- Stable `main`: `0.9.4` at `a03b060dada7f03d860ef124bc54fa48fab745d4`; runtime source is the user-tested `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`. The stable tree differs from the dev product state only by stable TOC metadata and omission of `DEV_PROGRESS.md` / `dev_rulebook.md`.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,10 +17,10 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: routine BWL targeted-command behavior is runtime-confirmed; rare timeout/wrong-actor/mismatch paths are now opportunistic rather than blockers because they are not safely reproducible on demand. Proceed to the next agreed BWL work while watching for those events naturally. The neutral read-only activity/status surface and later visualiser remain deferred until the user explicitly starts them.
+- Immediate goal / exact next step: `0.9.4` is released on `main`; there is no active implementation task. When development resumes, the next major UI milestone is the neutral read-only activity/status surface, followed later by the visualiser as a presentation-only consumer. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
-## BWL 0.9.1-dev batch / 0.9.4-dev Pause Healers correction — runtime pending
+## BWL 0.9.1-dev batch / 0.9.4 release state
 Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Current implementation head: `626b28c13baf013e834b383a9aecf4cda17786b3`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
 
 ### Pause Healers
@@ -478,9 +478,10 @@ Exact `0.8.92-dev` baseline:
 - Object target-state and availability work is now closed with no remaining runtime validation debt.
 
 
-## Deferred / later
+## Planned / later
+- **Next major UI milestone when development resumes:** neutral read-only activity/status surface.
+- After that, visualiser as a presentation-only consumer of the status surface.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
-- Add neutral read-only activity/status surface, then visualiser as a presentation-only consumer.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
 
 ## 0.9.0 release
@@ -494,5 +495,16 @@ Exact `0.8.92-dev` baseline:
 - Exact stable metadata/tree was not separately runtime-tested after promotion; runtime behavior inherits the user-tested source unchanged. This distinction is intentional and recorded rather than treating release as a runtime test.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the executable environment: the checker is not mounted locally and direct container network access cannot fetch it. Do not claim a compiler pass.
 
+## 0.9.4 release
+- User approved the current BWL command state for promotion to `main`.
+- User-tested runtime source: `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`; Pause Healers and ordinary Group sequencing are runtime PASS.
+- Rare Group timeout, wrong-actor ACK, and mismatch-warning paths remain documented as opportunistic validation because they are not safely reproducible on demand.
+- Stable promotion commit: `a03b060dada7f03d860ef124bc54fa48fab745d4`; stable TOC is `SoloCraft Bots` / `0.9.4`.
+- Promotion used the established snapshot method with prior stable `main` as parent; branch histories were not merged.
+- Post-promotion tree audit PASS: compared with current dev, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differ. All runtime code/artwork blobs are identical.
+- Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the tested `0.9.4-dev` product tree.
+- Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
+- Future addon work remains on `dev`; the next addon-affecting revision should advance from `0.9.4-dev` to `0.9.5-dev`.
+
 ## Release note
-`0.9.0` is the current stable release on `main`. Future addon work remains on `dev`; the next addon-affecting revision should advance the development patch version from `0.9.0-dev`.
+`0.9.4` is the current stable release on `main`. When development resumes, the neutral read-only activity/status surface is the next major UI hurdle.
