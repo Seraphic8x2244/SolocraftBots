@@ -2343,6 +2343,10 @@ function SCB_StartPostFinalizeClassSanity(tracker, observed)
             end
         end
     end
+    if focused and SCB_TryResolveFocusedIdentityRecovery then
+        SCB_TryResolveFocusedIdentityRecovery(observed)
+        focused = SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
+    end
     return focused
 end
 
