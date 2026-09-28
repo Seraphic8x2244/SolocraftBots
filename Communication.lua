@@ -981,7 +981,7 @@ SCB.recipients = {
 }
 
 SCB.commandOrder = {
-    "play", "move", "stay", "pause",
+    "play", "move", "stay", "pause", "pausehealers",
     "pull", "spread", "hug", "object", "aoe", "attackstart", "attackstop",
 }
 
@@ -1082,6 +1082,18 @@ SCB.commands = {
         },
         routes = {
             all = { "pause all" },
+            target = { "pause" },
+        },
+    },
+    pausehealers = {
+        label = SCB_L("COMMAND_PAUSE_HEALERS"),
+        icon = "pause.tga",
+        highlightIcon = "pause_h.tga",
+        targetSemantic = SCB.commandTargetSemantics.agnostic,
+        targetSemanticByScope = {
+            group = SCB.commandTargetSemantics.friendlyBot,
+        },
+        routes = {
             target = { "pause" },
         },
     },
@@ -1228,13 +1240,18 @@ function SCB_GetTargetLiveGroup(refresh)
     return member.currentGroup or member.subgroup or 1, roster
 end
 
-local function SCB_GetGroupScopedBots(group, roster)
+local function SCB_GetGroupScopedBots(group, roster, roleFilter)
     local bots = {}
-    local i, member
+    local i, member, resolvedRole, identityPending
     for i = 1, table.getn(roster and roster.members or {}) do
         member = roster.members[i]
+        resolvedRole = member and (member.resolvedRole
+            or (SCB_GetResolvedLiveRole and SCB_GetResolvedLiveRole(member))) or nil
+        identityPending = member and member.name and SCB_IsFocusedIdentityCandidate
+            and SCB_IsFocusedIdentityCandidate(member.name)
         if member and member.isBot and member.name
-            and (member.currentGroup or member.subgroup or 1) == group then
+            and (member.currentGroup or member.subgroup or 1) == group
+            and (not roleFilter or (resolvedRole == roleFilter and not identityPending)) then
             table.insert(bots, member.name)
         end
     end
@@ -1287,12 +1304,17 @@ function SCB_IsCommandRequestAvailable(commandKey, scope)
     end
     if scope == "group" then
         group, roster = SCB_GetTargetLiveGroup()
-        return group ~= nil and table.getn(SCB_GetGroupScopedBots(group, roster)) > 0
+        return group ~= nil and table.getn(SCB_GetGroupScopedBots(
+            group,
+            roster,
+            commandKey == "pausehealers" and "healer" or nil
+        )) > 0
     end
     return true
 end
 
 local SCB_TARGETED_TARGET_SETTLE = 0.10
+local SCB_TARGETED_ACK_TIMEOUT = 1.0
 local SCB_TARGETED_BUDGET_POLL = 0.05
 local SCB_TARGETED_COMMAND_LIMIT = 24
 local SCB_TARGETED_COMMAND_WINDOW = 1.0
@@ -1415,6 +1437,19 @@ local function SCB_FinishTargetedCommandSequence()
     if state then SCB_RestoreTargetedOriginalTarget(state) end
     SCB.targetedCommandState = nil
     if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
+end
+
+local function SCB_FailGroupTargetedCommand()
+    local state = SCB.targetedCommandState
+    if state and state.mode == "group" then
+        SCB_Print(string.format(
+            SCB_L("TARGET_COMMAND_FAILED", "Couldn't confirm %s for %s."),
+            state.commandLabel or (state.commands and state.commands[1]) or "command",
+            state.currentName or SCB_L("UNKNOWN")
+        ))
+        if PlaySound then PlaySound("igQuestFailed") end
+    end
+    SCB_FinishTargetedCommandSequence()
 end
 
 local function SCB_FailSingleTargetCommand()
@@ -1617,6 +1652,9 @@ local function SCB_EnsureTargetedCommandFrame()
             if state.phaseElapsed < SCB_TARGETED_BUDGET_POLL then return end
             state.phaseElapsed = 0
             SCB_SendCurrentTargetedCommands()
+        elseif state.phase == "await" and state.mode == "group" then
+            if state.phaseElapsed < SCB_TARGETED_ACK_TIMEOUT then return end
+            SCB_FailGroupTargetedCommand()
         end
     end)
     SCB.targetedCommandFrame = frame
@@ -1659,7 +1697,11 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
         SCB_ShowInvalidTargetError()
         return false
     end
-    bots = SCB_GetGroupScopedBots(group, roster)
+    bots = SCB_GetGroupScopedBots(
+        group,
+        roster,
+        commandKey == "pausehealers" and "healer" or nil
+    )
     if table.getn(bots) == 0 then return false end
 
     requiredCommands = table.getn(bots) * table.getn(commands)

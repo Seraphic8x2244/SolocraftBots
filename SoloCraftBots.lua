@@ -1425,7 +1425,7 @@ function SCB_CreateCommandUI(frame)
     SCB.groupCommandButtons = {}
     local rows = {
         { recipient = "all", indent = 0, commands = { "play", "move", "stay", "pause" } },
-        { recipient = "group", indent = 0, commands = { "play", "move", "stay", "pause" } },
+        { recipient = "group", indent = 0, commands = { "play", "move", "stay", "pause", "pausehealers" } },
         { recipient = "target", indent = 0, commands = { "play", "move", "stay", "pause" } },
         { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
         { recipient = "melee", indent = 1, commands = { "move", "stay" } },
