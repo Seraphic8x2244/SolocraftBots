@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.3-dev`
-- Current implementation head: `626b28c13baf013e834b383a9aecf4cda17786b3`
-- Current handoff/status head before this final handoff commit: `626b28c13baf013e834b383a9aecf4cda17786b3`
+- TOC version: `0.9.4-dev`
+- Current implementation head: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
+- Current handoff/status head before this final handoff commit: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the dedicated `0.9.3-dev` Pause Healers sequencer at `626b28c13baf013e834b383a9aecf4cda17786b3`, then continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
+- Immediate goal / exact next step: runtime-test the `0.9.4-dev` self-target bootstrap fix at `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`, then continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
 
 
 ## BWL 0.9.1-dev batch / 0.9.3-dev Pause Healers correction — runtime pending
@@ -26,15 +26,14 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Cu
 ### Pause Healers
 - `0.9.1-dev` runtime result for the original Group-targeted implementation: **functional behavior PASS, UX rejected**. The command worked, but requiring a Group target and placing it in the Group row were rejected.
 - `0.9.2-dev` moved the button to the **Healers** role row and removed the Group-target precondition, but its first separate role sequencer restored the player's target between healer sends. That interaction was rejected before runtime testing.
-- `0.9.3-dev` keeps **Pause Healers** on the Healers role row, in the same command column as Tanks Pull and Ranged Spread, and gives it a fully separate `SCB.pauseHealerCommandState` / frame. The tested Group sequencer remains independent.
-- Pause Healers builds its recipients from all currently resolved healer bots in the live roster. Tanks/DPS are untouched. Focused identity-recovery candidates are excluded until identity is resolved.
-- There is no invented server `pauseheal` command. The dedicated sequencer sends the ordinary targeted `pause` command to each healer.
-- The instruction sequence intentionally mirrors the proven Group pipeline: save original target once -> target intended healer -> wait 0.10 seconds for client/server target settle -> send `pause` -> hold that healer target while waiting for the parsed pause acknowledgement -> advance to the next healer -> restore the original target only after the entire sequence completes or aborts.
-- A recognised pause acknowledgement naming the wrong bot follows the proven Group correction: resend immediately to the intended currently selected healer. Unrelated/unrecognised messages are ignored.
-- Missing acknowledgement uses the same **1.0-second** hard-abort timeout. Timeout does **not** retry; it reports failure, restores the original target, clears the dedicated state and releases the command.
-- If the sequence began with no target, completion/abort clears the temporary healer target. For a non-roster original target, restoration uses exact-name targeting after the full sequence.
-- Group/Target commands are blocked while Pause Healers owns the target, and Pause Healers refuses to start while the Group targeted sequencer is active. This prevents the two independent target-owning pipelines from racing.
-- Static comparison against `0.9.1-dev` confirms the proven Group functions for recipient selection, advancement, send, ACK resolution, chat handling and timeout frame are byte-identical in `0.9.3-dev`.
+- `0.9.3-dev` introduced a fully separate Pause Healers sequencer and correctly preserved the tested Group sequencer. Runtime then exposed a remaining first-recipient edge case: when the player started with **self targeted**, the first bare `pause` could reach the server while self was still the authoritative selection and the server returned **"All party bots paused for 30 seconds."**. Other tested starting-target states worked.
+- Correction to the earlier design description: Group sequencing was not a complete drop-in model for the first Pause Healers transition. Group starts from an already-selected bot; Pause Healers can start from an arbitrary target. The healer-to-healer sequencing is copied from Group, but the arbitrary-target -> first-healer bootstrap is a separate requirement.
+- `0.9.4-dev` adds a self-target-only bootstrap settle before the first healer command. It uses at least 0.25 seconds and, when `GetNetStats()` reports higher latency, waits one reported round trip plus 0.10 seconds. This delay applies only until the first targeted `pause` is sent; subsequent healer-to-healer transitions remain the tested 0.10 seconds.
+- The dedicated sequencer also treats **"All party bots paused for ..."** as an immediate failure condition and aborts/restores the original target instead of silently continuing the healer sequence. This is a safety fallback, not the primary fix.
+- Pause Healers still builds recipients from all currently resolved healer bots in the live roster, excludes focused identity-recovery candidates, sends ordinary targeted `pause`, waits for the bot-specific pause acknowledgement, retries immediately on a recognised wrong-actor acknowledgement, and hard-aborts after 1.0 second with no timeout retry.
+- Original target restoration still happens only after the whole sequence completes or aborts. If the sequence began with no target, completion/abort clears the temporary healer target.
+- Group/Target commands remain blocked while Pause Healers owns the target; Pause Healers still refuses to start while the Group targeted sequencer is active.
+- Static comparison confirms the proven Group recipient-selection, advancement, send, ACK-resolution, chat-handler and timeout-frame functions remain byte-identical to the `0.9.1-dev` implementation.
 
 ### Group targeted-command acknowledgement timeout
 - Group `phase = "await"` now has a **1.0-second** acknowledgement deadline per recipient/attempt.
@@ -56,19 +55,20 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Cu
 - Internal/global slot IDs and warning dedupe identity remain unchanged.
 
 ### Validation state
-- **Implemented:** yes, current version `0.9.3-dev`.
-- **Static review:** PASS for the dedicated Pause Healers correction. Implementation diff `e89599ce3a73585d78869af28bb1418b8a2371ad` -> `626b28c13baf013e834b383a9aecf4cda17786b3` changes `Communication.lua`, the chat-message tap in `Options.lua`, and the required TOC version bump. The Healers-row UI from `0.9.2-dev` remains unchanged.
-- **Group pipeline preservation:** PASS. The `SCB_SelectCurrentGroupRecipient`, `SCB_AdvanceGroupTargetedRecipient`, `SCB_SendCurrentTargetedCommands`, `SCB_ResolveTargetedAttempt`, `SCB_TargetedCommandHandleServerMessage`, and `SCB_EnsureTargetedCommandFrame` blocks are byte-identical to the `0.9.1-dev` implementation.
+- **Implemented:** yes, current version `0.9.4-dev`.
+- **0.9.3 runtime:** ordinary Pause Healers sequencing worked, but **self-target start FAIL** because the server could interpret the first bare `pause` as the all-bots conditional.
+- **0.9.4 static review:** PASS. Exact implementation delta `5ebee5d61ae6cc86cad5f6e31366fee3a57f052e` -> `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6` changes only `Communication.lua` plus the TOC version bump.
+- **Group pipeline preservation:** PASS. The six proven Group sequencing blocks remain byte-identical to `0.9.1-dev`.
 - **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. Do not treat static review as a compiler pass.
-- **Runtime:** `0.9.1-dev` proved Pause Healers' underlying targeted `pause` behavior, but the final `0.9.3-dev` dedicated sequencer is **NOT YET RUNTIME TESTED**. The rest of the BWL batch remains pending.
+- **Runtime:** the `0.9.4-dev` self-target bootstrap is **NOT YET RUNTIME TESTED**.
 
 ### Exact next runtime validation
-1. With healer + non-healer bots present and **no target**, use Healers -> Pause Healers. Confirm only healers pause and the sequence leaves no target after all healer ACKs complete.
-2. Repeat with an enemy or other non-healer target selected. Confirm SCB moves through healer targets without restoring the original target between healers, then restores the original target once when the sequence finishes.
-3. Watch normal progression: healer A is selected, `pause` is sent after the 0.10-second settle, SCB waits for A's pause acknowledgement, then selects healer B.
-4. If a recognised pause ACK arrives for the wrong bot, confirm SCB resends to the intended healer rather than advancing. If this cannot be induced naturally, leave this path statically validated rather than manufacturing a risky test.
-5. Exercise or induce a missing Pause Healers acknowledgement: after about 1.0 second SCB should report the failed healer, restore the original target and allow another command, with no timeout retry.
-6. Exercise ordinary Group commands and confirm their existing ACK sequencing, wrong-actor correction, 1.0-second timeout and end-of-sequence target restoration remain unchanged.
+1. Target yourself, then use Healers -> Pause Healers. Confirm the first command pauses only healer A, never produces **"All party bots paused for 30 seconds."**, and then progresses healer-by-healer on bot-specific ACKs.
+2. Confirm the original self-target is restored only after the entire healer sequence completes.
+3. Repeat from no target and from an enemy/non-healer target to confirm the previously working entry states remain unchanged.
+4. Confirm healer-to-healer changes still use the normal 0.10-second settle after the first command.
+5. If a recognised wrong-bot pause ACK occurs, confirm immediate resend to the intended healer. A missing ACK should still hard-abort after about 1.0 second with no timeout retry.
+6. Exercise ordinary Group commands and confirm their tested sequencing remains unchanged.
 7. Continue the remaining BWL identity-recovery and subgroup-local role-warning validation from the prior test plan.
 
 
