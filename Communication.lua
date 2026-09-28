@@ -708,6 +708,9 @@ function SCB_CommsPromptAccept()
     end
 
     ok, errorText = SCB_ValidatePresetExecutionSnapshot(incoming.snapshot, true)
+    if ok and SCB_ValidatePresetExecutionCapability then
+        ok, errorText = SCB_ValidatePresetExecutionCapability(incoming.snapshot)
+    end
     if ok and SCB_ValidateRequestedPresetLocalCapacity then
         ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
     end

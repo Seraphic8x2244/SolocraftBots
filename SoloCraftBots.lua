@@ -1145,6 +1145,7 @@ function SCB_IsValidSpawnAssignment(classKey, role, extra)
         end
         if not roleValid then return false end
         if not extra then return true end
+        if extra == SCB.PALADIN_AUTO_BLESSING then return true end
         blessing = SCB_FindPaladinBlessing(extra)
         return blessing and blessing.key == extra
     end

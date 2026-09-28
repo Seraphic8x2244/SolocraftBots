@@ -3113,6 +3113,35 @@ function SCB_GetSnapshotOccupiedSlots(snapshot)
     return occupied
 end
 
+function SCB_ResolvePresetExecutionSlots(snapshot)
+    local slots, occupied, resolved, unavailable
+    local i
+
+    if not snapshot or type(snapshot.slots) ~= "table" then
+        return nil, SCB_L("ERR_SNAPSHOT_INCOMPLETE")
+    end
+
+    slots = SCB_CopySlots(snapshot.slots)
+    occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
+    resolved, unavailable = SCB_ResolvePaladinBlessingAssignments(slots, snapshot.size, occupied)
+
+    for i = 1, snapshot.size or 0 do
+        if slots[i] and slots[i].class == "paladin" then
+            if unavailable[i] then
+                return nil, SCB_L("ERR_PALADIN_BLESSING_UNAVAILABLE")
+            end
+            slots[i].extra = resolved[i]
+        end
+    end
+
+    return slots
+end
+
+function SCB_ValidatePresetExecutionCapability(snapshot)
+    local slots, errorText = SCB_ResolvePresetExecutionSlots(snapshot)
+    return slots ~= nil, errorText
+end
+
 function SCB_CalculateSnapshotRoleCounts(snapshot)
     local counts = { tank = 0, healer = 0, meleedps = 0, rangedps = 0 }
     local occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
@@ -3148,10 +3177,6 @@ function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
         slot = snapshot.slots[i]
         if type(slot) ~= "table" or not SCB_IsValidSpawnAssignment(slot.class, slot.role, slot.extra) then
             return false, SCB_L("ERR_SNAPSHOT_BOT")
-        end
-        if slot.class == "paladin" and slot.extra and slot.extra ~= ""
-            and not SCB_IsPaladinBlessingAvailable(slot.extra, slot.role) then
-            return false, SCB_L("ERR_PALADIN_BLESSING_UNAVAILABLE")
         end
     end
 
