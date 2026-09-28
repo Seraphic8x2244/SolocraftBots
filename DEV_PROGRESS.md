@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.9.4-dev`
 - Current implementation head: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
-- Current handoff/status head before this final handoff commit: `b72f6b84caaff94559a50d013cf09110ed9944bf`
+- Current handoff/status head before this final handoff commit: `5e08f74d8a0475633d6e444bc3f9e0d49b66bfdb`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.4` at `a03b060dada7f03d860ef124bc54fa48fab745d4`; runtime source is the user-tested `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`. The stable tree differs from the dev product state only by stable TOC metadata and omission of `DEV_PROGRESS.md` / `dev_rulebook.md`.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.4` is released on `main`; there is no active implementation task. When development resumes, the next major UI milestone is the neutral read-only activity/status surface, followed later by the visualiser as a presentation-only consumer. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: `0.9.4` is released on `main`; there is no active implementation task. When development resumes, the next development point is the Paladin **Auto Blessing** system documented below. After that, the next major UI milestone remains the neutral read-only activity/status surface, followed later by the visualiser as a presentation-only consumer. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -478,8 +478,32 @@ Exact `0.8.92-dev` baseline:
 - Object target-state and availability work is now closed with no remaining runtime validation debt.
 
 
+## Next development point — Paladin Auto Blessing
+- Replace the current blanket level-60 blessing-assignment gate with a capability-aware blessing system.
+- Add a real Paladin preset value: **Auto Blessing**. New Paladin assignments should default to Auto. Existing explicit blessing assignments remain explicit; do not silently migrate them.
+- Keep **stored preset intent** separate from **effective blessing**. Stored `Auto` must never be overwritten by the blessing it currently resolves to.
+- Current confirmed/manual availability policy:
+  - `BoM`: level 4+
+  - `BoW`: level 14+
+  - `BoS`: level 26+
+  - `BoL`: level 40+
+  - `BoK`: keep level-60-only until SoloCraft PartyBot talent/spec availability is understood.
+- Auto resolution:
+  - start from the user's preferred “best blessing” priority order;
+  - filter out blessings unavailable at the current player/bot level and role rules;
+  - respect explicit/manual assignments first;
+  - assign Auto Paladins the best remaining available blessings;
+  - avoid duplicates where possible, then duplicate only when Auto Paladins outnumber usable unique blessings.
+- Manual blessing cycling must include only blessings currently possible under the same availability rules; impossible choices are not selectable.
+- Shared presets must remain portable across characters/levels: the same stored Auto slot resolves differently as availability changes without mutating the preset.
+- Preset Manager should expose **Active Blessings** as the currently resolved/effective set.
+- Auto-state button presentation should use the familiar Vanilla pet autocast shine/border animation while displaying the icon of the blessing Auto currently resolves to. Manual selection stops the shine and displays the selected blessing normally.
+- Auto tooltip should distinguish intent from result, e.g. `Auto Blessing — currently Blessing of Wisdom`.
+- Runtime evidence motivating this change: at player level 33, manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work. Treat this as exact-server evidence, not a complete Kings talent model.
+- First implementation revision after stable `0.9.4` should be `0.9.5-dev`.
+
 ## Planned / later
-- **Next major UI milestone when development resumes:** neutral read-only activity/status surface.
+- After Auto Blessing, **next major UI milestone:** neutral read-only activity/status surface.
 - After that, visualiser as a presentation-only consumer of the status surface.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
@@ -507,4 +531,4 @@ Exact `0.8.92-dev` baseline:
 - Future addon work remains on `dev`; the next addon-affecting revision should advance from `0.9.4-dev` to `0.9.5-dev`.
 
 ## Release note
-`0.9.4` is the current stable release on `main`. When development resumes, the neutral read-only activity/status surface is the next major UI hurdle.
+`0.9.4` is the current stable release on `main`. When development resumes, Paladin Auto Blessing is the next development point; the neutral read-only activity/status surface follows after it.
