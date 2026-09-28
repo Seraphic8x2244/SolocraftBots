@@ -310,11 +310,17 @@ end
 function SCB_CreateAutoCastShine(button, name)
     local shine
     if not button or not name then return nil end
-    shine = CreateFrame("Frame", name, button, "AutoCastShineTemplate")
+
+    -- Vanilla 1.12 pet autocast uses this animated model for the enabled state.
+    -- Later clients use AutoCastShineTemplate; using the original model keeps
+    -- the preset affordance visually identical to the client users already know.
+    shine = CreateFrame("Model", name, button)
     shine:SetAllPoints(button)
     shine:SetFrameLevel(button:GetFrameLevel() + 3)
     shine:EnableMouse(false)
-    if AutoCastShine_AutoCastStop then AutoCastShine_AutoCastStop(shine) end
+    shine:SetModel("Interface\\Buttons\\UI-AutoCastButton.mdx")
+    shine:SetSequence(0)
+    shine:SetSequenceTime(0, 0)
     shine:Hide()
     button.scbAutoCastShine = shine
     return shine
@@ -325,13 +331,7 @@ function SCB_SetAutoCastShine(button, enabled)
     if not button then return end
     shine = button.scbAutoCastShine
     if not shine then return end
-    if enabled then
-        shine:Show()
-        if AutoCastShine_AutoCastStart then AutoCastShine_AutoCastStart(shine) end
-    else
-        if AutoCastShine_AutoCastStop then AutoCastShine_AutoCastStop(shine) end
-        shine:Hide()
-    end
+    if enabled then shine:Show() else shine:Hide() end
 end
 
 function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, highlightTexturePath)
