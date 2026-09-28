@@ -17,10 +17,10 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the `0.9.4-dev` self-target bootstrap fix at `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`, then continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
+- Immediate goal / exact next step: Pause Healers is runtime-confirmed working on `0.9.4-dev` at `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`; continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
 
 
-## BWL 0.9.1-dev batch / 0.9.3-dev Pause Healers correction — runtime pending
+## BWL 0.9.1-dev batch / 0.9.4-dev Pause Healers correction — runtime pending
 Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Current implementation head: `626b28c13baf013e834b383a9aecf4cda17786b3`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
 
 ### Pause Healers
@@ -28,7 +28,7 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Cu
 - `0.9.2-dev` moved the button to the **Healers** role row and removed the Group-target precondition, but its first separate role sequencer restored the player's target between healer sends. That interaction was rejected before runtime testing.
 - `0.9.3-dev` introduced a fully separate Pause Healers sequencer and correctly preserved the tested Group sequencer. Runtime then exposed a remaining first-recipient edge case: when the player started with **self targeted**, the first bare `pause` could reach the server while self was still the authoritative selection and the server returned **"All party bots paused for 30 seconds."**. Other tested starting-target states worked.
 - Correction to the earlier design description: Group sequencing was not a complete drop-in model for the first Pause Healers transition. Group starts from an already-selected bot; Pause Healers can start from an arbitrary target. The healer-to-healer sequencing is copied from Group, but the arbitrary-target -> first-healer bootstrap is a separate requirement.
-- `0.9.4-dev` adds a self-target-only bootstrap settle before the first healer command. It uses at least 0.25 seconds and, when `GetNetStats()` reports higher latency, waits one reported round trip plus 0.10 seconds. This delay applies only until the first targeted `pause` is sent; subsequent healer-to-healer transitions remain the tested 0.10 seconds.
+- `0.9.4-dev` adds a self-target-only bootstrap settle before the first healer command. It uses at least 0.25 seconds and, when `GetNetStats()` reports higher latency, waits one reported round trip plus 0.10 seconds. This delay applies only until the first targeted `pause` is sent; subsequent healer-to-healer transitions remain the tested 0.10 seconds. **Runtime PASS:** user confirmed Pause Healers works after this fix.
 - The dedicated sequencer also treats **"All party bots paused for ..."** as an immediate failure condition and aborts/restores the original target instead of silently continuing the healer sequence. This is a safety fallback, not the primary fix.
 - Pause Healers still builds recipients from all currently resolved healer bots in the live roster, excludes focused identity-recovery candidates, sends ordinary targeted `pause`, waits for the bot-specific pause acknowledgement, retries immediately on a recognised wrong-actor acknowledgement, and hard-aborts after 1.0 second with no timeout retry.
 - Original target restoration still happens only after the whole sequence completes or aborts. If the sequence began with no target, completion/abort clears the temporary healer target.
@@ -60,16 +60,16 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Cu
 - **0.9.4 static review:** PASS. Exact implementation delta `5ebee5d61ae6cc86cad5f6e31366fee3a57f052e` -> `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6` changes only `Communication.lua` plus the TOC version bump.
 - **Group pipeline preservation:** PASS. The six proven Group sequencing blocks remain byte-identical to `0.9.1-dev`.
 - **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. Do not treat static review as a compiler pass.
-- **Runtime:** the `0.9.4-dev` self-target bootstrap is **NOT YET RUNTIME TESTED**.
+- **Runtime:** `0.9.4-dev` Pause Healers **PASS**. User confirmed the command works after the self-target bootstrap fix.
 
 ### Exact next runtime validation
-1. Target yourself, then use Healers -> Pause Healers. Confirm the first command pauses only healer A, never produces **"All party bots paused for 30 seconds."**, and then progresses healer-by-healer on bot-specific ACKs.
-2. Confirm the original self-target is restored only after the entire healer sequence completes.
-3. Repeat from no target and from an enemy/non-healer target to confirm the previously working entry states remain unchanged.
-4. Confirm healer-to-healer changes still use the normal 0.10-second settle after the first command.
-5. If a recognised wrong-bot pause ACK occurs, confirm immediate resend to the intended healer. A missing ACK should still hard-abort after about 1.0 second with no timeout retry.
-6. Exercise ordinary Group commands and confirm their tested sequencing remains unchanged.
-7. Continue the remaining BWL identity-recovery and subgroup-local role-warning validation from the prior test plan.
+1. Exercise ordinary Group commands and confirm their existing ACK sequencing, wrong-actor correction, 1.0-second timeout and end-of-sequence target restoration remain unchanged.
+2. Exercise or induce a missing Group ACK: after about 1.0 second SCB should report failure, restore target, release the pipeline and perform no timeout retry.
+3. Repeat full rebuilds to confirm ordinal identity remains stable with no false corrections or whole-raid combat confirmation.
+4. Exercise the rare mismatch-recovery path if a real mismatch occurs: unique cross-class repair should affect only the implicated group; same-class ambiguity should scope confirmation only to implicated candidates; preset intent must remain unchanged.
+5. Confirm role-mismatch warning wording shows subgroup-local slot 1–5.
+
+
 
 
 
