@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.1-dev`
-- Current implementation head: `37097afe63259169ad0ece774cace26b27821ed7`
-- Current handoff/status head before this final handoff commit: `37097afe63259169ad0ece774cace26b27821ed7`
+- TOC version: `0.9.2-dev`
+- Current implementation head: `719001b5ed149b19e3006b4a85e360105c1d660b`
+- Current handoff/status head before this final handoff commit: `719001b5ed149b19e3006b4a85e360105c1d660b`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,17 +17,20 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the implemented BWL `0.9.1-dev` batch at `37097afe63259169ad0ece774cace26b27821ed7`. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
+- Immediate goal / exact next step: runtime-test the `0.9.2-dev` Pause Healers UX correction at `719001b5ed149b19e3006b4a85e360105c1d660b`, then continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
 
 
-## BWL 0.9.1-dev batch — implemented, runtime pending
-Implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
+## BWL 0.9.1-dev batch / 0.9.2-dev Pause Healers UX correction — runtime pending
+Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Current implementation head: `719001b5ed149b19e3006b4a85e360105c1d660b`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
 
-### Group -> Pause Healers
-- Added one Group-only **Pause Healers** control using the existing pause artwork and existing Group targeted-command sequencer.
-- The target still selects the live party/raid group. Only bots in that group whose resolved role is healer are queued; tanks/DPS are untouched.
-- Focused identity-recovery candidates are excluded until their slot identity is resolved, avoiding role-filter commands against a mapping already known to be suspect.
-- The command sends the ordinary targeted `pause` route. Existing Group Play/Unpause releases the group afterward; no server `pauseheal` command or separate unpause-healers path was added.
+### Pause Healers
+- `0.9.1-dev` runtime result for the original Group-targeted implementation: **functional behavior PASS, UX rejected**. The user confirmed Pause Healers worked, but requiring a Group target made the control unavailable at the wrong times and its position in the Group row was rejected.
+- `0.9.2-dev` moves **Pause Healers** out of the Group row and onto the **Healers** role row, in the same command column used by Tanks Pull and Ranged Spread.
+- The command no longer has Group scope or a Group-target precondition. It builds its recipients from all currently resolved healer bots in the live roster; tanks/DPS are untouched.
+- Focused identity-recovery candidates remain excluded until their slot identity is resolved, avoiding role-filter commands against a mapping already known to be suspect.
+- There is still no invented server `pauseheal` command. SCB reuses the ordinary targeted `pause` command for each resolved healer through a narrow role-scoped sequencer.
+- The role sequencer keeps the existing 0.10-second target-settle and 1.0-second acknowledgement behavior, but unlike Group sequencing it restores the player's previous target immediately after each targeted `pause` send while the acknowledgement is pending. If there was no target before the temporary healer selection, it clears the temporary target after the send.
+- No separate healer-only unpause path has been added.
 
 ### Group targeted-command acknowledgement timeout
 - Group `phase = "await"` now has a **1.0-second** acknowledgement deadline per recipient/attempt.
@@ -49,19 +52,21 @@ Implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. The established
 - Internal/global slot IDs and warning dedupe identity remain unchanged.
 
 ### Validation state
-- **Implemented:** yes, version `0.9.1-dev`.
-- **Static review:** PASS. Handoff `3bcb04404b3d0bf0540ede86e08b86c779b512d2` -> implementation head changes only `Communication.lua`, `Locale/enGB.lua`, `Presets.lua`, `Roster.lua`, `SoloCraftBots.lua` and `SoloCraftBots.toc`; the full diff was reviewed after implementation.
-- **GitHub checks/CI:** no commit statuses or workflow runs are present for the implementation head.
-- **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. No repository checkout or VanillaTemplate checker is mounted, and an attempted GitHub clone from the executable container failed because `github.com` could not be resolved. Do not treat the static review as a compiler pass.
-- **Runtime:** **NOT TESTED**. The BWL batch must be exercised in the target 1.12.1 environment before any status/visualiser work begins.
+- **Implemented:** yes, current version `0.9.2-dev`.
+- **Static review:** PASS for the `0.9.2-dev` correction. The exact `bd73083ef6dadecd1b079e60b0205c6c4c9b6877` -> `719001b5ed149b19e3006b4a85e360105c1d660b` delta was reviewed; it changes only `Communication.lua`, `Locale/enGB.lua`, `SoloCraftBots.lua` and the required TOC version bump. The earlier `0.9.1-dev` BWL implementation review remains as recorded.
+- **GitHub checks/CI:** no new check result is claimed.
+- **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. No repository checkout or VanillaTemplate checker is mounted, and the executable container previously could not resolve `github.com`. Do not treat static review as a compiler pass.
+- **Runtime:** the `0.9.1-dev` Group-targeted Pause Healers behavior was user-confirmed functional, but its UX/target requirement was rejected. The `0.9.2-dev` role-row/no-Group-target correction is **NOT YET RUNTIME TESTED**. The remainder of the BWL batch is still pending runtime validation.
 
 ### Exact next runtime validation
-1. In a raid group containing healer + non-healer bots, target that group and use Group -> Pause Healers: only resolved healers should pause; Group Play/Unpause should release them.
-2. Exercise ordinary Group commands and confirm successful ACK sequencing still advances across recipients and restores the original target.
-3. Exercise or induce a missing Group acknowledgement: after about 1.0 second SCB should report the failed recipient, restore the original target and immediately permit another Group command, with no timeout retry.
-4. Full-resummon/rebuild a raid repeatedly and confirm normal ordinal identity remains stable with no false class corrections or whole-raid combat-confirmation activation when the global option is off.
-5. If the rare mismatch recurs, verify a unique cross-class mismatch repairs only the affected group's bot-name -> logical-slot association; if same-class ambiguity occurs, only those candidates should be temporarily role-confirmed and the preset intent must remain unchanged.
-6. If a role mismatch warning is produced, verify the displayed Slot is 1–5 within its stated Group.
+1. With healer + non-healer bots present, do **not** target a group bot; use Healers -> Pause Healers and confirm all resolved healer bots pause while tanks/DPS do not.
+2. Repeat with an enemy target selected and confirm the player's enemy target is restored immediately after each temporary healer selection rather than being left on a healer.
+3. Repeat from no target and confirm the command works and does not leave a healer targeted after sending.
+4. Exercise ordinary Group commands and confirm successful ACK sequencing still advances across recipients and restores the original Group target.
+5. Exercise or induce a missing Group acknowledgement: after about 1.0 second SCB should report the failed recipient, restore the original target and immediately permit another Group command, with no timeout retry.
+6. Full-resummon/rebuild a raid repeatedly and confirm normal ordinal identity remains stable with no false class corrections or whole-raid combat-confirmation activation when the global option is off.
+7. If the rare mismatch recurs, verify a unique cross-class mismatch repairs only the affected group's bot-name -> logical-slot association; if same-class ambiguity occurs, only those candidates should be temporarily role-confirmed and the preset intent must remain unchanged.
+8. If a role mismatch warning is produced, verify the displayed Slot is 1–5 within its stated Group.
 
 
 ## Architecture / ownership
