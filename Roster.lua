@@ -2065,7 +2065,7 @@ local function SCB_ScanPendingDruidPowerEvidence()
         if key and SCB.roleDetectionPendingNames and SCB.roleDetectionPendingNames[key]
             and SCB_LiveBotNeedsRoleConfirmation(member) then
             slot = SCB_GetActiveSlotByName and member.name and SCB_GetActiveSlotByName(member.name) or nil
-            classKey = member.assumedClass or member.classFile or (slot and slot.class) or nil
+            classKey = member.classFile or member.assumedClass or (slot and slot.class) or nil
             if type(classKey) == "string" then classKey = string.lower(classKey) end
             if classKey == "druid" then
                 role, evidence = SCB_GetDruidFeralRoleFromPower(member.name, member)
