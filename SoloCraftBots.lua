@@ -853,6 +853,11 @@ function SCB_ResolvePaladinBlessingAssignments(slots, size, occupied, level)
             elseif SCB_IsPaladinBlessingAvailable(intent, slot.role, level) then
                 resolved[i] = intent
                 if not occupied[i] then used[intent] = (used[intent] or 0) + 1 end
+            elseif occupied[i] then
+                -- A human-covered bot slot is inactive for this execution.
+                -- Preserve its explicit intent in the copied execution snapshot,
+                -- but do not let an unavailable hidden blessing veto the summon.
+                resolved[i] = intent
             else
                 unavailable[i] = intent
             end
