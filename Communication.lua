@@ -1207,8 +1207,6 @@ local function SCB_ShowTargetedBusyError()
     local state = SCB.targetedCommandState
     if state and state.mode == "group" then
         SCB_ShowTargetedCommandError("TARGETED_BUSY_GROUP")
-    elseif state and state.mode == "role" then
-        SCB_ShowTargetedCommandError("TARGETED_BUSY_ROLE")
     else
         SCB_ShowTargetedCommandError("TARGETED_BUSY_SINGLE")
     end
@@ -1257,7 +1255,7 @@ local function SCB_GetGroupScopedBots(group, roster, roleFilter)
     return bots
 end
 
-local function SCB_GetRoleScopedBots(roster, roleFilter)
+local function SCB_GetPauseHealerBots(roster)
     local bots = {}
     local i, member, resolvedRole, identityPending
     for i = 1, table.getn(roster and roster.members or {}) do
@@ -1267,7 +1265,7 @@ local function SCB_GetRoleScopedBots(roster, roleFilter)
         identityPending = member and member.name and SCB_IsFocusedIdentityCandidate
             and SCB_IsFocusedIdentityCandidate(member.name)
         if member and member.isBot and member.name
-            and resolvedRole == roleFilter and not identityPending then
+            and resolvedRole == "healer" and not identityPending then
             table.insert(bots, member.name)
         end
     end
@@ -1325,7 +1323,7 @@ function SCB_IsCommandRequestAvailable(commandKey, scope)
     end
     if commandKey == "pausehealers" and scope == "healer" then
         roster = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
-        return roster ~= nil and table.getn(SCB_GetRoleScopedBots(roster, "healer")) > 0
+        return roster ~= nil and table.getn(SCB_GetPauseHealerBots(roster)) > 0
     end
     if scope == "group" then
         group, roster = SCB_GetTargetLiveGroup()
@@ -1453,30 +1451,16 @@ local function SCB_RestoreTargetedOriginalTarget(state)
     if member and member.unit then TargetUnit(member.unit) end
 end
 
-local function SCB_RestoreRoleScopedTarget(state)
-    if not state or state.mode ~= "role" then return end
-    if state.restorePreviousTarget and TargetLastTarget then
-        TargetLastTarget()
-    elseif state.clearTargetAfterSend and ClearTarget then
-        ClearTarget()
-    end
-    state.restorePreviousTarget = nil
-    state.clearTargetAfterSend = nil
-end
-
 local function SCB_FinishTargetedCommandSequence()
     local state = SCB.targetedCommandState
-    if state then
-        SCB_RestoreRoleScopedTarget(state)
-        SCB_RestoreTargetedOriginalTarget(state)
-    end
+    if state then SCB_RestoreTargetedOriginalTarget(state) end
     SCB.targetedCommandState = nil
     if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
 end
 
-local function SCB_FailSequencedTargetedCommand()
+local function SCB_FailGroupTargetedCommand()
     local state = SCB.targetedCommandState
-    if state and (state.mode == "group" or state.mode == "role") then
+    if state and state.mode == "group" then
         SCB_Print(string.format(
             SCB_L("TARGET_COMMAND_FAILED", "Couldn't confirm %s for %s."),
             state.commandLabel or (state.commands and state.commands[1]) or "command",
@@ -1564,66 +1548,6 @@ local function SCB_AdvanceGroupTargetedRecipient()
     SCB_SelectCurrentGroupRecipient()
 end
 
-local function SCB_SelectCurrentRoleRecipient()
-    local state = SCB.targetedCommandState
-    local name, member, currentName, hadTarget
-    if not state or state.mode ~= "role" then return false end
-
-    while (state.index or 1) <= table.getn(state.bots or {}) do
-        name = state.bots[state.index or 1]
-        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
-        if member and member.isBot and member.unit then
-            currentName = UnitName and UnitName("target") or nil
-            if currentName ~= name then
-                if not TargetUnit then
-                    SCB_FinishTargetedCommandSequence()
-                    return false
-                end
-                hadTarget = UnitExists and UnitExists("target")
-                state.restorePreviousTarget = hadTarget and true or false
-                state.clearTargetAfterSend = not state.restorePreviousTarget
-                TargetUnit(member.unit)
-                if not UnitName or UnitName("target") ~= name then
-                    state.restorePreviousTarget = nil
-                    state.clearTargetAfterSend = nil
-                    state.index = (state.index or 1) + 1
-                else
-                    state.currentName = name
-                    state.phase = "settle"
-                    state.phaseElapsed = 0
-                    return true
-                end
-            else
-                state.restorePreviousTarget = nil
-                state.clearTargetAfterSend = nil
-                state.currentName = name
-                state.phase = "settle"
-                state.phaseElapsed = 0
-                return true
-            end
-        else
-            state.index = (state.index or 1) + 1
-        end
-    end
-
-    SCB_FinishTargetedCommandSequence()
-    return false
-end
-
-local function SCB_AdvanceRoleTargetedRecipient()
-    local state = SCB.targetedCommandState
-    if not state or state.mode ~= "role" then return end
-    state.index = (state.index or 1) + 1
-    state.currentName = nil
-    state.ackSeen = {}
-    state.ackFailed = nil
-    if state.index > table.getn(state.bots or {}) then
-        SCB_FinishTargetedCommandSequence()
-        return
-    end
-    SCB_SelectCurrentRoleRecipient()
-end
-
 local function SCB_SendCurrentTargetedCommands()
     local state = SCB.targetedCommandState
     local name, member, i
@@ -1642,20 +1566,6 @@ local function SCB_SendCurrentTargetedCommands()
         -- normal 0.10-second settle before the next send.
         if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
             SCB_SelectCurrentGroupRecipient()
-            return
-        end
-    elseif state.mode == "role" then
-        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
-        if not member or not member.isBot or not member.unit then
-            SCB_AdvanceRoleTargetedRecipient()
-            return
-        end
-
-        -- Role-scoped Pause Healers temporarily selects each healer only long
-        -- enough to issue the targeted command, then restores the player's
-        -- previous target while waiting for the acknowledgement.
-        if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
-            SCB_SelectCurrentRoleRecipient()
             return
         end
     else
@@ -1682,9 +1592,6 @@ local function SCB_SendCurrentTargetedCommands()
             SCB_RecordTargetedCommandSend()
         end
     end
-    if state.mode == "role" then
-        SCB_RestoreRoleScopedTarget(state)
-    end
 end
 
 local function SCB_ResolveTargetedAttempt(state)
@@ -1693,8 +1600,6 @@ local function SCB_ResolveTargetedAttempt(state)
     if not state.ackFailed then
         if state.mode == "group" then
             SCB_AdvanceGroupTargetedRecipient()
-        elseif state.mode == "role" then
-            SCB_AdvanceRoleTargetedRecipient()
         else
             SCB_FinishTargetedCommandSequence()
         end
@@ -1705,12 +1610,6 @@ local function SCB_ResolveTargetedAttempt(state)
         -- Group starts only from a bot target. If the server is one bot behind,
         -- resend immediately to the already client-selected intended bot.
         SCB_SendCurrentTargetedCommands()
-        return
-    elseif state.mode == "role" then
-        -- Role sequencing has already restored the player's previous target.
-        -- Re-select the intended healer before applying the same wrong-actor
-        -- correction used by Group sequencing.
-        SCB_SelectCurrentRoleRecipient()
         return
     end
 
@@ -1772,10 +1671,9 @@ local function SCB_EnsureTargetedCommandFrame()
             if state.phaseElapsed < SCB_TARGETED_BUDGET_POLL then return end
             state.phaseElapsed = 0
             SCB_SendCurrentTargetedCommands()
-        elseif state.phase == "await"
-            and (state.mode == "group" or state.mode == "role") then
+        elseif state.phase == "await" and state.mode == "group" then
             if state.phaseElapsed < SCB_TARGETED_ACK_TIMEOUT then return end
-            SCB_FailSequencedTargetedCommand()
+            SCB_FailGroupTargetedCommand()
         end
     end)
     SCB.targetedCommandFrame = frame
@@ -1845,13 +1743,227 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     return true
 end
 
-function SCB_QueueRoleScopedCommand(commandKey)
+local function SCB_RestorePauseHealersOriginalTarget(state)
+    local currentName, member
+    if not state then return end
+
+    if not state.originalTargetHadTarget then
+        if ClearTarget then ClearTarget() end
+        return
+    end
+
+    if not state.originalTargetName then return end
+    currentName = UnitName and UnitName("target") or nil
+    if currentName == state.originalTargetName then return end
+
+    member = SCB_GetLiveMember and SCB_GetLiveMember(state.originalTargetName, false) or nil
+    if member and member.unit and TargetUnit then
+        TargetUnit(member.unit)
+        return
+    end
+
+    if TargetByName then
+        TargetByName(state.originalTargetName, true)
+    end
+end
+
+local function SCB_FinishPauseHealersSequence()
+    local state = SCB.pauseHealerCommandState
+    if state then SCB_RestorePauseHealersOriginalTarget(state) end
+    SCB.pauseHealerCommandState = nil
+    if SCB.pauseHealerCommandFrame then SCB.pauseHealerCommandFrame:Hide() end
+end
+
+local function SCB_FailPauseHealersSequence()
+    local state = SCB.pauseHealerCommandState
+    if state then
+        SCB_Print(string.format(
+            SCB_L("TARGET_COMMAND_FAILED", "Couldn't confirm %s for %s."),
+            state.commandLabel or SCB_L("COMMAND_PAUSE_HEALERS"),
+            state.currentName or SCB_L("UNKNOWN")
+        ))
+        if PlaySound then PlaySound("igQuestFailed") end
+    end
+    SCB_FinishPauseHealersSequence()
+end
+
+local function SCB_SelectCurrentPauseHealerRecipient()
+    local state = SCB.pauseHealerCommandState
+    local name, member, currentName, resolvedRole, identityPending
+    if not state then return false end
+
+    while (state.index or 1) <= table.getn(state.bots or {}) do
+        name = state.bots[state.index or 1]
+        member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+        resolvedRole = member and (member.resolvedRole
+            or (SCB_GetResolvedLiveRole and SCB_GetResolvedLiveRole(member))) or nil
+        identityPending = member and member.name and SCB_IsFocusedIdentityCandidate
+            and SCB_IsFocusedIdentityCandidate(member.name)
+
+        if member and member.isBot and member.unit
+            and resolvedRole == "healer" and not identityPending then
+            currentName = UnitName and UnitName("target") or nil
+            if currentName ~= name then
+                if not TargetUnit then
+                    SCB_FinishPauseHealersSequence()
+                    return false
+                end
+                TargetUnit(member.unit)
+                if not UnitName or UnitName("target") ~= name then
+                    state.index = (state.index or 1) + 1
+                else
+                    state.currentName = name
+                    state.phase = "settle"
+                    state.phaseElapsed = 0
+                    return true
+                end
+            else
+                state.currentName = name
+                state.phase = "settle"
+                state.phaseElapsed = 0
+                return true
+            end
+        else
+            state.index = (state.index or 1) + 1
+        end
+    end
+
+    SCB_FinishPauseHealersSequence()
+    return false
+end
+
+local function SCB_AdvancePauseHealerRecipient()
+    local state = SCB.pauseHealerCommandState
+    if not state then return end
+    state.index = (state.index or 1) + 1
+    state.currentName = nil
+    state.ackSeen = {}
+    state.ackFailed = nil
+    if state.index > table.getn(state.bots or {}) then
+        SCB_FinishPauseHealersSequence()
+        return
+    end
+    SCB_SelectCurrentPauseHealerRecipient()
+end
+
+local function SCB_SendCurrentPauseHealerCommand()
+    local state = SCB.pauseHealerCommandState
+    local name, member, resolvedRole, identityPending, i
+    if not state then return end
+
+    name = state.currentName
+    member = name and SCB_GetLiveMember and SCB_GetLiveMember(name, false) or nil
+    resolvedRole = member and (member.resolvedRole
+        or (SCB_GetResolvedLiveRole and SCB_GetResolvedLiveRole(member))) or nil
+    identityPending = member and member.name and SCB_IsFocusedIdentityCandidate
+        and SCB_IsFocusedIdentityCandidate(member.name)
+
+    if not member or not member.isBot or not member.unit
+        or resolvedRole ~= "healer" or identityPending then
+        SCB_AdvancePauseHealerRecipient()
+        return
+    end
+
+    if not UnitName or UnitName("target") ~= name or not SCB_IsFriendlyBotTarget() then
+        SCB_SelectCurrentPauseHealerRecipient()
+        return
+    end
+
+    if not SCB_TargetedCommandBudgetAllows(table.getn(state.commands or {})) then
+        state.phase = "budget"
+        state.phaseElapsed = 0
+        return
+    end
+
+    state.ackSeen = {}
+    state.ackFailed = nil
+    state.phase = "await"
+    state.phaseElapsed = 0
+    for i = 1, table.getn(state.commands or {}) do
+        if SCB_SendCommand(state.commands[i], { targetedSequence = true }) then
+            SCB_RecordTargetedCommandSend()
+        end
+    end
+end
+
+local function SCB_ResolvePauseHealerAttempt(state)
+    if not state then return end
+
+    if not state.ackFailed then
+        SCB_AdvancePauseHealerRecipient()
+        return
+    end
+
+    -- Same correction as the tested Group pipeline: a recognised pause reply
+    -- from the wrong actor causes an immediate resend to the intended healer.
+    SCB_SendCurrentPauseHealerCommand()
+end
+
+function SCB_PauseHealersHandleServerMessage(text)
+    local state = SCB.pauseHealerCommandState
+    local actor, kind
+    if not state or state.phase ~= "await" then return false end
+
+    actor, kind = SCB_ParseTargetedCommandAck(text)
+    if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
+        return false
+    end
+
+    if state.ackSeen[kind] then return true end
+
+    state.ackSeen[kind] = true
+    if actor ~= state.currentName then state.ackFailed = true end
+    if not SCB_TargetedCommandAllAcksSeen(state) then return true end
+
+    SCB_ResolvePauseHealerAttempt(state)
+    return true
+end
+
+local function SCB_EnsurePauseHealerCommandFrame()
+    local frame = SCB.pauseHealerCommandFrame
+    if frame then return frame end
+
+    frame = CreateFrame("Frame", "SoloCraftBotsPauseHealerCommandFrame", UIParent)
+    frame:Hide()
+    frame:SetScript("OnUpdate", function()
+        local state = SCB.pauseHealerCommandState
+        local elapsed = arg1 or 0
+        if not state then
+            this:Hide()
+            return
+        end
+
+        state.phaseElapsed = (state.phaseElapsed or 0) + elapsed
+        if state.phase == "settle" then
+            if state.phaseElapsed < SCB_TARGETED_TARGET_SETTLE then return end
+            state.phaseElapsed = 0
+            SCB_SendCurrentPauseHealerCommand()
+        elseif state.phase == "budget" then
+            if state.phaseElapsed < SCB_TARGETED_BUDGET_POLL then return end
+            state.phaseElapsed = 0
+            SCB_SendCurrentPauseHealerCommand()
+        elseif state.phase == "await" then
+            if state.phaseElapsed < SCB_TARGETED_ACK_TIMEOUT then return end
+            SCB_FailPauseHealersSequence()
+        end
+    end)
+    SCB.pauseHealerCommandFrame = frame
+    return frame
+end
+
+function SCB_QueuePauseHealersCommand(commandKey)
     local commandInfo, commands, expectedAcks = SCB_BuildTargetedCommandAttempt(commandKey, false)
     local roster = SCB_GetLiveRoster and SCB_GetLiveRoster(true) or nil
-    local bots = SCB_GetRoleScopedBots(roster, "healer")
+    local bots = SCB_GetPauseHealerBots(roster)
     local requiredCommands
     local frame
+    local hadTarget = UnitExists and UnitExists("target")
+    local originalTargetName = hadTarget and UnitName and UnitName("target") or nil
 
+    if SCB.pauseHealerCommandState then
+        SCB_ShowTargetedCommandError("TARGETED_BUSY_ROLE")
+        return false
+    end
     if SCB.targetedCommandState then
         SCB_ShowTargetedBusyError()
         return false
@@ -1861,9 +1973,7 @@ function SCB_QueueRoleScopedCommand(commandKey)
     requiredCommands = table.getn(bots) * table.getn(commands)
     if not SCB_TargetedCommandBudgetAllows(requiredCommands) then return false end
 
-    SCB.targetedCommandState = {
-        mode = "role",
-        role = "healer",
+    SCB.pauseHealerCommandState = {
         bots = bots,
         commands = commands,
         expectedAcks = expectedAcks,
@@ -1871,12 +1981,14 @@ function SCB_QueueRoleScopedCommand(commandKey)
         index = 1,
         phase = "target",
         phaseElapsed = 0,
+        originalTargetHadTarget = hadTarget and true or false,
+        originalTargetName = originalTargetName,
         commandLabel = commandInfo.label,
     }
-    frame = SCB_EnsureTargetedCommandFrame()
+    frame = SCB_EnsurePauseHealerCommandFrame()
 
-    SCB_SelectCurrentRoleRecipient()
-    if SCB.targetedCommandState then frame:Show() end
+    SCB_SelectCurrentPauseHealerRecipient()
+    if SCB.pauseHealerCommandState then frame:Show() end
     return true
 end
 
@@ -1892,7 +2004,12 @@ function SCB_RequestCommand(commandKey, scope, modifiers)
     if not commandInfo or not route then return false end
 
     if commandKey == "pausehealers" and scope == "healer" then
-        return SCB_QueueRoleScopedCommand(commandKey)
+        return SCB_QueuePauseHealersCommand(commandKey)
+    end
+
+    if SCB.pauseHealerCommandState and (scope == "group" or scope == "target") then
+        SCB_ShowTargetedCommandError("TARGETED_BUSY_ROLE")
+        return false
     end
 
     -- Preserve Group's established busy-message precedence. An active Group
