@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.9.4-dev`
 - Current implementation head: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
-- Current handoff/status head before this final handoff commit: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
+- Current handoff/status head before this final handoff commit: `6b234322358eb270cec2c0484b28be2607836fe4`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: Pause Healers is runtime-confirmed working on `0.9.4-dev` at `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`; continue the remaining BWL batch validation. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
+- Immediate goal / exact next step: routine BWL targeted-command behavior is runtime-confirmed; rare timeout/wrong-actor/mismatch paths are now opportunistic rather than blockers because they are not safely reproducible on demand. Proceed to the next agreed BWL work while watching for those events naturally. The neutral read-only activity/status surface and later visualiser remain deferred until the user explicitly starts them.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4-dev Pause Healers correction — runtime pending
@@ -56,18 +56,21 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Cu
 
 ### Validation state
 - **Implemented:** yes, current version `0.9.4-dev`.
-- **0.9.3 runtime:** ordinary Pause Healers sequencing worked, but **self-target start FAIL** because the server could interpret the first bare `pause` as the all-bots conditional.
-- **0.9.4 static review:** PASS. Exact implementation delta `5ebee5d61ae6cc86cad5f6e31366fee3a57f052e` -> `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6` changes only `Communication.lua` plus the TOC version bump.
+- **Pause Healers:** runtime **PASS**, including the self-target bootstrap fix.
+- **Ordinary Group sequencing:** runtime **PASS**. User confirmed normal Group commands sequence correctly.
+- **Group timeout:** implementation/static review PASS; runtime remains **opportunistic**. The user cannot safely manufacture a missing acknowledgement, so if a naturally non-responsive Group command occurs they will watch for the ~1.0-second failure message and verify a new Group command works immediately afterward.
+- **Wrong-actor Group acknowledgement correction:** static review PASS; runtime **not deliberately reproducible**. The path is designed to self-correct by resending to the intended bot, and the user has not observed a clear failure case.
+- **Full-rebuild identity baseline:** the established reverse-send/LIFO/bot-only ordinal finalizer was **not changed** by this batch. The only identity addition is a narrow post-finalization class sanity/recovery layer that runs after the proven finalizer. Do not treat routine ordinal rebuild behavior as a newly introduced mechanism requiring artificial fault injection.
+- **Mismatch visibility:** a confirmed role mismatch is intentionally obvious: persistent red X, chat warning, and a real `StaticPopup` unless SCB screen warnings are explicitly hidden.
+- **Rare identity-recovery and subgroup-local warning wording:** keep as **opportunistic runtime validation** if a genuine mismatch occurs. Do not manufacture these states merely to satisfy the checklist.
 - **Group pipeline preservation:** PASS. The six proven Group sequencing blocks remain byte-identical to `0.9.1-dev`.
 - **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. Do not treat static review as a compiler pass.
-- **Runtime:** `0.9.4-dev` Pause Healers **PASS**. User confirmed the command works after the self-target bootstrap fix.
 
-### Exact next runtime validation
-1. Exercise ordinary Group commands and confirm their existing ACK sequencing, wrong-actor correction, 1.0-second timeout and end-of-sequence target restoration remain unchanged.
-2. Exercise or induce a missing Group ACK: after about 1.0 second SCB should report failure, restore target, release the pipeline and perform no timeout retry.
-3. Repeat full rebuilds to confirm ordinal identity remains stable with no false corrections or whole-raid combat confirmation.
-4. Exercise the rare mismatch-recovery path if a real mismatch occurs: unique cross-class repair should affect only the implicated group; same-class ambiguity should scope confirmation only to implicated candidates; preset intent must remain unchanged.
-5. Confirm role-mismatch warning wording shows subgroup-local slot 1–5.
+### Opportunistic checks while playing
+1. If a Group command ever stalls naturally, verify SCB reports failure at about 1.0 second, restores the original target, releases the pipeline and performs no timeout retry.
+2. If a wrong-actor acknowledgement is ever visible, verify SCB resends to the intended bot and then continues normally.
+3. If a genuine class/role identity mismatch occurs, verify the popup/chat/red-X warning is clear and that any repair stays scoped to the implicated group/candidates without changing preset intent.
+4. If a mismatch warning occurs in a later subgroup, verify its displayed slot is subgroup-local 1–5 rather than the global raid slot.
 
 
 
