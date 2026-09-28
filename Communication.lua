@@ -1335,6 +1335,8 @@ end
 local SCB_TARGETED_TARGET_SETTLE = 0.10
 local SCB_TARGETED_ACK_TIMEOUT = 1.0
 local SCB_TARGETED_BUDGET_POLL = 0.05
+local SCB_PAUSE_HEALER_SELF_SETTLE_MIN = 0.25
+local SCB_PAUSE_HEALER_SELF_SETTLE_MARGIN = 0.10
 local SCB_TARGETED_COMMAND_LIMIT = 24
 local SCB_TARGETED_COMMAND_WINDOW = 1.0
 
@@ -1743,6 +1745,23 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     return true
 end
 
+local function SCB_GetPauseHealerSelfBootstrapSettle()
+    local bandwidthIn, bandwidthOut, latency
+    local delay = SCB_PAUSE_HEALER_SELF_SETTLE_MIN
+
+    if GetNetStats then
+        bandwidthIn, bandwidthOut, latency = GetNetStats()
+        latency = tonumber(latency) or 0
+        if latency > 0 then
+            delay = (latency / 1000) + SCB_PAUSE_HEALER_SELF_SETTLE_MARGIN
+            if delay < SCB_PAUSE_HEALER_SELF_SETTLE_MIN then
+                delay = SCB_PAUSE_HEALER_SELF_SETTLE_MIN
+            end
+        end
+    end
+    return delay
+end
+
 local function SCB_RestorePauseHealersOriginalTarget(state)
     local currentName, member
     if not state then return end
@@ -1789,7 +1808,7 @@ end
 
 local function SCB_SelectCurrentPauseHealerRecipient()
     local state = SCB.pauseHealerCommandState
-    local name, member, currentName, resolvedRole, identityPending
+    local name, member, currentName, resolvedRole, identityPending, settleDelay
     if not state then return false end
 
     while (state.index or 1) <= table.getn(state.bots or {}) do
@@ -1812,14 +1831,22 @@ local function SCB_SelectCurrentPauseHealerRecipient()
                 if not UnitName or UnitName("target") ~= name then
                     state.index = (state.index or 1) + 1
                 else
+                    settleDelay = state.needsInitialSelfSettle
+                        and SCB_GetPauseHealerSelfBootstrapSettle()
+                        or SCB_TARGETED_TARGET_SETTLE
                     state.currentName = name
                     state.phase = "settle"
+                    state.phaseDelay = settleDelay
                     state.phaseElapsed = 0
                     return true
                 end
             else
+                settleDelay = state.needsInitialSelfSettle
+                    and SCB_GetPauseHealerSelfBootstrapSettle()
+                    or SCB_TARGETED_TARGET_SETTLE
                 state.currentName = name
                 state.phase = "settle"
+                state.phaseDelay = settleDelay
                 state.phaseElapsed = 0
                 return true
             end
@@ -1877,6 +1904,8 @@ local function SCB_SendCurrentPauseHealerCommand()
 
     state.ackSeen = {}
     state.ackFailed = nil
+    state.needsInitialSelfSettle = nil
+    state.phaseDelay = nil
     state.phase = "await"
     state.phaseElapsed = 0
     for i = 1, table.getn(state.commands or {}) do
@@ -1903,6 +1932,11 @@ function SCB_PauseHealersHandleServerMessage(text)
     local state = SCB.pauseHealerCommandState
     local actor, kind
     if not state or state.phase ~= "await" then return false end
+
+    if text and string.find(text, "All party bots paused for ", 1, true) then
+        SCB_FailPauseHealersSequence()
+        return true
+    end
 
     actor, kind = SCB_ParseTargetedCommandAck(text)
     if not actor or not kind or not state.expectedAcks or not state.expectedAcks[kind] then
@@ -1935,7 +1969,7 @@ local function SCB_EnsurePauseHealerCommandFrame()
 
         state.phaseElapsed = (state.phaseElapsed or 0) + elapsed
         if state.phase == "settle" then
-            if state.phaseElapsed < SCB_TARGETED_TARGET_SETTLE then return end
+            if state.phaseElapsed < (state.phaseDelay or SCB_TARGETED_TARGET_SETTLE) then return end
             state.phaseElapsed = 0
             SCB_SendCurrentPauseHealerCommand()
         elseif state.phase == "budget" then
@@ -1959,6 +1993,9 @@ function SCB_QueuePauseHealersCommand(commandKey)
     local frame
     local hadTarget = UnitExists and UnitExists("target")
     local originalTargetName = hadTarget and UnitName and UnitName("target") or nil
+    local playerName = UnitName and UnitName("player") or nil
+    local originalTargetWasSelf = hadTarget and originalTargetName
+        and playerName and originalTargetName == playerName
 
     if SCB.pauseHealerCommandState then
         SCB_ShowTargetedCommandError("TARGETED_BUSY_ROLE")
@@ -1983,6 +2020,7 @@ function SCB_QueuePauseHealersCommand(commandKey)
         phaseElapsed = 0,
         originalTargetHadTarget = hadTarget and true or false,
         originalTargetName = originalTargetName,
+        needsInitialSelfSettle = originalTargetWasSelf and true or nil,
         commandLabel = commandInfo.label,
     }
     frame = SCB_EnsurePauseHealerCommandFrame()
