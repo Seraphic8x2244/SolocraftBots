@@ -1430,7 +1430,7 @@ function SCB_CreateCommandUI(frame)
         { gapBefore = true, recipient = "tank", indent = 1, commands = { "move", "stay", "pull" } },
         { recipient = "melee", indent = 1, commands = { "move", "stay" } },
         { recipient = "ranged", indent = 1, commands = { "move", "stay", "spreadtoggle" } },
-        { recipient = "healer", indent = 1, commands = { "move", "stay" } },
+        { recipient = "healer", indent = 1, commands = { "move", "stay", "pausehealers" } },
     }
     local recipientByKey = {}
     local layoutRows = {}

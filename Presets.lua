@@ -2129,6 +2129,9 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
     SCB.roleEvidenceByName = {}
     SCB.roleEvidenceRecent = {}
     SCB.roleMismatchWarnings = {}
+    SCB.identityRecoveryByGroup = {}
+    SCB.focusedRoleConfirmationNames = {}
+    if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle() end
     local tracker = {
         version = 5,
         mode = size <= 5 and "party" or "raid",
@@ -2197,6 +2200,268 @@ function SCB_GetRaidBotsByGroup(observed)
     return result
 end
 
+
+do
+local function SCB_LiveIdentityClass(member)
+    if member and member.classFile then return string.lower(member.classFile) end
+    return nil
+end
+
+local function SCB_WarnIdentityRecoveryUnresolved(tracker, groupIndex)
+    local warnings
+    if not tracker or not groupIndex then return end
+    tracker.scbIdentityWarnings = tracker.scbIdentityWarnings or {}
+    warnings = tracker.scbIdentityWarnings
+    if warnings[groupIndex] then return end
+    warnings[groupIndex] = true
+    if SCB_Print then
+        SCB_Print(string.format(SCB_L("IDENTITY_RECOVERY_UNRESOLVED"), tostring(groupIndex)))
+    end
+end
+
+local function SCB_ApplyRecoveredIdentityMapping(tracker, groupIndex, mapping, observed, rebindActive)
+    local i, assignment, newName, changed
+    if not tracker or not tracker.assignments or not mapping then return false end
+    changed = false
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.initialActive and assignment.group == groupIndex then
+            newName = mapping[assignment.slotIndex]
+            if newName and assignment.botName ~= newName then
+                assignment.botName = newName
+                changed = true
+            end
+        end
+    end
+    if changed and rebindActive and SCB_RebindActiveRosterTrackerGroup then
+        SCB_RebindActiveRosterTrackerGroup(tracker, groupIndex, observed)
+    end
+    if changed and SCB.developerDebugEnabled and SCB_DebugLog then
+        SCB_DebugLog("Identity", "Recovered bot-slot mapping for Group " .. tostring(groupIndex))
+    end
+    return changed
+end
+
+local function SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
+    local expectedByClass, namesByClass, implicated = {}, {}, {}
+    local mapping, buckets = {}, {}
+    local i, assignment, member, expectedClass, actualClass, list, classKey
+    local hasMismatch, complete = false, true
+
+    for i = 1, table.getn(tracker.assignments or {}) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.initialActive and assignment.group == groupIndex then
+            member = assignment.botName and observed and observed.byName and observed.byName[assignment.botName] or nil
+            expectedClass = assignment.class and string.lower(assignment.class) or nil
+            actualClass = SCB_LiveIdentityClass(member)
+            if not assignment.botName or not member or not expectedClass or not actualClass then
+                complete = false
+            else
+                expectedByClass[expectedClass] = expectedByClass[expectedClass] or {}
+                table.insert(expectedByClass[expectedClass], assignment)
+                namesByClass[actualClass] = namesByClass[actualClass] or {}
+                table.insert(namesByClass[actualClass], assignment.botName)
+                if expectedClass ~= actualClass then
+                    hasMismatch = true
+                    implicated[expectedClass] = true
+                    implicated[actualClass] = true
+                end
+            end
+        end
+    end
+
+    if not complete then return nil, false, false end
+    if not hasMismatch then return nil, false, true end
+
+    for classKey, list in pairs(expectedByClass) do
+        if table.getn(list) ~= table.getn(namesByClass[classKey] or {}) then
+            return { failed = true, group = groupIndex }, true, true
+        end
+    end
+    for classKey, list in pairs(namesByClass) do
+        if table.getn(list) ~= table.getn(expectedByClass[classKey] or {}) then
+            return { failed = true, group = groupIndex }, true, true
+        end
+    end
+
+    for classKey, list in pairs(expectedByClass) do
+        if not implicated[classKey] then
+            for i = 1, table.getn(list) do
+                mapping[list[i].slotIndex] = list[i].botName
+            end
+        elseif table.getn(list) == 1 then
+            mapping[list[1].slotIndex] = namesByClass[classKey][1]
+        else
+            if not SCB_ClassSupportsRoleValidation or not SCB_ClassSupportsRoleValidation(classKey) then
+                return { failed = true, group = groupIndex }, true, true
+            end
+            table.insert(buckets, {
+                class = classKey,
+                assignments = list,
+                names = namesByClass[classKey],
+            })
+        end
+    end
+
+    return {
+        group = groupIndex,
+        tracker = tracker,
+        mapping = mapping,
+        buckets = buckets,
+    }, true, true
+end
+
+function SCB_StartPostFinalizeClassSanity(tracker, observed, rebindActive)
+    local groupCount, groupIndex, recovery, mismatch, groupComplete, i, bucket, j, changed
+    local focused = false
+    local allComplete = true
+    if not tracker or tracker.scbClassSanityChecked then
+        return SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
+    end
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    if not observed or not observed.byName then return false end
+
+    SCB.identityRecoveryByGroup = SCB.identityRecoveryByGroup or {}
+    SCB.focusedRoleConfirmationNames = SCB.focusedRoleConfirmationNames or {}
+    groupCount = math.ceil((tracker.size or 0) / 5)
+
+    for groupIndex = 1, groupCount do
+        recovery, mismatch, groupComplete = SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
+        if not groupComplete then allComplete = false end
+        if mismatch and recovery then
+            if recovery.failed then
+                SCB_WarnIdentityRecoveryUnresolved(tracker, groupIndex)
+            elseif table.getn(recovery.buckets or {}) == 0 then
+                changed = SCB_ApplyRecoveredIdentityMapping(
+                    tracker,
+                    groupIndex,
+                    recovery.mapping,
+                    observed,
+                    rebindActive and true or false
+                )
+                if changed and rebindActive and SCB_GetLiveRoster then
+                    observed = SCB_GetLiveRoster(true) or observed
+                end
+            else
+                SCB.identityRecoveryByGroup[groupIndex] = recovery
+                for i = 1, table.getn(recovery.buckets) do
+                    bucket = recovery.buckets[i]
+                    for j = 1, table.getn(bucket.names or {}) do
+                        SCB.focusedRoleConfirmationNames[bucket.names[j]] = true
+                        focused = true
+                    end
+                end
+            end
+        end
+    end
+
+    tracker.scbClassSanityChecked = allComplete and true or nil
+    if focused and SCB_TryResolveFocusedIdentityRecovery then
+        SCB_TryResolveFocusedIdentityRecovery(observed)
+        focused = SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
+    end
+    return focused
+end
+
+function SCB_IsFocusedIdentityCandidate(name)
+    return name and SCB.focusedRoleConfirmationNames
+        and SCB.focusedRoleConfirmationNames[name] == true
+end
+
+function SCB_TryResolveFocusedIdentityRecovery(observed)
+    local recoveryByGroup = SCB.identityRecoveryByGroup or {}
+    local groupIndex, recovery, mapping, i, j, bucket, assignment, name, state, role
+    local expectedByRole, namesByRole, list, waiting, failed, finished
+    local refreshedNames, anyFocused = {}, false
+
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    finished = {}
+
+    for groupIndex, recovery in pairs(recoveryByGroup) do
+        mapping = {}
+        for i, name in pairs(recovery.mapping or {}) do mapping[i] = name end
+        waiting = false
+        failed = false
+
+        for i = 1, table.getn(recovery.buckets or {}) do
+            bucket = recovery.buckets[i]
+            expectedByRole = {}
+            namesByRole = {}
+
+            for j = 1, table.getn(bucket.assignments or {}) do
+                assignment = bucket.assignments[j]
+                role = assignment and assignment.role or nil
+                if role then
+                    expectedByRole[role] = expectedByRole[role] or {}
+                    table.insert(expectedByRole[role], assignment)
+                else
+                    failed = true
+                end
+            end
+
+            for j = 1, table.getn(bucket.names or {}) do
+                name = bucket.names[j]
+                state = SCB.roleEvidenceByName and SCB.roleEvidenceByName[name] or nil
+                role = state and state.confirmedRole or nil
+                if not role then
+                    waiting = true
+                else
+                    namesByRole[role] = namesByRole[role] or {}
+                    table.insert(namesByRole[role], name)
+                end
+            end
+
+            if not waiting then
+                for role, list in pairs(expectedByRole) do
+                    if table.getn(list) ~= table.getn(namesByRole[role] or {}) then
+                        failed = true
+                    elseif table.getn(list) == 1 then
+                        mapping[list[1].slotIndex] = namesByRole[role][1]
+                    else
+                        failed = true
+                    end
+                end
+                for role, list in pairs(namesByRole) do
+                    if table.getn(list) ~= table.getn(expectedByRole[role] or {}) then
+                        failed = true
+                    end
+                end
+            end
+        end
+
+        if not waiting then
+            if failed then
+                SCB_WarnIdentityRecoveryUnresolved(recovery.tracker, groupIndex)
+            else
+                SCB_ApplyRecoveredIdentityMapping(recovery.tracker, groupIndex, mapping, observed, true)
+                if SCB_GetLiveRoster then observed = SCB_GetLiveRoster(true) or observed end
+            end
+            finished[groupIndex] = true
+        end
+    end
+
+    for groupIndex in pairs(finished) do recoveryByGroup[groupIndex] = nil end
+
+    -- Keep every candidate in a still-pending recovery protected from normal
+    -- slot evidence writes, even after that individual bot has confirmed its role.
+    for groupIndex, recovery in pairs(recoveryByGroup) do
+        for i = 1, table.getn(recovery.buckets or {}) do
+            bucket = recovery.buckets[i]
+            for j = 1, table.getn(bucket.names or {}) do
+                name = bucket.names[j]
+                refreshedNames[name] = true
+                anyFocused = true
+            end
+        end
+    end
+    SCB.focusedRoleConfirmationNames = refreshedNames
+
+    if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle(observed) end
+    if SCB_QueuePresetRoleIndicatorsRefresh then SCB_QueuePresetRoleIndicatorsRefresh(0.05) end
+    return not anyFocused
+end
+end
+
 -- Apply SCB's known preset tank roles to pfUI when it is available.
 -- pfUI does not expose a public ToggleTank function: its own popup toggle writes
 -- directly to pfUI.uf.raid.tankrole[name] and shows the raid updater. Mirror that
@@ -2204,16 +2469,21 @@ end
 -- refreshes can never accidentally turn a tank off.
 
 local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
+    local focused
     if not tracker or not tracker.ready then return false end
 
-    -- Finalization has already bound each uncovered logical assignment from the
-    -- settled bot-only Blizzard order inside its group. Join-name assumptions
-    -- remain provisional operational hints and must never overwrite that mapping.
+    -- Settled bot-only ordinal identity remains the normal authority. The class
+    -- sanity path runs only when live UnitClass proves a binding impossible.
+    focused = SCB_StartPostFinalizeClassSanity
+        and SCB_StartPostFinalizeClassSanity(tracker, observed, not initial)
     tracker.scbRoleIdentityReconciled = true
 
     if initial then
         if SCB_EstablishActiveRosterFromTracker then SCB_EstablishActiveRosterFromTracker(tracker, observed) end
         if SCB_RefreshTrackerLiveLayout then SCB_RefreshTrackerLiveLayout(observed) end
+    end
+    if focused and SCB_RefreshRoleDetectionLifecycle then
+        SCB_RefreshRoleDetectionLifecycle(observed)
     end
     return true
 end
@@ -2223,7 +2493,7 @@ function SCB_TryFinalizeRaidRoleTracking(observed)
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
     if not tracker or not tracker.assignments then return tracker and tracker.ready end
     if tracker.ready then
-        if not tracker.scbRoleIdentityReconciled then
+        if not tracker.scbRoleIdentityReconciled or not tracker.scbClassSanityChecked then
             SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), false)
         end
         return true
@@ -2266,12 +2536,12 @@ function SCB_TryFinalizeRaidRoleTracking(observed)
 
     tracker.ready = true
     tracker.completedAt = GetTime and GetTime() or 0
+    SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), true)
     SCB_ApplyTrackedPfUITankRoles(tracker)
     if SCB.developerDebugEnabled and SCB_DebugLog then
         SCB_DebugLog(SCB_L("DEBUG_KIND_TRACK"), string.format(SCB_L("DEBUG_TRACK_READY"), SCB_L((tracker.mode or "raid") == "raid" and "DEBUG_MODE_RAID" or "DEBUG_MODE_PARTY")))
     end
     if SCB_RefreshRefillButton then SCB_RefreshRefillButton() end
-    SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), true)
     return true
 end
 function SCB_GetTrackedHumanCounts(tracker)

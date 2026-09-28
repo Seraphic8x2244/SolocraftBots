@@ -469,6 +469,43 @@ function SCB_EstablishActiveRosterFromTracker(tracker, observed)
     return true
 end
 
+function SCB_RebindActiveRosterTrackerGroup(tracker, groupIndex, observed)
+    local roster = SoloCraftBotsCharDB and SoloCraftBotsCharDB.activeRoster or nil
+    local i, assignment, slot, member, state, now
+    if not roster or not roster.slots or not tracker or not tracker.assignments or not groupIndex then return false end
+    observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
+    now = GetTime and GetTime() or 0
+
+    for i = 1, table.getn(tracker.assignments) do
+        assignment = tracker.assignments[i]
+        if assignment and assignment.initialActive and assignment.group == groupIndex
+            and assignment.slotIndex and assignment.botName then
+            slot = roster.slots[assignment.slotIndex]
+            if slot and slot.trackerSlotIndex == assignment.slotIndex then
+                member = observed and observed.byName and observed.byName[assignment.botName] or nil
+                state = SCB.roleEvidenceByName and SCB.roleEvidenceByName[assignment.botName] or nil
+                slot.currentName = assignment.botName
+                slot.class = assignment.class
+                slot.role = assignment.role
+                slot.extra = assignment.extra
+                slot.assumedRole = assignment.role
+                slot.confirmedRole = state and state.confirmedRole or nil
+                slot.roleEvidence = state and state.byRole or nil
+                slot.detected = state and state.confirmedRole and true or nil
+                slot.currentGroup = member and member.currentGroup or assignment.group
+                slot.intendedGroup = assignment.group
+                slot.state = member and member.dead and "dead" or "alive"
+                slot.missingSince = nil
+                slot.lastSeenAt = now
+            end
+        end
+    end
+
+    roster.updatedAt = now
+    if SCB_RefreshRefillButton then SCB_RefreshRefillButton(observed, false) end
+    return true
+end
+
 local function SCB_FindFreeActiveSlotID(roster)
     local i
     local limit = tonumber(roster.expectedCap) or 0
@@ -1507,7 +1544,7 @@ local function SCB_ShowRoleMismatchPopup(text)
 end
 
 local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state)
-    local slot, assumption, slotIndex, groupIndex, evidence, key, text
+    local slot, assumption, slotIndex, groupIndex, displaySlot, evidence, key, text
     if not name or not intendedRole or not state or not state.confirmedRole then return false end
     if state.confirmedRole == intendedRole then return false end
     if not SCB_ClassSupportsRoleValidation(classKey) then return false end
@@ -1520,6 +1557,7 @@ local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state
     groupIndex = slot and (slot.intendedGroup or slot.currentGroup) or nil
     if not groupIndex and assumption then groupIndex = assumption.group end
     if not groupIndex and slotIndex then groupIndex = math.floor((slotIndex - 1) / 5) + 1 end
+    displaySlot = slotIndex and (math.mod(slotIndex - 1, 5) + 1) or nil
     evidence = state.lastSpell or "combat evidence"
 
     key = tostring(name) .. "\031" .. tostring(slotIndex or "?")
@@ -1532,7 +1570,7 @@ local function SCB_WarnConfirmedRoleMismatch(name, classKey, intendedRole, state
         SCB_L("ROLE_MISMATCH_WARNING"),
         tostring(name),
         tostring(groupIndex or "?"),
-        tostring(slotIndex or "?"),
+        tostring(displaySlot or "?"),
         SCB_RoleValidationLabel(intendedRole),
         SCB_RoleValidationLabel(state.confirmedRole),
         tostring(evidence)
@@ -1826,11 +1864,16 @@ local function SCB_EnsureRoleDetectionOption()
     return SCB_IsRoleDetectionEnabled()
 end
 
+local function SCB_HasFocusedRoleConfirmation()
+    return SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
+end
+
 local function SCB_LiveBotNeedsRoleConfirmation(member)
     local slot, classKey
     if not member or not member.isBot or member.spawnKind == "bootstrap" then return false end
     slot = SCB_GetActiveSlotByName and member.name and SCB_GetActiveSlotByName(member.name) or nil
-    classKey = member.assumedClass or member.classFile or (slot and slot.class) or nil
+    -- Live UnitClass / raid-tab class is authoritative for validation.
+    classKey = member.classFile or member.assumedClass or (slot and slot.class) or nil
     if not SCB_ClassSupportsRoleValidation(classKey) then return false end
     if member.confirmedRole then return false end
     if member.assumedRole then return true end
@@ -1844,11 +1887,14 @@ end
 local function SCB_RebuildRoleDetectionPendingNames(observed)
     local roster = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     local pending = {}
+    local globalEnabled = SCB_EnsureRoleDetectionOption()
+    local focused = SCB.focusedRoleConfirmationNames or {}
     local i, member, key
 
     for i = 1, table.getn(roster and roster.members or {}) do
         member = roster.members[i]
-        if SCB_LiveBotNeedsRoleConfirmation(member) then
+        if SCB_LiveBotNeedsRoleConfirmation(member)
+            and (globalEnabled or focused[member.name]) then
             key = SCB_NormalizeCombatName(member.name)
             if key then pending[key] = true end
         end
@@ -1880,9 +1926,10 @@ end
 
 function SCB_RefreshRoleDetectionLifecycle(observed)
     local enabled = SCB_EnsureRoleDetectionOption()
+    local focused = SCB_HasFocusedRoleConfirmation()
     local pending
 
-    if not enabled then
+    if not enabled and not focused then
         SCB.roleDetectionPendingNames = {}
         SCB_SetRoleDetectionEventsEnabled(false, "Combat role scanning disabled by option")
         return
@@ -1894,7 +1941,7 @@ end
 
 function SCB_QueueRoleDetectionLifecycleRefresh(delay)
     local frame
-    if not SCB_EnsureRoleDetectionOption() then return end
+    if not SCB_EnsureRoleDetectionOption() and not SCB_HasFocusedRoleConfirmation() then return end
     frame = SCB.roleDetectionLifecycleRefreshFrame
     if not frame then
         frame = CreateFrame("Frame", "SoloCraftBotsRoleDetectionLifecycleRefreshFrame", UIParent)
@@ -1932,7 +1979,7 @@ end
 
 function SCB_HandleRoleCombatText(text, eventName)
     local source, name, classKey, spell, role
-    if not SCB_EnsureRoleDetectionOption() then return false end
+    if not SCB_EnsureRoleDetectionOption() and not SCB_HasFocusedRoleConfirmation() then return false end
     if not SCB_CombatSourceNeedsRoleConfirmation(text) then return false end
     if type(text) ~= "string" or text == "" then return false end
     if string.find(text, "gains %d+ Mana") or string.find(text, "gains %d+ Rage")
@@ -1953,7 +2000,7 @@ function SCB_HandleRoleCombatText(text, eventName)
 end
 
 function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
-    local state, oldConfirmed, score, changed
+    local state, oldConfirmed, score, changed, focused
     if not name or not classKey or not role or not spell then return false end
     if SCB_IsDuplicateRoleObservation(name, spell) then return false end
 
@@ -1965,6 +2012,7 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     if state.class and state.class ~= classKey then return false end
 
     oldConfirmed = state.confirmedRole
+    focused = SCB_IsFocusedIdentityCandidate and SCB_IsFocusedIdentityCandidate(name)
     state.class = classKey
     state.byRole[role] = (state.byRole[role] or 0) + 1
     state.observations = (state.observations or 0) + 1
@@ -1972,8 +2020,10 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
     state.lastEvent = eventName
     state.updatedAt = GetTime and GetTime() or 0
     SCB_ResolveEvidenceCandidate(name, state)
-    SCB_SyncEvidenceToActiveSlot(name, state)
-    SCB_WarnConfirmedRoleMismatch(name, classKey, SCB_GetAssumedRoleForName(name), state)
+    if not focused then
+        SCB_SyncEvidenceToActiveSlot(name, state)
+        SCB_WarnConfirmedRoleMismatch(name, classKey, SCB_GetAssumedRoleForName(name), state)
+    end
 
     score = state.byRole[role] or 0
     if SCB.developerDebugEnabled and SCB_DebugLog then
@@ -1996,6 +2046,9 @@ function SCB_AddBotRoleEvidence(name, classKey, role, spell, eventName)
         SCB_RefreshPresetRoleIndicators()
     end
 
+    if focused and SCB_TryResolveFocusedIdentityRecovery then
+        SCB_TryResolveFocusedIdentityRecovery()
+    end
     changed = oldConfirmed ~= state.confirmedRole
     if changed then SCB_RefreshRoleDetectionLifecycle(SCB.liveRoster) end
     return changed
@@ -2004,13 +2057,15 @@ end
 local function SCB_ScanPendingDruidPowerEvidence()
     local roster = SCB.liveRoster or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     local members = roster and roster.members or {}
-    local i, member, slot, classKey, role, evidence
+    local i, member, slot, classKey, role, evidence, key
 
     for i = 1, table.getn(members) do
         member = members[i]
-        if SCB_LiveBotNeedsRoleConfirmation(member) then
+        key = member and member.name and SCB_NormalizeCombatName(member.name) or nil
+        if key and SCB.roleDetectionPendingNames and SCB.roleDetectionPendingNames[key]
+            and SCB_LiveBotNeedsRoleConfirmation(member) then
             slot = SCB_GetActiveSlotByName and member.name and SCB_GetActiveSlotByName(member.name) or nil
-            classKey = member.assumedClass or member.classFile or (slot and slot.class) or nil
+            classKey = member.classFile or member.assumedClass or (slot and slot.class) or nil
             if type(classKey) == "string" then classKey = string.lower(classKey) end
             if classKey == "druid" then
                 role, evidence = SCB_GetDruidFeralRoleFromPower(member.name, member)

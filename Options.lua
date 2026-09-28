@@ -710,11 +710,12 @@ end
 
 local function SCB_TapTargetedCommandServerMessage(frame, text)
     local now
-    if not text or not SCB.targetedCommandState or not SCB_TargetedCommandHandleServerMessage then return end
+    if not text then return end
+    if not SCB.targetedCommandState and not SCB.pauseHealerCommandState then return end
 
     -- One server line may be routed to several ChatFrames. Suppress only those
     -- cross-frame copies; a genuine repeated reply during an immediate retry
-    -- must still reach the sequencer.
+    -- must still reach the active sequencer.
     now = GetTime and GetTime() or 0
     if SCB.targetedAckLastChatText == text
         and SCB.targetedAckLastChatFrame ~= frame
@@ -725,7 +726,13 @@ local function SCB_TapTargetedCommandServerMessage(frame, text)
     SCB.targetedAckLastChatText = text
     SCB.targetedAckLastChatFrame = frame
     SCB.targetedAckLastChatAt = now
-    SCB_TargetedCommandHandleServerMessage(text)
+
+    if SCB.targetedCommandState and SCB_TargetedCommandHandleServerMessage then
+        SCB_TargetedCommandHandleServerMessage(text)
+    end
+    if SCB.pauseHealerCommandState and SCB_PauseHealersHandleServerMessage then
+        SCB_PauseHealersHandleServerMessage(text)
+    end
 end
 
 local function SCB_FilteredChatFrameAddMessage(frame, text, r, g, b, id)
