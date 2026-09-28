@@ -87,7 +87,11 @@ function SCB_DefaultPresetSlots(size)
     if playerClass and slots[1] then
         slots[1].class = playerClass.key
         slots[1].role = SCB_DefaultPlayerRoleForClass(playerClass)
-        slots[1].extra = nil
+        if playerClass.key == "paladin" then
+            slots[1].extra = SCB.PALADIN_AUTO_BLESSING
+        else
+            slots[1].extra = nil
+        end
     end
     return slots
 end
@@ -599,7 +603,10 @@ end
 
 function SCB_RefreshPresetSlots()
     local size = SCB_CurrentPresetSize()
-    local i, slot, classInfo, roleInfo, row, blessingInfo, shamanTotems, totemInfo, totemKey
+    local occupied = SCB_GetPresetHumanOccupiedSlots()
+    local resolvedBlessings = SCB_ResolvePaladinBlessingAssignments(SCB.presetEditorSlots, size, occupied)
+    local i, slot, classInfo, roleInfo, row, blessingInfo, storedBlessing, effectiveBlessing
+    local shamanTotems, totemInfo, totemKey, blessingAvailable
 
     for i = 1, 40 do
         row = SCB.presetSlotRows[i]
@@ -618,22 +625,41 @@ function SCB_RefreshPresetSlots()
 
                     if row.blessingButton then
                         if slot.class == "paladin" then
-                            blessingInfo = SCB_FindPaladinBlessing(slot.extra)
+                            storedBlessing = SCB_NormalizePaladinBlessingIntent(slot.extra)
+                            effectiveBlessing = resolvedBlessings and resolvedBlessings[i] or nil
+                            if effectiveBlessing then
+                                blessingInfo = SCB_FindPaladinBlessing(effectiveBlessing)
+                            else
+                                blessingInfo = SCB_FindPaladinBlessing(storedBlessing)
+                            end
                             row.blessingButton.icon:Show()
                             SCB_SetArtButtonTexture(row.blessingButton, blessingInfo.texture, nil)
                             if row.blessingButton.totemIcons then
                                 for totemKey = 1, 4 do row.blessingButton.totemIcons[totemKey]:Hide() end
                             end
-                            if UnitLevel and UnitLevel("player") == 60 then
-                                SCB_SetArtButtonAvailable(row.blessingButton, true)
-                                row.blessingButton.scbTooltip = SCB_L("TIP_PRESET_BLESSING")
-                                row.blessingButton.scbTooltip = string.gsub(row.blessingButton.scbTooltip, "%%s", blessingInfo.label)
+
+                            if storedBlessing == SCB.PALADIN_AUTO_BLESSING then
+                                SCB_SetAutoCastShine(row.blessingButton, true)
+                                blessingAvailable = effectiveBlessing ~= nil
+                                SCB_SetArtButtonAvailable(row.blessingButton, blessingAvailable)
+                                if blessingAvailable then
+                                    row.blessingButton.scbTooltip = string.format(SCB_L("TIP_PRESET_BLESSING_AUTO"), blessingInfo.label)
+                                else
+                                    row.blessingButton.scbTooltip = SCB_L("TIP_PRESET_BLESSING_AUTO_NONE")
+                                end
                             else
-                                SCB_SetArtButtonAvailable(row.blessingButton, false)
-                                row.blessingButton.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_LEVEL")
+                                SCB_SetAutoCastShine(row.blessingButton, false)
+                                blessingAvailable = SCB_IsPaladinBlessingAvailable(storedBlessing, slot.role)
+                                SCB_SetArtButtonAvailable(row.blessingButton, blessingAvailable)
+                                if blessingAvailable then
+                                    row.blessingButton.scbTooltip = string.format(SCB_L("TIP_PRESET_BLESSING"), blessingInfo.label)
+                                else
+                                    row.blessingButton.scbTooltip = string.format(SCB_L("TIP_PRESET_BLESSING_UNAVAILABLE"), blessingInfo.label)
+                                end
                             end
                             row.blessingButton:Show()
                         elseif slot.class == "shaman" then
+                            SCB_SetAutoCastShine(row.blessingButton, false)
                             shamanTotems = SCB_ParseShamanTotems(slot.extra)
                             SCB_SetArtButtonAvailable(row.blessingButton, true)
                             row.blessingButton.icon:Hide()
@@ -654,6 +680,7 @@ function SCB_RefreshPresetSlots()
                     )
                             row.blessingButton:Show()
                         else
+                            SCB_SetAutoCastShine(row.blessingButton, false)
                             row.blessingButton:Hide()
                         end
                         SCB_RefreshVisibleTooltip(row.blessingButton)
@@ -1234,28 +1261,9 @@ function SCB_IsPresetSlotHumanOccupied(slotIndex)
 end
 
 function SCB_ChoosePresetPaladinBlessing(excludeIndex)
-    local counts = {}
-    local occupied = SCB_GetPresetHumanOccupiedSlots()
-    local i, slot, blessing, bestIndex, bestCount
-    for i = 1, table.getn(SCB.PALADIN_BLESSINGS) do counts[i] = 0 end
-    for i = 1, SCB_CurrentPresetSize() do
-        if i ~= excludeIndex and not occupied[i] then
-            slot = SCB.presetEditorSlots[i]
-            if slot and slot.class == "paladin" then
-                blessing, bestIndex = SCB_FindPaladinBlessing(slot.extra)
-                counts[bestIndex] = (counts[bestIndex] or 0) + 1
-            end
-        end
-    end
-    bestIndex = 1
-    bestCount = counts[1] or 0
-    for i = 2, table.getn(SCB.PALADIN_BLESSINGS) do
-        if (counts[i] or 0) < bestCount then
-            bestIndex = i
-            bestCount = counts[i] or 0
-        end
-    end
-    return SCB.PALADIN_BLESSINGS[bestIndex].key
+    -- New Paladin assignments store intent, not the blessing resolved for the
+    -- current character level.
+    return SCB.PALADIN_AUTO_BLESSING
 end
 
 function SCB_PresetClassOnClick()
@@ -1524,7 +1532,7 @@ end
 function SCB_PresetBlessingOnClick()
     local slotIndex = this.scbSlotIndex
     local slot = SCB.presetEditorSlots[slotIndex]
-    local blessing, currentIndex, newIndex
+    local available, options, current, currentIndex, newIndex, i
 
     if SCB.draggedPresetPlayer then
         SCB_FinishPresetPlayerDrag(slotIndex)
@@ -1536,22 +1544,30 @@ function SCB_PresetBlessingOnClick()
     if SCB_IsPresetSlotHumanOccupied(slotIndex) then
         return
     end
-    if not UnitLevel or UnitLevel("player") ~= 60 then
-        if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() else SCB_RefreshPresetSlots() end
-        return
+
+    options = { SCB.PALADIN_AUTO_BLESSING }
+    available = SCB_GetAvailablePaladinBlessings(slot.role)
+    for i = 1, table.getn(available) do table.insert(options, available[i].key) end
+
+    current = SCB_NormalizePaladinBlessingIntent(slot.extra)
+    currentIndex = nil
+    for i = 1, table.getn(options) do
+        if options[i] == current then currentIndex = i break end
     end
 
-    blessing, currentIndex = SCB_FindPaladinBlessing(slot.extra)
-    if arg1 == "RightButton" then
+    -- An explicit blessing saved on a higher-level character remains explicit,
+    -- but one click returns this slot to the portable Auto state.
+    if not currentIndex then
+        newIndex = 1
+    elseif arg1 == "RightButton" then
         newIndex = currentIndex - 1
-        if newIndex < 1 then newIndex = table.getn(SCB.PALADIN_BLESSINGS) end
+        if newIndex < 1 then newIndex = table.getn(options) end
     else
         newIndex = currentIndex + 1
-        if newIndex > table.getn(SCB.PALADIN_BLESSINGS) then newIndex = 1 end
+        if newIndex > table.getn(options) then newIndex = 1 end
     end
 
-    blessing = SCB.PALADIN_BLESSINGS[newIndex]
-    slot.extra = blessing.key
+    slot.extra = options[newIndex]
     if SCB_RefreshPresetPlayers then SCB_RefreshPresetPlayers() else SCB_RefreshPresetSlots() end
     SCB_SetPresetDirty(true)
 end
@@ -3133,6 +3149,10 @@ function SCB_ValidatePresetExecutionSnapshot(snapshot, requireCurrentRoster)
         if type(slot) ~= "table" or not SCB_IsValidSpawnAssignment(slot.class, slot.role, slot.extra) then
             return false, SCB_L("ERR_SNAPSHOT_BOT")
         end
+        if slot.class == "paladin" and slot.extra and slot.extra ~= ""
+            and not SCB_IsPaladinBlessingAvailable(slot.extra, slot.role) then
+            return false, SCB_L("ERR_PALADIN_BLESSING_UNAVAILABLE")
+        end
     end
 
     for i = 1, table.getn(snapshot.players or {}) do
@@ -3486,12 +3506,46 @@ function SCB_CalculatePresetRoleCounts()
     return counts
 end
 
+function SCB_RefreshPresetActiveBlessings()
+    local occupied = SCB_GetPresetHumanOccupiedSlots()
+    local resolved = SCB_ResolvePaladinBlessingAssignments(SCB.presetEditorSlots, SCB_CurrentPresetSize(), occupied)
+    local active = {}
+    local i, slot, key, blessing, iconIndex, frame
+
+    for i = 1, SCB_CurrentPresetSize() do
+        if not occupied[i] then
+            slot = SCB.presetEditorSlots and SCB.presetEditorSlots[i] or nil
+            key = slot and slot.class == "paladin" and resolved[i] or nil
+            if key then active[key] = true end
+        end
+    end
+
+    iconIndex = 1
+    for i = 1, table.getn(SCB.PALADIN_BLESSINGS) do
+        blessing = SCB.PALADIN_BLESSINGS[i]
+        if active[blessing.key] then
+            frame = SCB.presetActiveBlessingIcons and SCB.presetActiveBlessingIcons[iconIndex] or nil
+            if frame then
+                frame.icon:SetTexture(blessing.texture)
+                frame.scbTooltip = string.format(SCB_L("ACTIVE_BLESSING_TOOLTIP"), blessing.label)
+                frame:Show()
+            end
+            iconIndex = iconIndex + 1
+        end
+    end
+    while SCB.presetActiveBlessingIcons and iconIndex <= table.getn(SCB.presetActiveBlessingIcons) do
+        SCB.presetActiveBlessingIcons[iconIndex]:Hide()
+        iconIndex = iconIndex + 1
+    end
+end
+
 SCB_RefreshPresetCounters = function()
     local counts = SCB_CalculatePresetRoleCounts()
     local key, info
     for key, info in pairs(SCB.presetCounterLabels or {}) do
         info:SetText(tostring(counts[key] or 0))
     end
+    SCB_RefreshPresetActiveBlessings()
 end
 
 function SCB_LayoutPresetRowGeometry()
@@ -3657,9 +3711,9 @@ SCB_LayoutPresetGroups = function()
 
     -- Fixed vertical chain:
     -- 12 top inset + header + 12 + dropdown(24) + 6 + action(24)
-    -- + 6 + counter(34) + 6 + boxed groups + 12 bottom inset.
+    -- + 6 + counter(60) + 6 + boxed groups + 12 bottom inset.
     -- poolExtra contributes the optional counter->pool box plus pool->groups gap.
-    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 34 + 6
+    panelHeight = 12 + headerHeight + 12 + 24 + 6 + 24 + 6 + 60 + 6
         + (rows * groupBoxHeight) + ((rows - 1) * gapY) + 12 + poolExtra
 
     SCB.presetPanel:SetWidth(panelWidth)
@@ -3960,6 +4014,7 @@ function SCB_CreatePresetUI(frame)
 
             local blessingButton = SCB_CreateArtButton(row, nil, 24, SCB.PALADIN_BLESSINGS[1].texture, true)
             blessingButton:SetPoint("LEFT", row, "LEFT", 57, 0)
+            SCB_CreateAutoCastShine(blessingButton, "SoloCraftBotsPresetBlessingAutoCast" .. i)
             blessingButton.scbSlotIndex = i
             blessingButton:SetScript("OnClick", SCB_PresetExtraOnClick)
             blessingButton:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -4070,7 +4125,7 @@ function SCB_CreatePresetUI(frame)
     SCB_SetPresetButtonGrey(request)
 
     local counterBox = CreateFrame("Frame", nil, panel)
-    counterBox:SetHeight(34)
+    counterBox:SetHeight(60)
     counterBox:SetPoint("TOPRIGHT", request, "BOTTOMRIGHT", 0, -6)
     counterBox:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -4097,18 +4152,43 @@ function SCB_CreatePresetUI(frame)
         counterIcon = counterBox:CreateTexture(nil, "ARTWORK")
         counterIcon:SetWidth(24)
         counterIcon:SetHeight(24)
-        counterIcon:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX, 0)
+        counterIcon:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX, 11)
         counterIcon:SetTexture(SCB.assetRoot .. counterInfo.icon)
 
         counterText = counterBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         counterText:SetWidth(14)
-        counterText:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX + 26, 0)
+        counterText:SetPoint("LEFT", counterBox, "CENTER", -(counterStripWidth / 2) + counterX + 26, 11)
         counterText:SetJustifyH("CENTER")
         counterText:SetText("0")
         SCB_SetFontColor(counterText, "text")
         SCB.presetCounterLabels[counterInfo.key] = counterText
 
         counterX = counterX + 44
+    end
+
+    local activeBlessingLabel = counterBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    activeBlessingLabel:SetWidth(78)
+    activeBlessingLabel:SetPoint("BOTTOMLEFT", counterBox, "BOTTOMLEFT", 6, 7)
+    activeBlessingLabel:SetJustifyH("LEFT")
+    activeBlessingLabel:SetText(SCB_L("ACTIVE_BLESSINGS"))
+    SCB_SetFontColor(activeBlessingLabel, "text")
+    SCB.presetActiveBlessingLabel = activeBlessingLabel
+    SCB.presetActiveBlessingIcons = {}
+
+    local activeIndex, activeFrame, activeIcon
+    for activeIndex = 1, 5 do
+        activeFrame = CreateFrame("Frame", nil, counterBox)
+        activeFrame:SetWidth(16)
+        activeFrame:SetHeight(16)
+        activeFrame:SetPoint("BOTTOMLEFT", counterBox, "BOTTOMLEFT", 84 + ((activeIndex - 1) * 18), 5)
+        activeFrame:EnableMouse(true)
+        activeFrame:SetScript("OnEnter", SCB_TooltipOnEnter)
+        activeFrame:SetScript("OnLeave", SCB_TooltipOnLeave)
+        activeIcon = activeFrame:CreateTexture(nil, "ARTWORK")
+        activeIcon:SetAllPoints(activeFrame)
+        activeFrame.icon = activeIcon
+        activeFrame:Hide()
+        SCB.presetActiveBlessingIcons[activeIndex] = activeFrame
     end
 
     local dragGhost = CreateFrame("Frame", "SoloCraftBotsPresetDragGhost", UIParent)

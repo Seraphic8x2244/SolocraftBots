@@ -2676,7 +2676,7 @@ function SCB_SpawnOnClick()
     if not this.scbClass or not this.scbRole then return end
 
     extra = this.scbExtra
-    if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
+    if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing end
 
     if not SCB_RequestManualAdd then return end
     ok, command = SCB_RequestManualAdd(this.scbClass, this.scbRole, extra)

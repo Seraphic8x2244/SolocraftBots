@@ -307,6 +307,33 @@ local function SCB_RefreshArtButtonTextureGeometry(button, texturePath)
     end
 end
 
+function SCB_CreateAutoCastShine(button, name)
+    local shine
+    if not button or not name then return nil end
+    shine = CreateFrame("Frame", name, button, "AutoCastShineTemplate")
+    shine:SetAllPoints(button)
+    shine:SetFrameLevel(button:GetFrameLevel() + 3)
+    shine:EnableMouse(false)
+    if AutoCastShine_AutoCastStop then AutoCastShine_AutoCastStop(shine) end
+    shine:Hide()
+    button.scbAutoCastShine = shine
+    return shine
+end
+
+function SCB_SetAutoCastShine(button, enabled)
+    local shine
+    if not button then return end
+    shine = button.scbAutoCastShine
+    if not shine then return end
+    if enabled then
+        shine:Show()
+        if AutoCastShine_AutoCastStart then AutoCastShine_AutoCastStart(shine) end
+    else
+        if AutoCastShine_AutoCastStop then AutoCastShine_AutoCastStop(shine) end
+        shine:Hide()
+    end
+end
+
 function SCB_CreateArtButton(parent, name, size, texturePath, allowRightClick, highlightTexturePath)
     local button = CreateFrame("Button", name, parent)
     button:SetWidth(size)
@@ -737,12 +764,23 @@ function SCB_GetPlayerFaction()
     return nil
 end
 
+-- This order is the Paladin blessing priority. Auto Blessing uses it as the
+-- tie-break order after availability and duplicate avoidance.
 SCB.PALADIN_BLESSINGS = {
     { key = "BoK", label = SCB_L("BLESSING_KINGS"), texture = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings" },
     { key = "BoM", label = SCB_L("BLESSING_MIGHT"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofKings" },
     { key = "BoS", label = SCB_L("BLESSING_SALVATION"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofSalvation" },
     { key = "BoW", label = SCB_L("BLESSING_WISDOM"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom" },
     { key = "BoL", label = SCB_L("BLESSING_LIGHT"), texture = "Interface\\Icons\\Spell_Holy_GreaterBlessingofLight" },
+}
+
+SCB.PALADIN_AUTO_BLESSING = "Auto"
+SCB.PALADIN_BLESSING_MIN_LEVEL = {
+    BoM = 4,
+    BoW = 14,
+    BoS = 26,
+    BoL = 40,
+    BoK = 60,
 }
 
 function SCB_FindPaladinBlessing(key)
@@ -753,6 +791,108 @@ function SCB_FindPaladinBlessing(key)
         end
     end
     return SCB.PALADIN_BLESSINGS[1], 1
+end
+
+function SCB_GetPaladinBlessingLevel()
+    local level
+    if UnitLevel then
+        level = UnitLevel("player")
+        if level and level > 0 then return level end
+    end
+    return 60
+end
+
+function SCB_IsPaladinBlessingAvailable(key, role, level)
+    local blessing, requiredLevel
+    if not key or key == "" or key == SCB.PALADIN_AUTO_BLESSING then return false end
+    blessing = SCB_FindPaladinBlessing(key)
+    if not blessing or blessing.key ~= key then return false end
+
+    -- No role-specific exclusions are currently proven on SoloCraft. Keep role
+    -- in this capability seam so future exact-server evidence has one owner.
+    requiredLevel = SCB.PALADIN_BLESSING_MIN_LEVEL[key] or 60
+    level = tonumber(level) or SCB_GetPaladinBlessingLevel()
+    return level >= requiredLevel
+end
+
+function SCB_GetAvailablePaladinBlessings(role, level)
+    local available = {}
+    local i, blessing
+    for i = 1, table.getn(SCB.PALADIN_BLESSINGS) do
+        blessing = SCB.PALADIN_BLESSINGS[i]
+        if SCB_IsPaladinBlessingAvailable(blessing.key, role, level) then
+            table.insert(available, blessing)
+        end
+    end
+    return available
+end
+
+function SCB_NormalizePaladinBlessingIntent(intent)
+    local blessing
+    if intent == SCB.PALADIN_AUTO_BLESSING then return intent end
+    if not intent or intent == "" then return "BoK" end
+    blessing = SCB_FindPaladinBlessing(intent)
+    if blessing and blessing.key == intent then return intent end
+    return "BoK"
+end
+
+function SCB_ResolvePaladinBlessingAssignments(slots, size, occupied, level)
+    local resolved, unavailable, used, autoSlots = {}, {}, {}, {}
+    local i, slot, intent, list, j, blessing, bestKey, bestCount, count, listIndex
+    size = size or table.getn(slots or {})
+    occupied = occupied or {}
+
+    -- Explicit/manual intent is authoritative and reserves its blessing before
+    -- Auto slots are resolved. Human-covered slots do not consume a blessing.
+    for i = 1, size do
+        slot = slots and slots[i] or nil
+        if slot and slot.class == "paladin" then
+            intent = SCB_NormalizePaladinBlessingIntent(slot.extra)
+            if intent == SCB.PALADIN_AUTO_BLESSING then
+                table.insert(autoSlots, i)
+            elseif SCB_IsPaladinBlessingAvailable(intent, slot.role, level) then
+                resolved[i] = intent
+                if not occupied[i] then used[intent] = (used[intent] or 0) + 1 end
+            else
+                unavailable[i] = intent
+            end
+        end
+    end
+
+    -- Active Auto slots choose the least-used available blessing. Equal counts
+    -- preserve PALADIN_BLESSINGS order, so unique blessings are exhausted
+    -- before Auto begins duplicating.
+    for j = 1, table.getn(autoSlots) do
+        i = autoSlots[j]
+        if not occupied[i] then
+            slot = slots[i]
+            list = SCB_GetAvailablePaladinBlessings(slot.role, level)
+            bestKey, bestCount = nil, nil
+            for listIndex = 1, table.getn(list) do
+                blessing = list[listIndex]
+                count = used[blessing.key] or 0
+                if bestCount == nil or count < bestCount then
+                    bestKey = blessing.key
+                    bestCount = count
+                end
+            end
+            resolved[i] = bestKey
+            if bestKey then used[bestKey] = (used[bestKey] or 0) + 1 end
+        end
+    end
+
+    -- Human-covered Auto slots stay outside the active allocation, but receive
+    -- a concrete best-available snapshot value so Auto never reaches PartyBot.
+    for j = 1, table.getn(autoSlots) do
+        i = autoSlots[j]
+        if occupied[i] then
+            slot = slots[i]
+            list = SCB_GetAvailablePaladinBlessings(slot.role, level)
+            resolved[i] = list[1] and list[1].key or nil
+        end
+    end
+
+    return resolved, unavailable
 end
 
 SCB.SHAMAN_TOTEMS = {
@@ -975,10 +1115,12 @@ end
 function SCB_BuildSpawnCommand(classKey, role, extra)
     local command = "add " .. classKey .. " " .. role
     if classKey == "paladin" then
-        if not UnitLevel or UnitLevel("player") ~= 60 then
-            extra = nil
-        elseif not extra or extra == "" then
-            extra = "BoK"
+        if extra == SCB.PALADIN_AUTO_BLESSING then extra = nil end
+        if not extra or extra == "" then
+            local available = SCB_GetAvailablePaladinBlessings(role)
+            extra = available[1] and available[1].key or nil
+        elseif not SCB_IsPaladinBlessingAvailable(extra, role) then
+            return nil
         end
     elseif classKey == "shaman" and (not extra or extra == "") then
         extra = SCB.DEFAULT_SHAMAN_TOTEMS
@@ -1038,39 +1180,51 @@ end
 
 function SCB_RefreshMainPaladinBlessingButton()
     local button = SCB.mainPaladinBlessingButton
-    local blessing
-    local available
+    local blessing, available, i
     if not button then return end
 
-    blessing = SCB_FindPaladinBlessing(SCB.mainPaladinBlessing or "BoK")
+    available = SCB_GetAvailablePaladinBlessings()
+    if table.getn(available) == 0 then
+        SCB.mainPaladinBlessing = nil
+        SCB_SetArtButtonAvailable(button, false)
+        button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_NONE")
+        SCB_RefreshVisibleTooltip(button)
+        return
+    end
+
+    blessing = nil
+    for i = 1, table.getn(available) do
+        if available[i].key == SCB.mainPaladinBlessing then blessing = available[i] break end
+    end
+    if not blessing then blessing = available[1] end
+
     SCB.mainPaladinBlessing = blessing.key
     SCB_SetArtButtonTexture(button, blessing.texture, nil)
-    available = UnitLevel and UnitLevel("player") == 60
-    SCB_SetArtButtonAvailable(button, available)
-    if available then
-        button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING")
-        button.scbTooltip = string.gsub(button.scbTooltip, "%%s", blessing.label)
-    else
-        button.scbTooltip = SCB_L("TIP_PALADIN_BLESSING_LEVEL")
-    end
-    SCB_RefreshVisibleTooltip(SCB.mainPaladinBlessingButton)
+    SCB_SetArtButtonAvailable(button, true)
+    button.scbTooltip = string.format(SCB_L("TIP_PALADIN_BLESSING"), blessing.label)
+    SCB_RefreshVisibleTooltip(button)
 end
 
 function SCB_MainPaladinBlessingOnClick()
-    local blessing, currentIndex, newIndex
-    if not UnitLevel or UnitLevel("player") ~= 60 then
+    local available, currentIndex, newIndex, i
+    available = SCB_GetAvailablePaladinBlessings()
+    if table.getn(available) == 0 then
         SCB_RefreshMainPaladinBlessingButton()
         return
     end
-    blessing, currentIndex = SCB_FindPaladinBlessing(SCB.mainPaladinBlessing or "BoK")
+
+    currentIndex = 1
+    for i = 1, table.getn(available) do
+        if available[i].key == SCB.mainPaladinBlessing then currentIndex = i break end
+    end
     if arg1 == "RightButton" then
         newIndex = currentIndex - 1
-        if newIndex < 1 then newIndex = table.getn(SCB.PALADIN_BLESSINGS) end
+        if newIndex < 1 then newIndex = table.getn(available) end
     else
         newIndex = currentIndex + 1
-        if newIndex > table.getn(SCB.PALADIN_BLESSINGS) then newIndex = 1 end
+        if newIndex > table.getn(available) then newIndex = 1 end
     end
-    SCB.mainPaladinBlessing = SCB.PALADIN_BLESSINGS[newIndex].key
+    SCB.mainPaladinBlessing = available[newIndex].key
     SCB_RefreshMainPaladinBlessingButton()
 end
 

@@ -2199,6 +2199,7 @@ function SCB_BuildPresetExecutionSnapshot()
     local preset = SCB_CurrentPreset()
     local size = SCB_CurrentPresetSize()
     local slots, roster, present, playerRows, players, groupCounts = {}, {}, {}, {}, {}, {}
+    local occupied, resolvedBlessings, unavailableBlessings = {}, {}, {}
     local i, info, assignedGroup, slotIndex, role, extra, fallbackRole, fallbackExtra
     local snapshot, valid, errorText
 
@@ -2207,13 +2208,24 @@ function SCB_BuildPresetExecutionSnapshot()
     end
 
     slots = SCB_NormalizePresetSlots(SCB.presetEditorSlots, size)
+    roster, present, playerRows = SCB_GetPresetHumanLayout()
+    for i = 1, table.getn(roster) do
+        slotIndex = playerRows and playerRows[roster[i].key] or nil
+        if slotIndex then occupied[slotIndex] = true end
+    end
+
+    resolvedBlessings, unavailableBlessings = SCB_ResolvePaladinBlessingAssignments(slots, size, occupied)
     for i = 1, size do
+        if slots[i].class == "paladin" then
+            if unavailableBlessings[i] then
+                return nil, SCB_L("ERR_PALADIN_BLESSING_UNAVAILABLE")
+            end
+            slots[i].extra = resolvedBlessings[i]
+        end
         if not SCB_IsValidSpawnAssignment(slots[i].class, slots[i].role, slots[i].extra) then
             return nil, SCB_L("ERR_PRESET_BOT")
         end
     end
-
-    roster, present, playerRows = SCB_GetPresetHumanLayout()
 
     for i = 1, table.getn(roster) do
         info = roster[i]
