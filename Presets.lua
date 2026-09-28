@@ -2270,16 +2270,17 @@ local function SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
         end
     end
 
-    if not complete or not hasMismatch then return nil, false end
+    if not complete then return nil, false, false end
+    if not hasMismatch then return nil, false, true end
 
     for classKey, list in pairs(expectedByClass) do
         if table.getn(list) ~= table.getn(namesByClass[classKey] or {}) then
-            return { failed = true, group = groupIndex }, true
+            return { failed = true, group = groupIndex }, true, true
         end
     end
     for classKey, list in pairs(namesByClass) do
         if table.getn(list) ~= table.getn(expectedByClass[classKey] or {}) then
-            return { failed = true, group = groupIndex }, true
+            return { failed = true, group = groupIndex }, true, true
         end
     end
 
@@ -2292,7 +2293,7 @@ local function SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
             mapping[list[1].slotIndex] = namesByClass[classKey][1]
         else
             if not SCB_ClassSupportsRoleValidation or not SCB_ClassSupportsRoleValidation(classKey) then
-                return { failed = true, group = groupIndex }, true
+                return { failed = true, group = groupIndex }, true, true
             end
             table.insert(buckets, {
                 class = classKey,
@@ -2307,16 +2308,16 @@ local function SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
         tracker = tracker,
         mapping = mapping,
         buckets = buckets,
-    }, true
+    }, true, true
 end
 
-function SCB_StartPostFinalizeClassSanity(tracker, observed)
-    local groupCount, groupIndex, recovery, mismatch, i, bucket, j
+function SCB_StartPostFinalizeClassSanity(tracker, observed, rebindActive)
+    local groupCount, groupIndex, recovery, mismatch, groupComplete, i, bucket, j, changed
     local focused = false
+    local allComplete = true
     if not tracker or tracker.scbClassSanityChecked then
         return SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
     end
-    tracker.scbClassSanityChecked = true
     observed = observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil)
     if not observed or not observed.byName then return false end
 
@@ -2325,12 +2326,22 @@ function SCB_StartPostFinalizeClassSanity(tracker, observed)
     groupCount = math.ceil((tracker.size or 0) / 5)
 
     for groupIndex = 1, groupCount do
-        recovery, mismatch = SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
+        recovery, mismatch, groupComplete = SCB_BuildClassIdentityRecovery(tracker, observed, groupIndex)
+        if not groupComplete then allComplete = false end
         if mismatch and recovery then
             if recovery.failed then
                 SCB_WarnIdentityRecoveryUnresolved(tracker, groupIndex)
             elseif table.getn(recovery.buckets or {}) == 0 then
-                SCB_ApplyRecoveredIdentityMapping(tracker, groupIndex, recovery.mapping, observed, false)
+                changed = SCB_ApplyRecoveredIdentityMapping(
+                    tracker,
+                    groupIndex,
+                    recovery.mapping,
+                    observed,
+                    rebindActive and true or false
+                )
+                if changed and rebindActive and SCB_GetLiveRoster then
+                    observed = SCB_GetLiveRoster(true) or observed
+                end
             else
                 SCB.identityRecoveryByGroup[groupIndex] = recovery
                 for i = 1, table.getn(recovery.buckets) do
@@ -2343,6 +2354,8 @@ function SCB_StartPostFinalizeClassSanity(tracker, observed)
             end
         end
     end
+
+    tracker.scbClassSanityChecked = allComplete and true or nil
     if focused and SCB_TryResolveFocusedIdentityRecovery then
         SCB_TryResolveFocusedIdentityRecovery(observed)
         focused = SCB.focusedRoleConfirmationNames and next(SCB.focusedRoleConfirmationNames) ~= nil
@@ -2461,7 +2474,8 @@ local function SCB_PostFinalizeRaidRoleTracking(tracker, observed, initial)
 
     -- Settled bot-only ordinal identity remains the normal authority. The class
     -- sanity path runs only when live UnitClass proves a binding impossible.
-    focused = SCB_StartPostFinalizeClassSanity and SCB_StartPostFinalizeClassSanity(tracker, observed)
+    focused = SCB_StartPostFinalizeClassSanity
+        and SCB_StartPostFinalizeClassSanity(tracker, observed, not initial)
     tracker.scbRoleIdentityReconciled = true
 
     if initial then
@@ -2479,7 +2493,7 @@ function SCB_TryFinalizeRaidRoleTracking(observed)
     local botsByGroup, expectedByGroup, g, i, assignment, expected, actual, ordinal, members
     if not tracker or not tracker.assignments then return tracker and tracker.ready end
     if tracker.ready then
-        if not tracker.scbRoleIdentityReconciled then
+        if not tracker.scbRoleIdentityReconciled or not tracker.scbClassSanityChecked then
             SCB_PostFinalizeRaidRoleTracking(tracker, observed or (SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil), false)
         end
         return true
