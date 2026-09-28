@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.0-dev`
-- Current implementation head: `9161d333e3c42112d812abbc464e41d7b25e768c`
-- Current handoff/status head before this final handoff commit: `7f6e15532e270e294e604e806ca849532289ff79`
+- TOC version: `0.9.1-dev`
+- Current implementation head: `37097afe63259169ad0ece774cace26b27821ed7`
+- Current handoff/status head before this final handoff commit: `37097afe63259169ad0ece774cace26b27821ed7`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.0` at `4c1a75f052927be00aac91327a92dac902e2b301`; runtime source is the user-tested `0.8.117-dev` implementation `da22c1800797b628af8fb2442822ac96f0015833`, with `0.9.0-dev` RC `9161d333e3c42112d812abbc464e41d7b25e768c` changing only version metadata before promotion.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,59 +17,52 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: stabilize the BWL findings as the first `0.9.1-dev` slice on `dev`. The neutral read-only activity/status surface and later visualiser are explicitly deferred until this BWL batch is implemented and runtime-tested.
+- Immediate goal / exact next step: runtime-test the implemented BWL `0.9.1-dev` batch at `37097afe63259169ad0ece774cace26b27821ed7`. The neutral read-only activity/status surface and later visualiser remain explicitly deferred until this batch passes runtime validation.
 
 
-## BWL runtime findings / agreed 0.9.1-dev priority
-No implementation changes for this batch have been made yet. These findings came from the user's BWL runtime on the stable 0.9.0 implementation and are now higher priority than the previously planned status/visualiser work.
+## BWL 0.9.1-dev batch — implemented, runtime pending
+Implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
 
-### 1. Group targeted-command acknowledgement timeout
-- Runtime defect: a Group command can remain busy indefinitely if an expected targeted acknowledgement never arrives or is not parsed.
-- Confirmed cause in `Communication.lua`: the sequencer enters `phase = "await"`, but its OnUpdate services only `settle` and `budget`; there is no await timeout.
-- Stable `main` and current `dev` have the same affected `Communication.lua`; this predates the 0.9.0 release rather than being introduced by promotion.
-- Agreed fix: **1.0 second acknowledgement timeout** per Group recipient/attempt.
-- Initial policy is deliberately simple: **no automatic retry**. On timeout, report failure concisely, restore the original target, clear `SCB.targetedCommandState`, hide the sequencer frame and allow another Group command immediately.
-- Preserve Single-target's current direct/spammable behaviour, the Group 0.10-second target-settle delay and the 24 commands/second budget.
-- Main invariant: a missing server response can never permanently own the Group command pipeline.
+### Group -> Pause Healers
+- Added one Group-only **Pause Healers** control using the existing pause artwork and existing Group targeted-command sequencer.
+- The target still selects the live party/raid group. Only bots in that group whose resolved role is healer are queued; tanks/DPS are untouched.
+- Focused identity-recovery candidates are excluded until their slot identity is resolved, avoiding role-filter commands against a mapping already known to be suspect.
+- The command sends the ordinary targeted `pause` route. Existing Group Play/Unpause releases the group afterward; no server `pauseheal` command or separate unpause-healers path was added.
 
-### 2. Rare full-rebuild bot identity misbinding
-- BWL runtime example: `Arwhui*` was reported against the logical Group 3 tank assignment even though the live bot was a Priest and combat evidence confirmed healer via `Heal`.
-- The warning showed global slot 11, which corresponds to Group 3 local slot 1.
-- The configured spawn commands themselves remain correct (`add <class> <role>`). The problem is the later bot-name -> logical-slot association.
-- Existing full-rebuild ordinal finalization remains the proven baseline and must **not** be redesigned. The user reports only roughly 3-4 known identity mistakes across thousands of bot spawns, including raid sessions with hundreds of repeated kick/resummon cycles.
-- The exact reason this Group 3 roster appeared out of sequence is **not proven**. A Blizzard/server subgroup-order anomaly is plausible, but do not encode that deduction as fact or change the established reverse-send/LIFO burst sequencing without evidence.
-- Add a narrow **post-binding class sanity check**:
-  - compare the configured logical slot class with the bound bot's actual live `UnitClass` / raid-tab class;
-  - matching class -> do nothing;
-  - mismatching class -> the identity mapping is impossible and becomes eligible for focused correction.
-- First correction step: within the affected logical group, use actual classes to repair an **unambiguous** cross-class swap/mapping. This should catch the common practical case where rare mistakes involve tanks/healers spread across different classes.
-- Do not mutate the preset's configured class/role. Correction changes only which bot name is bound to which logical assignment.
-- If class matching leaves same-class ambiguity, reuse the existing combat-role evidence machinery **only for the affected candidate bots**, even when the global combat-confirmation option is disabled:
-  - do not change the user's saved option;
-  - do not enable whole-raid scanning;
-  - stop the temporary focused confirmation when the mapping becomes unambiguous;
-  - if evidence never makes the mapping unambiguous, warn rather than guess.
-- Combat evidence remains validation/reconciliation evidence; it must never silently rewrite the requested role.
+### Group targeted-command acknowledgement timeout
+- Group `phase = "await"` now has a **1.0-second** acknowledgement deadline per recipient/attempt.
+- Timeout prints the existing concise confirmation-failure wording, restores the original target through the normal sequencer cleanup, clears `SCB.targetedCommandState`, hides the sequencer frame and releases Group commands for immediate reuse.
+- There is **no timeout retry**. The pre-existing wrong-actor acknowledgement correction path is unchanged; Single-target remains direct/spammable, Group target settle remains 0.10 seconds, and the 24 commands/second budget remains unchanged.
 
-### 3. Role-mismatch slot wording
-- Current warning can say e.g. `Group 3, Slot 11` because it prints the global logical slot index alongside the group.
-- User-facing wording should use the subgroup-local slot: `((slotIndex - 1) % 5) + 1`.
-- Internal/global slot numbering remains unchanged.
+### Post-finalization class sanity and narrow identity recovery
+- The settled bot-only ordinal mapping is still created exactly as before. A new post-finalization sanity pass only intervenes when a bound bot's actual live `UnitClass` / raid-tab class makes that binding impossible.
+- Class comparison is subgroup-local. If actual class membership makes the correction unique, only `assignment.botName` mappings in that affected group are repaired; preset class/role/extra intent is never rewritten.
+- If an implicated class has multiple candidate bots, SCB reuses the existing role-evidence machinery only for those candidate names. This focused mode works even when global combat confirmation is disabled, does not alter the saved option, and does not turn on whole-raid candidate scanning.
+- Focused evidence is kept name-local until the complete candidate mapping is unambiguous, so it cannot write confirmation state into a known-wrong Active Roster slot. Once resolved, only the affected tracker-linked Active Roster group is rebound from the corrected name mapping.
+- Live class is authoritative in both normal focused combat evidence and Druid power-bar sampling.
+- Existing evidence already collected before finalization is consumed immediately. If a ready/restored tracker needs a unique correction, its existing Active Roster group is also rebound; if live class data is temporarily incomplete, the sanity pass remains pending rather than marking itself complete.
+- Same-class role evidence is accepted only when it gives a one-to-one mapping. Unsupported/repeated-role ambiguity or irreconcilable class counts warn once and leave the ordinal mapping unchanged rather than guessing.
+- Combat evidence never mutates the preset's intended class/role.
 
-### 4. Group -> Pause Healers
-- High-priority raid-control gap found during BWL tank pulls: existing "others" controls do not stop healer bots, so they can heal immediately, pull threat and ruin boss positioning.
-- Add one narrowly scoped **Group -> Pause Healers** control; do not invent or require a server `pauseheal` command.
-- Resolve the targeted raid group, filter that group's bots to resolved healer identities, then reuse the existing Group targeted sequencer to send the ordinary targeted `pause` command to those healers only.
-- Tanks and DPS remain active.
-- Existing Group Play/Unpause is sufficient to release the group afterward; no separate Unpause Healers control is requested at this stage.
-- This command should use the same corrected timeout behaviour as other Group targeted sequences.
+### Role-mismatch warning wording
+- User-facing mismatch warnings now show the subgroup-local slot `((slotIndex - 1) % 5) + 1`, so global slot 11 is displayed as Group 3 / Slot 1.
+- Internal/global slot IDs and warning dedupe identity remain unchanged.
 
-### Implementation order agreed after BWL
-1. Group -> Pause Healers.
-2. 1.0-second Group acknowledgement timeout.
-3. Minimal post-finalization class sanity check plus focused recovery for the rare identity mismatch.
-4. Local-slot warning wording.
-5. Runtime-test the complete BWL batch before starting the neutral activity/status surface or visualiser.
+### Validation state
+- **Implemented:** yes, version `0.9.1-dev`.
+- **Static review:** PASS. Handoff `3bcb04404b3d0bf0540ede86e08b86c779b512d2` -> implementation head changes only `Communication.lua`, `Locale/enGB.lua`, `Presets.lua`, `Roster.lua`, `SoloCraftBots.lua` and `SoloCraftBots.toc`; the full diff was reviewed after implementation.
+- **GitHub checks/CI:** no commit statuses or workflow runs are present for the implementation head.
+- **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. No repository checkout or VanillaTemplate checker is mounted, and an attempted GitHub clone from the executable container failed because `github.com` could not be resolved. Do not treat the static review as a compiler pass.
+- **Runtime:** **NOT TESTED**. The BWL batch must be exercised in the target 1.12.1 environment before any status/visualiser work begins.
+
+### Exact next runtime validation
+1. In a raid group containing healer + non-healer bots, target that group and use Group -> Pause Healers: only resolved healers should pause; Group Play/Unpause should release them.
+2. Exercise ordinary Group commands and confirm successful ACK sequencing still advances across recipients and restores the original target.
+3. Exercise or induce a missing Group acknowledgement: after about 1.0 second SCB should report the failed recipient, restore the original target and immediately permit another Group command, with no timeout retry.
+4. Full-resummon/rebuild a raid repeatedly and confirm normal ordinal identity remains stable with no false class corrections or whole-raid combat-confirmation activation when the global option is off.
+5. If the rare mismatch recurs, verify a unique cross-class mismatch repairs only the affected group's bot-name -> logical-slot association; if same-class ambiguity occurs, only those candidates should be temporarily role-confirmed and the preset intent must remain unchanged.
+6. If a role mismatch warning is produced, verify the displayed Slot is 1–5 within its stated Group.
+
 
 ## Architecture / ownership
 - `SoloCraftBots.lua`: bootstrap/core/shared UI/primitives.
