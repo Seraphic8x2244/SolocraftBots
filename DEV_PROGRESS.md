@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.4-dev`
-- Current implementation head: `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`
-- Current handoff/status head before this final handoff commit: `5e08f74d8a0475633d6e444bc3f9e0d49b66bfdb`
+- TOC version: `0.9.7-dev`
+- Current implementation head: `58cd980c93643145761ee8e4e53a08b57f0f78c1`
+- Current handoff/status head before this final handoff commit: `58cd980c93643145761ee8e4e53a08b57f0f78c1`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.4` at `a03b060dada7f03d860ef124bc54fa48fab745d4`; runtime source is the user-tested `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`. The stable tree differs from the dev product state only by stable TOC metadata and omission of `DEV_PROGRESS.md` / `dev_rulebook.md`.
+- Stable `main`: `0.9.4` at `a03b060dada7f03d860ef124bc54fa48fab745d4`; runtime source is the user-tested `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`. Current `dev` now contains the untested Paladin Auto Blessing slice and no longer matches stable runtime code.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.4` is released on `main`; there is no active implementation task. When development resumes, the next development point is the Paladin **Auto Blessing** system documented below. After that, the next major UI milestone remains the neutral read-only activity/status surface, followed later by the visualiser as a presentation-only consumer. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: runtime-validate the Paladin **Auto Blessing** implementation at `0.9.7-dev` using the checklist below. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -478,29 +478,26 @@ Exact `0.8.92-dev` baseline:
 - Object target-state and availability work is now closed with no remaining runtime validation debt.
 
 
-## Next development point — Paladin Auto Blessing
-- Replace the current blanket level-60 blessing-assignment gate with a capability-aware blessing system.
-- Add a real Paladin preset value: **Auto Blessing**. New Paladin assignments should default to Auto. Existing explicit blessing assignments remain explicit; do not silently migrate them.
-- Keep **stored preset intent** separate from **effective blessing**. Stored `Auto` must never be overwritten by the blessing it currently resolves to.
-- Current confirmed/manual availability policy:
-  - `BoM`: level 4+
-  - `BoW`: level 14+
-  - `BoS`: level 26+
-  - `BoL`: level 40+
-  - `BoK`: keep level-60-only until SoloCraft PartyBot talent/spec availability is understood.
-- Auto resolution:
-  - start from the user's preferred “best blessing” priority order;
-  - filter out blessings unavailable at the current player/bot level and role rules;
-  - respect explicit/manual assignments first;
-  - assign Auto Paladins the best remaining available blessings;
-  - avoid duplicates where possible, then duplicate only when Auto Paladins outnumber usable unique blessings.
-- Manual blessing cycling must include only blessings currently possible under the same availability rules; impossible choices are not selectable.
-- Shared presets must remain portable across characters/levels: the same stored Auto slot resolves differently as availability changes without mutating the preset.
-- Preset Manager should expose **Active Blessings** as the currently resolved/effective set.
-- Auto-state button presentation should use the familiar Vanilla pet autocast shine/border animation while displaying the icon of the blessing Auto currently resolves to. Manual selection stops the shine and displays the selected blessing normally.
-- Auto tooltip should distinguish intent from result, e.g. `Auto Blessing — currently Blessing of Wisdom`.
-- Runtime evidence motivating this change: at player level 33, manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work. Treat this as exact-server evidence, not a complete Kings talent model.
-- First implementation revision after stable `0.9.4` should be `0.9.5-dev`.
+## Paladin Auto Blessing — `0.9.7-dev` awaiting runtime validation
+- Implementation head: `58cd980c93643145761ee8e4e53a08b57f0f78c1`.
+- Stored preset intent and effective blessing are separate. New Paladin assignments store `Auto`; existing explicit assignments remain explicit and are never silently migrated.
+- Capability policy is centralized: `BoM` level 4+, `BoW` 14+, `BoS` 26+, `BoL` 40+, `BoK` 60+ only. No additional role-specific exclusions are currently proven.
+- Auto allocates after explicit/manual assignments, filters by current summoner level, avoids duplicates while unused blessings remain, then duplicates only when necessary. The existing blessing list order is the current priority/tie-break order: `BoK -> BoM -> BoS -> BoW -> BoL`; level filtering removes unavailable entries.
+- Manual blessing cycling is `Auto` plus only currently available explicit blessings. A saved explicit blessing that is unavailable on this character stays explicit, is shown unavailable, and cannot execute until changed to Auto/an available blessing.
+- Execution snapshots preserve stored intent. Protocol 8 still serializes the existing `class/role/extra` fields; `extra=Auto` survives local rebuild, Send, save-received-preset and Request. The client that actually starts the PartyBot summon resolves a copied slot set against its own level, so the saved/sent snapshot is not mutated.
+- Request acceptance checks local blessing capability before leader conversion. The execution boundary resolves again immediately before tracker/command creation.
+- Auto buttons display the resolved blessing icon with the actual Vanilla 1.12 pet-autocast enabled model `Interface\\Buttons\\UI-AutoCastButton.mdx`; manual selection hides it. The Auto tooltip states the current resolved blessing.
+- Preset Manager now includes an **Active Blessings** row containing the unique currently effective bot blessings.
+- Static source audit PASS: blanket level-60 gate removed; Auto is structurally valid but never sent to PartyBot; snapshot construction preserves Auto; execution resolves Auto; Send copies preserved intent; Request validates receiver-local capability; no status-surface implementation was added.
+- Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in this execution environment. No GitHub Actions workflow runs are configured for the implementation head.
+- **Runtime validation still required**:
+  1. At level 33, manual Paladin selection offers only `BoM`, `BoS`, `BoW`; `BoK`/`BoL` are absent, and each available choice summons successfully.
+  2. Change/new Paladin preset slots to Auto: resolved icon is correct, the familiar pet-autocast animation is visible, tooltip reports the resolved blessing, and switching to manual stops the animation.
+  3. With multiple active Auto Paladins at level 33, `BoM`/`BoS`/`BoW` are used once before any duplicate; an explicit manual assignment reserves that blessing before Auto allocation.
+  4. Save/reload and, if convenient, Send/receive a preset containing Auto: the slot must still be Auto rather than the currently resolved concrete blessing.
+  5. Confirm **Active Blessings** updates with Auto/manual changes and ignores human-covered bot slots.
+  6. At level 40, `BoL` becomes available; at level 60, `BoK` becomes available. A lower-level character opening an existing explicit unavailable assignment should see it preserved/unavailable and execution should fail cleanly until corrected.
+- Runtime evidence motivating the policy remains the level-33 test where manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work.
 
 ## Planned / later
 - After Auto Blessing, **next major UI milestone:** neutral read-only activity/status surface.
@@ -525,10 +522,10 @@ Exact `0.8.92-dev` baseline:
 - Rare Group timeout, wrong-actor ACK, and mismatch-warning paths remain documented as opportunistic validation because they are not safely reproducible on demand.
 - Stable promotion commit: `a03b060dada7f03d860ef124bc54fa48fab745d4`; stable TOC is `SoloCraft Bots` / `0.9.4`.
 - Promotion used the established snapshot method with prior stable `main` as parent; branch histories were not merged.
-- Post-promotion tree audit PASS: compared with current dev, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differ. All runtime code/artwork blobs are identical.
+- Post-promotion tree audit PASS at release time: compared with the dev release state, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differed. Current dev has since advanced with Auto Blessing runtime changes.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the tested `0.9.4-dev` product tree.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
-- Future addon work remains on `dev`; the next addon-affecting revision should advance from `0.9.4-dev` to `0.9.5-dev`.
+- Current addon work remains on `dev` at `0.9.7-dev`; Auto Blessing is awaiting runtime validation before any status-surface work begins.
 
 ## Release note
-`0.9.4` is the current stable release on `main`. When development resumes, Paladin Auto Blessing is the next development point; the neutral read-only activity/status surface follows after it.
+`0.9.4` is the current stable release on `main`. Paladin Auto Blessing is implemented on `dev` at `0.9.7-dev` and is awaiting runtime validation; the neutral read-only activity/status surface remains the next major milestone only after Auto Blessing is accepted.
