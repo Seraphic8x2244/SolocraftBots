@@ -2171,6 +2171,11 @@ function SCB_CreateRaidRoleTracker(slots, size, occupied, group, snapshot)
             group = g,
             class = slot.class,
             role = slot.role,
+            -- Keep the portable preset intent beside the concrete execution extra.
+            -- Auto Blessing resolves before tracker creation, so slot.extra is the
+            -- blessing actually sent to PartyBot while intentExtra remains "Auto".
+            intentExtra = snapshot and snapshot.slots and snapshot.slots[i]
+                and snapshot.slots[i].extra or slot.extra,
             extra = slot.extra,
             command = SCB_BuildSpawnCommand(slot.class, slot.role, slot.extra),
             initialActive = not occupied[i],
