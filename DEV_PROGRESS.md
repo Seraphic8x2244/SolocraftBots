@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.8-dev`
-- Current implementation head: `706842cdc2b449b80672f79d794e51f2a28a27b2`
-- Current handoff/status head before this final handoff commit: `706842cdc2b449b80672f79d794e51f2a28a27b2`
+- TOC version: `0.9.9-dev`
+- Current implementation head: `80464531d7065762d78c7b474f3ab1942297503b`
+- Current handoff/status head before this final handoff commit: `80464531d7065762d78c7b474f3ab1942297503b`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.4` at `a03b060dada7f03d860ef124bc54fa48fab745d4`; runtime source is the user-tested `0.9.4-dev` implementation `2cdf74df1988f1b7fb3c3ddee292924ce961dfe6`. Current `dev` now contains the partially runtime-tested Paladin Auto Blessing slice and no longer matches stable runtime code.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: continue the remaining Paladin **Auto Blessing** runtime checklist on `0.9.8-dev`. The previously failing level-33 Warrior summon path is now USER TESTED PASS: Auto resolved to `BoM`, summon proceeded, and the Paladin applied `BoM`. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: runtime-test `0.9.9-dev` role-confirmation indicators for Auto Paladins, then continue the remaining Auto Blessing checklist. The level-33 Warrior summon path remains USER TESTED PASS: Auto resolved to `BoM`, summon proceeded, and the Paladin applied `BoM`. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -478,7 +478,7 @@ Exact `0.8.92-dev` baseline:
 - Object target-state and availability work is now closed with no remaining runtime validation debt.
 
 
-## Paladin Auto Blessing — `0.9.8-dev` targeted runtime retest
+## Paladin Auto Blessing — `0.9.9-dev` role-indicator retest
 - Implementation head: `706842cdc2b449b80672f79d794e51f2a28a27b2`.
 - Stored preset intent and effective blessing are separate. New Paladin assignments store `Auto`; existing explicit assignments remain explicit and are never silently migrated.
 - Capability policy is centralized: `BoM` level 4+, `BoW` 14+, `BoS` 26+, `BoL` 40+, `BoK` 60+ only. No additional role-specific exclusions are currently proven.
@@ -491,9 +491,12 @@ Exact `0.8.92-dev` baseline:
 - `0.9.7-dev` runtime result: the user reports the interface and Auto-resolution logic working correctly; on a level-33 Warrior, the active Auto Paladin resolved to `BoM`. Summon execution then failed before spawning with `A Paladin has a manual blessing unavailable at your current level...` even though the active Paladin was Auto.
 - Root cause confirmed by source audit: manual blessing capability validation ran for every stored Paladin slot, including bot slots hidden/inactive because a human occupied them. A human-covered legacy/manual `BoK`/`BoL` slot could therefore veto the whole summon even though that bot would not execute.
 - `0.9.8-dev` fix: a human-covered Paladin slot preserves its explicit blessing intent in the copied execution snapshot but no longer contributes an unavailable-capability error. Active manual Paladin slots remain capability-gated exactly as before. **Runtime PASS confirmed** on the original level-33 Warrior failure case.
+- New runtime regression found immediately after that PASS: the summoned Auto Paladin no longer showed the preset role-confirmation ticks. Root cause: tracker assignments store the concrete executed blessing (`BoM`) while the preset row stores portable intent (`Auto`); the role-indicator row matcher compared `extra` values directly and rejected `Auto ~= BoM`, suppressing both assumed and confirmed ticks even though role detection itself remained intact.
+- `0.9.9-dev` fix: tracker assignments now persist `intentExtra` alongside the concrete execution `extra`; role-indicator matching compares the current preset against stored intent while summon/refill execution continues using the concrete blessing. A narrow compatibility path lets pre-`0.9.9` Auto-Paladin trackers with concrete blessing extras continue to match after reload.
 - Static source audit PASS: blanket level-60 gate removed; Auto is structurally valid but never sent to PartyBot; snapshot construction preserves Auto; execution resolves Auto; Send copies preserved intent; Request validates receiver-local capability; inactive human-covered manual Paladin slots no longer veto execution; no status-surface implementation was added.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in this execution environment. No GitHub Actions workflow runs are configured for the implementation head.
 - **`0.9.8-dev` occupied-slot retest: USER TESTED PASS.** On the same level-33 Warrior/preset that failed on `0.9.7-dev`, the visible Paladin remained Auto resolved to `BoM`; Summon proceeded without the manual-blessing-unavailable error and the Paladin applied `BoM` in game.
+- **Immediate `0.9.9-dev` retest**: with the existing level-33 Warrior group if still available, reload/update and confirm the Auto Paladin's assumed/role-confirmation ticks return without requiring a fresh summon. If that group is gone, resummon the same Auto→`BoM` preset and confirm the ticks appear normally.
 - **Runtime validation still required**:
   1. At level 33, manual Paladin selection offers only `BoM`, `BoS`, `BoW`; `BoK`/`BoL` are absent, and each available choice summons successfully.
   2. Change/new Paladin preset slots to Auto: resolved icon is correct, the familiar pet-autocast animation is visible, tooltip reports the resolved blessing, and switching to manual stops the animation.
@@ -529,7 +532,7 @@ Exact `0.8.92-dev` baseline:
 - Post-promotion tree audit PASS at release time: compared with the dev release state, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differed. Current dev has since advanced with Auto Blessing runtime changes.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the tested `0.9.4-dev` product tree.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
-- Current addon work remains on `dev` at `0.9.8-dev`; Auto Blessing is awaiting targeted runtime retest before any status-surface work begins.
+- Current addon work remains on `dev` at `0.9.9-dev`; Auto Blessing is awaiting role-indicator runtime retest before any status-surface work begins.
 
 ## Release note
-`0.9.4` is the current stable release on `main`. Paladin Auto Blessing is implemented on `dev` at `0.9.8-dev` and is awaiting targeted runtime retest; the neutral read-only activity/status surface remains the next major milestone only after Auto Blessing is accepted.
+`0.9.4` is the current stable release on `main`. Paladin Auto Blessing is implemented on `dev` at `0.9.9-dev` and is awaiting role-indicator runtime retest; the neutral read-only activity/status surface remains the next major milestone only after Auto Blessing is accepted.
