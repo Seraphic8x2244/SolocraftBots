@@ -479,9 +479,10 @@ Exact `0.8.92-dev` baseline:
 
 
 ## Paladin Auto Blessing — `0.9.9-dev` role-indicator retest
-- Implementation head: `706842cdc2b449b80672f79d794e51f2a28a27b2`.
+- Implementation head: `80464531d7065762d78c7b474f3ab1942297503b`.
 - Stored preset intent and effective blessing are separate. New Paladin assignments store `Auto`; existing explicit assignments remain explicit and are never silently migrated.
 - Capability policy is centralized: `BoM` level 4+, `BoW` 14+, `BoS` 26+, `BoL` 40+, `BoK` 60+ only. No additional role-specific exclusions are currently proven.
+- New exact-server runtime evidence supports the `BoK` 60+ gate: at player level 59, manual `.pa add paladin healer bok` was accepted syntactically but the summoned Paladin cast Blessing of Might rather than Kings. Treat successful command acceptance as insufficient evidence of blessing availability; the observed applied blessing is authoritative for this capability check.
 - Auto allocates after explicit/manual assignments, filters by current summoner level, avoids duplicates while unused blessings remain, then duplicates only when necessary. The existing blessing list order is the current priority/tie-break order: `BoK -> BoM -> BoS -> BoW -> BoL`; level filtering removes unavailable entries.
 - Manual blessing cycling is `Auto` plus only currently available explicit blessings. A saved explicit blessing that is unavailable on this character stays explicit, is shown unavailable, and cannot execute until changed to Auto/an available blessing.
 - Execution snapshots preserve stored intent. Protocol 8 still serializes the existing `class/role/extra` fields; `extra=Auto` survives local rebuild, Send, save-received-preset and Request. The client that actually starts the PartyBot summon resolves a copied slot set against its own level, so the saved/sent snapshot is not mutated.
