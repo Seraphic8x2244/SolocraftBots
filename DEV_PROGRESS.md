@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: continue the remaining Paladin **Auto Blessing** runtime checklist on `0.9.9-dev`: multi-Paladin allocation, persistence/Send if convenient, Active Blessings display, and level-40/60 availability boundaries. The Auto Paladin role-indicator regression is USER TESTED PASS: both the assignment tick and combat-role confirmation tick are present. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: Paladin **Auto Blessing** on `0.9.9-dev` is functionally runtime-accepted for allocation, display, summon/application, occupied-slot handling, Active Blessings, and role-confirmation indicators. Persistence across save/reload/Send remains explicitly **not runtime tested** rather than failed. The user does not require artificial level-40/60 boundary testing; the fixed numeric capability policy remains statically auditable and `BoK` has exact-server level-59 fallback evidence. Do not start the neutral read-only activity/status surface until the user explicitly accepts closing Auto Blessing. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -498,13 +498,13 @@ Exact `0.8.92-dev` baseline:
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in this execution environment. No GitHub Actions workflow runs are configured for the implementation head.
 - **`0.9.8-dev` occupied-slot retest: USER TESTED PASS.** On the same level-33 Warrior/preset that failed on `0.9.7-dev`, the visible Paladin remained Auto resolved to `BoM`; Summon proceeded without the manual-blessing-unavailable error and the Paladin applied `BoM` in game.
 - **`0.9.9-dev` role-indicator retest: USER TESTED PASS.** Auto Paladins show both the assignment/assumed-role tick and the combat-role confirmation tick correctly.
-- **Runtime validation still required**:
-  1. At level 33, manual Paladin selection offers only `BoM`, `BoS`, `BoW`; `BoK`/`BoL` are absent, and each available choice summons successfully.
-  2. Change/new Paladin preset slots to Auto: resolved icon is correct, the familiar pet-autocast animation is visible, tooltip reports the resolved blessing, and switching to manual stops the animation.
-  3. With multiple active Auto Paladins at level 33, `BoM`/`BoS`/`BoW` are used once before any duplicate; an explicit manual assignment reserves that blessing before Auto allocation.
-  4. Save/reload and, if convenient, Send/receive a preset containing Auto: the slot must still be Auto rather than the currently resolved concrete blessing.
-  5. Confirm **Active Blessings** updates with Auto/manual changes and ignores human-covered bot slots.
-  6. At level 40, `BoL` becomes available; at level 60, `BoK` becomes available. A lower-level character opening an existing **active** explicit unavailable assignment should see it preserved/unavailable and execution should fail cleanly until corrected. A human-covered inactive Paladin slot must not block the summon.
+- **Runtime validation summary**:
+  1. Multiple active Auto Paladins allocate the available blessings without premature duplication: **USER TESTED PASS**.
+  2. Save/reload and Send/receive persistence of stored `Auto`: **NOT RUNTIME TESTED**; static source audit confirms snapshots preserve `extra=Auto`.
+  3. **Active Blessings** display behavior: **USER TESTED PASS**.
+  4. Auto/manual blessing presentation and resolved blessing display: **USER ACCEPTED / PASS**.
+  5. Level-boundary behavior: no further artificial runtime test required by the user. Capability checks are flat numeric gates (`BoM` 4, `BoW` 14, `BoS` 26, `BoL` 40, `BoK` 60); exact-server level-59 `bok` evidence confirms Kings is unavailable below 60 and the server falls back to Might.
+- The earlier level-33 runtime evidence also confirms `BoM`, `BoW`, and `BoS` work while `BoK` and `BoL` do not at that level.
 - Runtime evidence motivating the policy remains the level-33 test where manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work.
 
 ## Planned / later
