@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test `0.9.9-dev` role-confirmation indicators for Auto Paladins, then continue the remaining Auto Blessing checklist. The level-33 Warrior summon path remains USER TESTED PASS: Auto resolved to `BoM`, summon proceeded, and the Paladin applied `BoM`. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: continue the remaining Paladin **Auto Blessing** runtime checklist on `0.9.9-dev`: multi-Paladin allocation, persistence/Send if convenient, Active Blessings display, and level-40/60 availability boundaries. The Auto Paladin role-indicator regression is USER TESTED PASS: both the assignment tick and combat-role confirmation tick are present. Do not start the neutral read-only activity/status surface until Auto Blessing is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -497,7 +497,7 @@ Exact `0.8.92-dev` baseline:
 - Static source audit PASS: blanket level-60 gate removed; Auto is structurally valid but never sent to PartyBot; snapshot construction preserves Auto; execution resolves Auto; Send copies preserved intent; Request validates receiver-local capability; inactive human-covered manual Paladin slots no longer veto execution; no status-surface implementation was added.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in this execution environment. No GitHub Actions workflow runs are configured for the implementation head.
 - **`0.9.8-dev` occupied-slot retest: USER TESTED PASS.** On the same level-33 Warrior/preset that failed on `0.9.7-dev`, the visible Paladin remained Auto resolved to `BoM`; Summon proceeded without the manual-blessing-unavailable error and the Paladin applied `BoM` in game.
-- **Immediate `0.9.9-dev` retest**: with the existing level-33 Warrior group if still available, reload/update and confirm the Auto Paladin's assumed/role-confirmation ticks return without requiring a fresh summon. If that group is gone, resummon the same Auto→`BoM` preset and confirm the ticks appear normally.
+- **`0.9.9-dev` role-indicator retest: USER TESTED PASS.** Auto Paladins show both the assignment/assumed-role tick and the combat-role confirmation tick correctly.
 - **Runtime validation still required**:
   1. At level 33, manual Paladin selection offers only `BoM`, `BoS`, `BoW`; `BoK`/`BoL` are absent, and each available choice summons successfully.
   2. Change/new Paladin preset slots to Auto: resolved icon is correct, the familiar pet-autocast animation is visible, tooltip reports the resolved blessing, and switching to manual stops the animation.
