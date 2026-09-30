@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: Paladin **Auto Blessing** on `0.9.9-dev` is functionally runtime-accepted for allocation, display, summon/application, occupied-slot handling, Active Blessings, and role-confirmation indicators. Persistence across save/reload/Send remains explicitly **not runtime tested** rather than failed. The user does not require artificial level-40/60 boundary testing; the fixed numeric capability policy remains statically auditable and `BoK` has exact-server level-59 fallback evidence. Do not start the neutral read-only activity/status surface until the user explicitly accepts closing Auto Blessing. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: Paladin **Auto Blessing** on `0.9.9-dev` is functionally runtime-accepted for allocation, display, summon/application, occupied-slot handling, Active Blessings, role-confirmation indicators, and persistence across normal preset saves. Send/receive persistence remains separately **not runtime tested**. The user does not require artificial level-40/60 boundary testing; the fixed numeric capability policy remains statically auditable and `BoK` has exact-server level-59 fallback evidence. Do not start the neutral read-only activity/status surface until the user explicitly accepts closing Auto Blessing. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -500,7 +500,7 @@ Exact `0.8.92-dev` baseline:
 - **`0.9.9-dev` role-indicator retest: USER TESTED PASS.** Auto Paladins show both the assignment/assumed-role tick and the combat-role confirmation tick correctly.
 - **Runtime validation summary**:
   1. Multiple active Auto Paladins allocate the available blessings without premature duplication: **USER TESTED PASS**.
-  2. Save/reload and Send/receive persistence of stored `Auto`: **NOT RUNTIME TESTED**; static source audit confirms snapshots preserve `extra=Auto`.
+  2. Normal preset-save persistence of stored `Auto`: **USER TESTED PASS**; saving presets retains Auto Blessing intent rather than the currently resolved concrete blessing. Send/receive persistence remains **NOT RUNTIME TESTED**.
   3. **Active Blessings** display behavior: **USER TESTED PASS**.
   4. Auto/manual blessing presentation and resolved blessing display: **USER ACCEPTED / PASS**.
   5. Level-boundary behavior: no further artificial runtime test required by the user. Capability checks are flat numeric gates (`BoM` 4, `BoW` 14, `BoS` 26, `BoL` 40, `BoK` 60); exact-server level-59 `bok` evidence confirms Kings is unavailable below 60 and the server falls back to Might.
