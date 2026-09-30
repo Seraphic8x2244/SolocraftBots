@@ -708,6 +708,9 @@ function SCB_CommsPromptAccept()
     end
 
     ok, errorText = SCB_ValidatePresetExecutionSnapshot(incoming.snapshot, true)
+    if ok and SCB_ValidatePresetExecutionCapability then
+        ok, errorText = SCB_ValidatePresetExecutionCapability(incoming.snapshot)
+    end
     if ok and SCB_ValidateRequestedPresetLocalCapacity then
         ok, errorText = SCB_ValidateRequestedPresetLocalCapacity(incoming.snapshot)
     end
@@ -2676,7 +2679,7 @@ function SCB_SpawnOnClick()
     if not this.scbClass or not this.scbRole then return end
 
     extra = this.scbExtra
-    if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing or "BoK" end
+    if this.scbClass == "paladin" then extra = SCB.mainPaladinBlessing end
 
     if not SCB_RequestManualAdd then return end
     ok, command = SCB_RequestManualAdd(this.scbClass, this.scbRole, extra)

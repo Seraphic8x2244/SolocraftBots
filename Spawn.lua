@@ -1240,8 +1240,9 @@ local function SCB_StartPresetSummonSnapshotCore(snapshot)
 
     size = snapshot.size
     group = { id = snapshot.groupID, name = snapshot.groupName, size = size }
-    slots = SCB_CopySlots(snapshot.slots)
     occupied = SCB_GetSnapshotOccupiedSlots(snapshot)
+    slots, errorText = SCB_ResolvePresetExecutionSlots(snapshot)
+    if not slots then return false, errorText end
     groupCount = math.ceil(size / 5)
     queue, plans = {}, {}
 

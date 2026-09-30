@@ -1625,12 +1625,25 @@ end
 
 local function SCB_CurrentSlotMatchesTrackerAssignment(slotIndex, assignment)
     local slot = SCB.presetEditorSlots and SCB.presetEditorSlots[slotIndex] or nil
-    local aExtra, sExtra
+    local aExtra, sExtra, hasIntent, blessing
     if not slot or not assignment then return false end
     if slot.class ~= assignment.class or slot.role ~= assignment.role then return false end
-    aExtra = assignment.extra or ""
+
+    -- Match against the stored preset intent when the tracker has it. Execution
+    -- extras may be concrete values resolved from portable intent (Auto -> BoM).
+    hasIntent = assignment.intentExtra ~= nil
+    aExtra = hasIntent and assignment.intentExtra or assignment.extra or ""
     sExtra = slot.extra or ""
-    return aExtra == sExtra
+    if aExtra == sExtra then return true end
+
+    -- 0.9.7/0.9.8 trackers predate intentExtra. Let an existing Auto Paladin
+    -- continue to match its concrete resolved blessing after addon reload.
+    if not hasIntent and slot.class == "paladin"
+        and sExtra == SCB.PALADIN_AUTO_BLESSING then
+        blessing = SCB_FindPaladinBlessing(assignment.extra)
+        return blessing and blessing.key == assignment.extra
+    end
+    return false
 end
 
 
