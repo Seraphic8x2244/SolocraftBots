@@ -6,7 +6,7 @@
 - Branch: `dev`
 - TOC version: `0.9.11-dev`
 - Current implementation head: `c18c8384023c6db12d8cfd2b25be4429da06d87e`
-- Current handoff/status head before this final handoff commit: `c18c8384023c6db12d8cfd2b25be4429da06d87e`
+- Current handoff/status head before this final handoff commit: `1d468ac16b431d538e5fa0ede8a2c4048e638e33`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. `dev` has now advanced to `0.9.11-dev` for the neutral activity/status surface; stable `main` has not changed.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -47,7 +47,7 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. BW
 - Pause Healers still builds recipients from all currently resolved healer bots in the live roster, excludes focused identity-recovery candidates, sends ordinary targeted `pause`, waits for the bot-specific pause acknowledgement, retries immediately on a recognised wrong-actor acknowledgement, and hard-aborts after 1.0 second with no timeout retry.
 - Original target restoration still happens only after the whole sequence completes or aborts. If the sequence began with no target, completion/abort clears the temporary healer target.
 - Group/Target commands remain blocked while Pause Healers owns the target; Pause Healers still refuses to start while the Group targeted sequencer is active.
-- Static comparison confirms the proven Group recipient-selection, advancement, send, ACK-resolution, chat-handler and timeout-frame functions remain byte-identical to the `0.9.1-dev` implementation.
+- At the `0.9.4` BWL validation point, the proven Group recipient-selection, advancement, send, ACK-resolution, chat-handler and timeout-frame functions were byte-identical to the `0.9.1-dev` implementation. Current `0.9.11-dev` adds read-only activity publication/metadata around that sequencer, so the byte-identical statement no longer applies to the current tree; routing, target-settle timing, ACK decisions, retry policy and timeout behavior were not intentionally changed.
 
 ### Group targeted-command acknowledgement timeout
 - Group `phase = "await"` now has a **1.0-second** acknowledgement deadline per recipient/attempt.
@@ -77,7 +77,7 @@ Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. BW
 - **Full-rebuild identity baseline:** the established reverse-send/LIFO/bot-only ordinal finalizer was **not changed** by this batch. The only identity addition is a narrow post-finalization class sanity/recovery layer that runs after the proven finalizer. Do not treat routine ordinal rebuild behavior as a newly introduced mechanism requiring artificial fault injection.
 - **Mismatch visibility:** a confirmed role mismatch is intentionally obvious: persistent red X, chat warning, and a real `StaticPopup` unless SCB screen warnings are explicitly hidden.
 - **Rare identity-recovery and subgroup-local warning wording:** keep as **opportunistic runtime validation** if a genuine mismatch occurs. Do not manufacture these states merely to satisfy the checklist.
-- **Group pipeline preservation:** PASS. The six proven Group sequencing blocks remain byte-identical to `0.9.1-dev`.
+- **Group pipeline preservation:** the `0.9.4` runtime behavior remains the baseline. `0.9.11-dev` now inserts observational status-publisher calls/metadata into the proven Group sequencer, so current source is no longer byte-identical to `0.9.1-dev`; no command routing, target-settle timing, ACK/retry or timeout decisions were intentionally changed. Include an ordinary Group-command smoke in the activity-surface runtime validation.
 - **Canonical Lua 5.0.3 compiler check:** **NOT RUN / unavailable in this execution environment**. Do not treat static review as a compiler pass.
 
 ### Opportunistic checks while playing
@@ -508,7 +508,7 @@ Exact `0.8.92-dev` baseline:
 - `0.9.8-dev` fix: a human-covered Paladin slot preserves its explicit blessing intent in the copied execution snapshot but no longer contributes an unavailable-capability error. Active manual Paladin slots remain capability-gated exactly as before. **Runtime PASS confirmed** on the original level-33 Warrior failure case.
 - New runtime regression found immediately after that PASS: the summoned Auto Paladin no longer showed the preset role-confirmation ticks. Root cause: tracker assignments store the concrete executed blessing (`BoM`) while the preset row stores portable intent (`Auto`); the role-indicator row matcher compared `extra` values directly and rejected `Auto ~= BoM`, suppressing both assumed and confirmed ticks even though role detection itself remained intact.
 - `0.9.9-dev` fix: tracker assignments now persist `intentExtra` alongside the concrete execution `extra`; role-indicator matching compares the current preset against stored intent while summon/refill execution continues using the concrete blessing. A narrow compatibility path lets pre-`0.9.9` Auto-Paladin trackers with concrete blessing extras continue to match after reload.
-- Static source audit PASS: blanket level-60 gate removed; Auto is structurally valid but never sent to PartyBot; snapshot construction preserves Auto; execution resolves Auto; Send copies preserved intent; Request validates receiver-local capability; inactive human-covered manual Paladin slots no longer veto execution; no status-surface implementation was added.
+- The `0.9.9` Auto Blessing source audit PASS remains valid: blanket level-60 gate removed; Auto is structurally valid but never sent to PartyBot; snapshot construction preserves Auto; execution resolves Auto; Send copies preserved intent; Request validates receiver-local capability; inactive human-covered manual Paladin slots no longer veto execution. The activity/status surface was not part of that Auto Blessing change and was added later in `0.9.10-dev` / `0.9.11-dev`.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in this execution environment. No GitHub Actions workflow runs are configured for the implementation head.
 - **`0.9.8-dev` occupied-slot retest: USER TESTED PASS.** On the same level-33 Warrior/preset that failed on `0.9.7-dev`, the visible Paladin remained Auto resolved to `BoM`; Summon proceeded without the manual-blessing-unavailable error and the Paladin applied `BoM` in game.
 - **`0.9.9-dev` role-indicator retest: USER TESTED PASS.** Auto Paladins show both the assignment/assumed-role tick and the combat-role confirmation tick correctly.
