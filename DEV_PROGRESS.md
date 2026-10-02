@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.9-dev`
-- Current implementation head: `80464531d7065762d78c7b474f3ab1942297503b`
-- Current handoff/status head before this final handoff commit: `bb7df00b38fb1c7cafcc3767046bf66c1a67e7ee`
+- TOC version: `0.9.11-dev`
+- Current implementation head: `c18c8384023c6db12d8cfd2b25be4429da06d87e`
+- Current handoff/status head before this final handoff commit: `c18c8384023c6db12d8cfd2b25be4429da06d87e`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. Stable differs from the current dev product tree only by stable TOC metadata and omission of `DEV_PROGRESS.md` / `dev_rulebook.md`.
+- Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. `dev` has now advanced to `0.9.11-dev` for the neutral activity/status surface; stable `main` has not changed.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,11 +17,25 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: stable `0.9.9` Paladin Auto Blessing validation is complete. Send/receive persistence and Request execution with Auto Blessing are both **USER TESTED PASS**. The neutral read-only activity/status surface remains the next documented major UI milestone; the new Appearance-panel idea is captured below as planned scope only and has not been implemented or prioritized ahead of that milestone. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: the neutral read-only activity/status surface is implemented on `dev` at `0.9.11-dev` and now needs runtime validation before any visualiser work. Paladin Auto Blessing validation remains closed. The Preset Manager Appearance idea remains design-only and must not be implemented unless the user explicitly switches scope. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
+## 0.9.11-dev neutral activity/status surface
+- Implementation commits: `cb10d9dd71a826c393d0414d2d4d86a61360d7e9` introduced the surface and four domain publishers; `c18c8384023c6db12d8cfd2b25be4429da06d87e` completed progress publication and static-review corrections.
+- New `Activity.lua` owns a session-only neutral status store. It exposes `SCB_GetActivityStatus([channel])` and `SCB_GetActivityStatusRevision()`; getters return defensive deep copies so presentation consumers cannot mutate the backing state.
+- Canonical channels are independent rather than mutually exclusive: `command`, `botOperation`, `communication`, and `rosterLayout`.
+- **Command:** Group and Pause Healers sequencers publish action/scope/phase/current recipient/progress while retaining their existing owners and timing. Direct one-shot commands publish only a completed latest status and do not displace an active sequencer.
+- **Bot Operation:** the existing `SCB.botOperation` coordinator remains authoritative. The surface derives operation kind/action/phase/wait reason/progress; roster events refresh preset progress without adding another scheduler.
+- **Communication:** the existing protocol-8 state remains authoritative. One channel carries an `activities` array so concurrent Send, Request and incoming transfer activity can coexist; chunk progress and completion/timeout state are observational only.
+- **Roster/Layout:** live roster counts/revision and tracked raid-layout mismatch counts are published from existing roster/layout observation. Layout status is marked `suppressed` while a bot operation intentionally suppresses mismatch presentation.
+- `Activity.lua` contains no frames, command sending, spawn/maintenance logic, communications transport or roster decisions. No visualiser/presentation was added.
+- Compatibility scope is unchanged: no SavedVariable schema change, no protocol bump, and no command/spawn ownership change. `Presets.lua` and the planned Appearance feature were untouched.
+- Source/diff audit PASS: handoff `fb0a9e9414393cf9f387477112b869e615a92d6b` -> implementation head changes only `Activity.lua`, `Communication.lua`, `Roster.lua`, `Spawn.lua`, and `SoloCraftBots.toc`; TOC is `0.9.11-dev` and loads `Activity.lua` before runtime owners. Stable `main` remains `0.9.9`.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this execution environment**. Direct container network access also cannot fetch the repository; do not treat source review as a compiler pass.
+- Runtime state: **NOT RUNTIME TESTED**. First validation should confirm: clean addon load/reload; Command snapshots update for a direct command plus a Group or Pause Healers sequence; Bot Operation updates across a manual add or preset summon and finishes inactive; Communication can represent active Send/Request transfer and returns inactive after completion; Roster/Layout reports current counts without changing normal mismatch behavior.
+- Do not start the visualiser until this surface is runtime-accepted. The visualiser remains a presentation-only consumer of these getters.
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
-Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. Current implementation head: `626b28c13baf013e834b383a9aecf4cda17786b3`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path; no activity/status surface or visualiser work has started.
+Original BWL implementation head: `37097afe63259169ad0ece774cace26b27821ed7`. BWL-era implementation head: `626b28c13baf013e834b383a9aecf4cda17786b3`. The established reverse-send/LIFO/full-rebuild ordinal finalizer remains the normal authoritative path. The activity/status surface was not part of that BWL batch and is now implemented separately as documented above; visualiser work has still not started.
 
 ### Pause Healers
 - `0.9.1-dev` runtime result for the original Group-targeted implementation: **functional behavior PASS, UX rejected**. The command worked, but requiring a Group target and placing it in the Group row were rejected.
@@ -508,7 +522,7 @@ Exact `0.8.92-dev` baseline:
 - Runtime evidence motivating the policy remains the level-33 test where manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work.
 
 ## Planned / later
-- After Auto Blessing, **next major UI milestone:** neutral read-only activity/status surface.
+- Neutral read-only activity/status surface: **IMPLEMENTED on `dev` at `0.9.11-dev`; runtime validation pending before visualiser work.**
 - **Preset Manager Appearance panel — design captured, not implemented.**
   - SoloCraft server now accepts optional race and/or gender tokens in `.partybot add`; either may be supplied independently and omitted values remain random exactly as before. The tokens may appear anywhere in the command.
   - Add an **Appearance** button at the top-left of Preset Manager, in line with the existing header.
@@ -518,7 +532,7 @@ Exact `0.8.92-dev` baseline:
   - Race and Sex default to `?`, meaning random/server default.
   - Summoning uses the existing class/role/extra command construction and simply appends the configured optional race and/or sex tokens for the matching class+role rule.
   - No Appearance UI or data/protocol implementation has started; this entry records the agreed product design only.
-- After that, visualiser as a presentation-only consumer of the status surface.
+- After the status surface is runtime-accepted, visualiser as a presentation-only consumer of the surface. Appearance remains separate design-only scope unless the user explicitly switches to it.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
 
@@ -542,17 +556,17 @@ Exact `0.8.92-dev` baseline:
 - Post-promotion tree audit PASS at release time: compared with the dev release state, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differed. Current dev has since advanced with Auto Blessing runtime changes.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the tested `0.9.4-dev` product tree.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
-- Current addon work remains on `dev` at `0.9.9-dev`; stable `0.9.9` is released on `main`. Auto Blessing Send/receive persistence and Request execution are both USER TESTED PASS; Auto Blessing validation is closed.
+- Current addon work is `0.9.11-dev` on `dev` for the neutral activity/status surface; stable `0.9.9` remains released on `main`. Auto Blessing Send/receive persistence and Request execution are USER TESTED PASS; Auto Blessing validation is closed.
 
 ## 0.9.9 release
 - User explicitly accepted the current Auto Blessing state as stable and authorized promotion so Send/receive can be tested on stable clients.
 - Tested/accepted runtime implementation: `0.9.9-dev` at `80464531d7065762d78c7b474f3ab1942297503b`. Later dev commits through `48b604ad808fed523fe7d07da3ebbdb45b8e5e1b` changed only `DEV_PROGRESS.md`.
 - Stable promotion commit: `b374655e145bc0626e5fe112ec9098b96cae0617`; stable TOC is `SoloCraft Bots` / `0.9.9`.
 - Promotion used the established snapshot method with prior stable `main` `a03b060dada7f03d860ef124bc54fa48fab745d4` as parent; diverged branch histories were not merged.
-- Post-promotion tree audit PASS: stable differs from current dev only by `SoloCraftBots.toc`, omission of `DEV_PROGRESS.md`, and omission of `dev_rulebook.md`; all runtime/source/artwork blobs otherwise match.
+- Post-promotion tree audit PASS at the time of the `0.9.9` release: stable then differed from the accepted dev release state only by `SoloCraftBots.toc`, omission of `DEV_PROGRESS.md`, and omission of `dev_rulebook.md`. Current `dev` has since advanced with the neutral activity/status surface.
 - Post-release validation: Auto Blessing persistence through protocol **Send/receive is USER TESTED PASS** on stable `0.9.9`. Normal preset-save persistence is also USER TESTED PASS. A preset **Request** containing Auto Blessing was sent and executed successfully: **USER TESTED PASS**. Auto Blessing protocol validation is closed.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the accepted `0.9.9-dev` product code.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment; no GitHub Actions workflow is configured for this release.
 
 ## Release note
-`0.9.9` is the current stable release on `main`. Paladin Auto Blessing preset-save, Send/receive and Request paths are USER TESTED PASS; Auto Blessing validation is closed. The neutral read-only activity/status surface remains the next documented major UI milestone.
+`0.9.9` is the current stable release on `main`. Paladin Auto Blessing preset-save, Send/receive and Request paths are USER TESTED PASS; Auto Blessing validation is closed. `dev` is `0.9.11-dev` with the neutral read-only activity/status surface implemented and awaiting runtime validation; visualiser and Appearance implementation have not started.
