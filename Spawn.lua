@@ -821,6 +821,7 @@ function SCB_MaintenanceReplaceOnClick()
         deadCount = table.getn(dead),
         unavailableMissingCount = table.getn(unavailableMissing),
         unavailableDeadCount = table.getn(unavailableDead),
+        assignmentCount = table.getn(assignments) + (survivorRecord and 1 or 0),
     }) or nil
     if not operation then
         SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
@@ -1698,6 +1699,92 @@ local function SCB_ClearOperationRebuild(operation)
     SCB_SetCoordinatorRebuildSentinel(operation, false)
 end
 
+local function SCB_CountPresetOperationBots(operation)
+    local intent = operation and operation.desiredIntent or nil
+    local snapshot = intent and intent.snapshot or nil
+    local occupied, count, i, player, slotIndex
+    if not snapshot then return nil end
+
+    occupied = {}
+    for i = 1, table.getn(snapshot.players or {}) do
+        player = snapshot.players[i]
+        if player and player.slotIndex then occupied[player.slotIndex] = true end
+    end
+    count = tonumber(snapshot.size) or 0
+    for slotIndex in pairs(occupied) do
+        if slotIndex >= 1 and slotIndex <= (tonumber(snapshot.size) or 0) then
+            count = count - 1
+        end
+    end
+    if count < 0 then count = 0 end
+    return count
+end
+
+local function SCB_GetBotOperationProgress(operation)
+    local intent = operation and operation.desiredIntent or nil
+    local state, total, current, remaining
+    if not operation then return nil, nil end
+
+    if operation.kind == "manual-add" then
+        total = 1
+        current = operation.manualAdd and operation.manualAdd.botName and 1 or 0
+    elseif operation.kind == "maintenance" then
+        state = operation.maintenance
+        total = intent and tonumber(intent.assignmentCount) or nil
+        if state and total then
+            remaining = table.getn(state.remaining or {}) - (state.remainingHead or 1) + 1
+            if remaining < 0 then remaining = 0 end
+            if state.survivorAssignment then remaining = remaining + 1 end
+            current = total - remaining
+            if current < 0 then current = 0 end
+            if current > total then current = total end
+        end
+    elseif operation.kind == "preset" then
+        total = SCB_CountPresetOperationBots(operation)
+        if operation.phase == "summon" and total then
+            current = SCB_CountGroupBots and SCB_CountGroupBots() or 0
+            if current > total then current = total end
+        end
+    end
+    return current, total
+end
+
+local function SCB_GetBotOperationWaitReason(operation)
+    local phase = operation and operation.phase or nil
+    local state = operation and operation.maintenance or nil
+    if phase == "rebuild" then return "roster-rebuild" end
+    if phase == "manual-add-wait" then return "bot-join" end
+    if phase == "maintenance-remove" or phase == "maintenance-remove-survivor" then return "removal" end
+    if phase == "maintenance-settle" then return "capacity-settle" end
+    if phase == "maintenance-combat" then return "combat" end
+    if phase == "maintenance-spawn" and state and state.phase == "waitgroup" then
+        if state.groupMoveStartedAt then return "subgroup-placement" end
+        return "bot-join"
+    end
+    return nil
+end
+
+local function SCB_PublishBotOperationActivity(operation)
+    local intent = operation and operation.desiredIntent or nil
+    local current, total = SCB_GetBotOperationProgress(operation)
+    if not SCB_PublishActivityStatus or not operation then return end
+
+    SCB_PublishActivityStatus("botOperation", {
+        active = operation.active and true or false,
+        status = operation.status or (operation.active and "active" or "idle"),
+        operationKind = operation.kind,
+        action = intent and intent.action or nil,
+        phase = operation.phase or "active",
+        waitReason = SCB_GetBotOperationWaitReason(operation),
+        current = current,
+        total = total,
+        presetName = intent and intent.presetName or nil,
+        group = intent and intent.group or nil,
+        revision = operation.revision,
+        reason = operation.reason,
+    })
+end
+
 function SCB_GetActiveBotOperation()
     local operation = SCB.botOperation
     if operation and operation.active then return operation end
@@ -1723,6 +1810,7 @@ function SCB_SetBotOperationPhase(phase)
         operation.phase = phase
         operation.updatedAt = SCB_OperationNow()
     end
+    SCB_PublishBotOperationActivity(operation)
     return true
 end
 
@@ -1743,6 +1831,7 @@ function SCB_BeginBotOperation(kind, intent)
         updatedAt = SCB_OperationNow(),
     }
     SCB.botOperation = operation
+    SCB_PublishBotOperationActivity(operation)
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
     if SCB_WakePresetSpawnScheduler then SCB_WakePresetSpawnScheduler() end
     return operation
@@ -1759,6 +1848,7 @@ function SCB_ReplaceBotOperationIntent(kind, intent)
     operation.revision = (operation.revision or 1) + 1
     operation.phase = "replacing"
     operation.updatedAt = SCB_OperationNow()
+    SCB_PublishBotOperationActivity(operation)
     return operation
 end
 
@@ -1788,6 +1878,7 @@ function SCB_EndBotOperation(status, reason)
         endedAt = operation.endedAt,
         reason = reason,
     }
+    SCB_PublishBotOperationActivity(operation)
     SCB.botOperation = nil
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
     -- Tracker finalization occurs while the preset operation still owns the
