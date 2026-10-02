@@ -1033,6 +1033,7 @@ commFrame:SetScript("OnUpdate", function()
                     packet = "C:" .. out.tx .. ":" .. out.target .. ":" .. out.mode .. ":" .. out.nextChunk .. ":" .. table.getn(out.chunks) .. ":" .. out.chunks[out.nextChunk]
                     SendRaw(packet)
                     out.nextChunk = out.nextChunk + 1
+                    SCB_PublishCommunicationActivity()
                     if out.nextChunk > table.getn(out.chunks) then
                         out.phase = "waiting"
                         SCB_PublishCommunicationActivity()
@@ -1300,7 +1301,7 @@ local function SCB_PublishInstantCommandActivity(commandKey, scope, status)
         action = commandKey,
         scope = scope,
         phase = status or "sent",
-        recipient = UnitName and UnitName("target") or nil,
+        recipient = scope == "target" and UnitName and UnitName("target") or nil,
     })
 end
 
@@ -1682,6 +1683,7 @@ local function SCB_SelectCurrentGroupRecipient()
                 state.currentName = name
                 state.phase = "settle"
                 state.phaseElapsed = 0
+                SCB_PublishCommandActivity(state)
                 return true
             end
         else

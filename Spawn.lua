@@ -1785,6 +1785,15 @@ local function SCB_PublishBotOperationActivity(operation)
     })
 end
 
+function SCB_RefreshBotOperationActivity()
+    local operation = SCB.botOperation
+    if operation and operation.active then
+        SCB_PublishBotOperationActivity(operation)
+        return true
+    end
+    return false
+end
+
 function SCB_GetActiveBotOperation()
     local operation = SCB.botOperation
     if operation and operation.active then return operation end

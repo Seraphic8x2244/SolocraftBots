@@ -306,6 +306,7 @@ end
 function SCB_PublishRosterLayoutActivity(observed)
     local tracker, mismatches
     local layoutTracked = false
+    local layoutSuppressed = false
     local mismatchGroups, mismatchSlots = 0, 0
     local key
 
@@ -316,6 +317,7 @@ function SCB_PublishRosterLayoutActivity(observed)
     if tracker and tracker.ready and tracker.mode == "raid"
         and observed and observed.mode == "raid" then
         layoutTracked = true
+        layoutSuppressed = SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation() or false
         mismatches = SCB_GetPresetLiveLayoutMismatches
             and SCB_GetPresetLiveLayoutMismatches(observed) or nil
         for key in pairs(mismatches or {}) do
@@ -336,8 +338,10 @@ function SCB_PublishRosterLayoutActivity(observed)
         humanCount = observed and observed.humanCount or 0,
         eventRevision = observed and observed.eventRevision or (SCB.rosterEventRevision or 0),
         layoutTracked = layoutTracked,
+        layoutSuppressed = layoutSuppressed,
         layoutState = layoutTracked
-            and ((mismatchGroups > 0 or mismatchSlots > 0) and "mismatch" or "matched")
+            and (layoutSuppressed and "suppressed"
+                or ((mismatchGroups > 0 or mismatchSlots > 0) and "mismatch" or "clear"))
             or "untracked",
         layoutRevision = tracker and tracker.layoutRevision or nil,
         layoutMismatchGroups = mismatchGroups,
@@ -1184,6 +1188,7 @@ function SCB_HandleRosterChange()
     if SCB_QueueRoleDetectionLifecycleRefresh then SCB_QueueRoleDetectionLifecycleRefresh(0.15) end
     if SCB_QueueTrackerLiveLayoutRefresh then SCB_QueueTrackerLiveLayoutRefresh(0.15) end
     SCB_PublishRosterLayoutActivity(observed)
+    if SCB_RefreshBotOperationActivity then SCB_RefreshBotOperationActivity() end
     return observed
 end
 -- -------------------------------------------------------------------------
