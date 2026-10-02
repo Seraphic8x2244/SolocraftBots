@@ -3970,6 +3970,13 @@ SCB_LayoutPresetGroups = function()
 
     SCB.presetPanel:SetWidth(panelWidth)
     SCB.presetPanel:SetHeight(panelHeight)
+    if SCB.presetConfigurationHeading then
+        -- The drawer expands to the left. Keep the existing Preset Manager
+        -- title visually centred over the original preset content instead of
+        -- letting the new Appearance column pull it left.
+        SCB.presetConfigurationHeading:ClearAllPoints()
+        SCB.presetConfigurationHeading:SetPoint("TOP", SCB.presetPanel, "TOP", appearanceExtra / 2, -13)
+    end
 
     -- Header furniture follows the group geometry. Selectors/actions remain a
     -- two-column strip; the role counter expands to the live group-grid width.
