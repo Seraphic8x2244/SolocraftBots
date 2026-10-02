@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.9` is released on `main` with the user's explicit acceptance despite one documented validation debt: test Auto Blessing persistence through **Send/receive** between clients/accounts now that both can run the stable build. Auto Blessing is otherwise accepted as stable. Do not start the neutral read-only activity/status surface until this requested Send/receive check is complete. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: stable `0.9.9` Auto Blessing **Send/receive persistence is USER TESTED PASS**. The user is about to test the **Request** path next; treat that as the only remaining requested Auto Blessing protocol-path check before moving on. Do not start the neutral read-only activity/status surface until the Request result is recorded. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 
 ## BWL 0.9.1-dev batch / 0.9.4 release state
@@ -533,7 +533,7 @@ Exact `0.8.92-dev` baseline:
 - Post-promotion tree audit PASS at release time: compared with the dev release state, only `SoloCraftBots.toc`, `DEV_PROGRESS.md`, and `dev_rulebook.md` differed. Current dev has since advanced with Auto Blessing runtime changes.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the tested `0.9.4-dev` product tree.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
-- Current addon work remains on `dev` at `0.9.9-dev`; stable `0.9.9` is released on `main`. Auto Blessing Send/receive persistence is the only remaining requested runtime check before status-surface work begins.
+- Current addon work remains on `dev` at `0.9.9-dev`; stable `0.9.9` is released on `main`. Auto Blessing Send/receive persistence is USER TESTED PASS; Request is the only remaining requested runtime check before status-surface work begins.
 
 ## 0.9.9 release
 - User explicitly accepted the current Auto Blessing state as stable and authorized promotion so Send/receive can be tested on stable clients.
@@ -541,9 +541,9 @@ Exact `0.8.92-dev` baseline:
 - Stable promotion commit: `b374655e145bc0626e5fe112ec9098b96cae0617`; stable TOC is `SoloCraft Bots` / `0.9.9`.
 - Promotion used the established snapshot method with prior stable `main` `a03b060dada7f03d860ef124bc54fa48fab745d4` as parent; diverged branch histories were not merged.
 - Post-promotion tree audit PASS: stable differs from current dev only by `SoloCraftBots.toc`, omission of `DEV_PROGRESS.md`, and omission of `dev_rulebook.md`; all runtime/source/artwork blobs otherwise match.
-- Accepted validation debt: Auto Blessing persistence through protocol Send/receive has not yet been runtime-tested. Normal preset-save persistence is USER TESTED PASS. The user authorized release specifically so this remaining path can be tested across stable clients.
+- Post-release validation: Auto Blessing persistence through protocol **Send/receive is USER TESTED PASS** on stable `0.9.9`. Normal preset-save persistence is also USER TESTED PASS. The **Request** path is still awaiting the user's runtime check.
 - Exact stable metadata/tree was not separately runtime-tested; runtime behavior inherits the accepted `0.9.9-dev` product code.
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment; no GitHub Actions workflow is configured for this release.
 
 ## Release note
-`0.9.9` is the current stable release on `main`. Paladin Auto Blessing is accepted/released with Send/receive persistence explicitly left as a post-release runtime check so it can be exercised between stable clients; the neutral read-only activity/status surface remains the next major milestone after that check.
+`0.9.9` is the current stable release on `main`. Paladin Auto Blessing Send/receive persistence is USER TESTED PASS; Request remains the final requested post-release runtime check before the neutral read-only activity/status surface.
