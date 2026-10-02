@@ -1081,19 +1081,36 @@ local function SCB_IsSpawnCommandString(value)
 end
 
 local function SCB_ParseSpawnCommand(command)
-    local _, _, classKey, role, extra
+    local _, _, classKey, role, rest
+    local extraTokens = {}
+    local extra, race, sex, token
     if type(command) ~= "string" then return nil end
-    _, _, classKey, role, extra = string.find(command, "^add%s+(%S+)%s+(%S+)%s*(.*)$")
+    _, _, classKey, role, rest = string.find(command, "^add%s+(%S+)%s+(%S+)%s*(.*)$")
     if not classKey or not role then return nil end
-    if extra == "" then extra = nil end
-    return classKey, role, extra
+
+    for token in string.gfind(rest or "", "%S+") do
+        if SCB_IsAppearanceRaceToken and SCB_IsAppearanceRaceToken(token) then
+            if race then return nil end
+            race = token
+        elseif SCB_IsAppearanceSexToken and SCB_IsAppearanceSexToken(token) then
+            if sex then return nil end
+            sex = token
+        else
+            table.insert(extraTokens, token)
+        end
+    end
+
+    if table.getn(extraTokens) > 0 then extra = table.concat(extraTokens, " ") end
+    return classKey, role, extra, race, sex
 end
 
 local function SCB_IsValidatedSpawnCommand(command)
-    local classKey, role, extra = SCB_ParseSpawnCommand(command)
+    local classKey, role, extra, race, sex = SCB_ParseSpawnCommand(command)
     if not classKey or not role then return false end
-    if not SCB_IsValidSpawnAssignment then return false end
-    return SCB_IsValidSpawnAssignment(classKey, role, extra)
+    if not SCB_IsValidSpawnAssignment or not SCB_IsValidSpawnAssignment(classKey, role, extra) then return false end
+    if race and (not SCB_IsAppearanceRaceAllowed or not SCB_IsAppearanceRaceAllowed(classKey, race)) then return false end
+    if sex and (not SCB_IsAppearanceSexToken or not SCB_IsAppearanceSexToken(sex)) then return false end
+    return true
 end
 
 local function SCB_SpawnDebug(text)
@@ -2017,12 +2034,12 @@ end
 
 function SCB_RequestManualAdd(classKey, role, extra)
     local command, operation, plan, state, now
-    local parsedClass, parsedRole, parsedExtra
+    local parsedClass, parsedRole, parsedExtra, parsedRace, parsedSex
 
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return false end
     command = SCB_BuildSpawnCommand and SCB_BuildSpawnCommand(classKey, role, extra) or nil
     if not command or not SCB_IsValidatedSpawnCommand(command) then return false end
-    parsedClass, parsedRole, parsedExtra = SCB_ParseSpawnCommand(command)
+    parsedClass, parsedRole, parsedExtra, parsedRace, parsedSex = SCB_ParseSpawnCommand(command)
     if not parsedClass or not parsedRole then return false end
     classKey, role, extra = parsedClass, parsedRole, parsedExtra
     if not SCB_IsManualAddAvailable() then return false end
@@ -2032,6 +2049,8 @@ function SCB_RequestManualAdd(classKey, role, extra)
         class = classKey,
         role = role,
         extra = extra,
+        race = parsedRace,
+        sex = parsedSex,
         command = command,
     })
     if not operation then return false end

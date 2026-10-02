@@ -14,6 +14,7 @@ SCB.presetEditorPlayerRoles = SCB.presetEditorPlayerRoles or {}
 SCB.presetGroupFrames = SCB.presetGroupFrames or {}
 SCB.presetGroupTitles = SCB.presetGroupTitles or {}
 SCB.presetGroupResummonButtons = SCB.presetGroupResummonButtons or {}
+SCB.appearanceRows = SCB.appearanceRows or {}
 SCB.dragGhost = SCB.dragGhost or nil
 
 local SCB_DEFAULT_PRESET_GROUPS = {
@@ -422,6 +423,8 @@ end
 
 function SCB_EnsurePresetDB()
     local groups, legacyPresets, legacyCurrent, tenGroup, i, preset
+
+    if SCB_EnsureAppearanceDB then SCB_EnsureAppearanceDB() end
 
     if not SoloCraftBotsDB.presetGroups then
         groups = SCB_GetDefaultPresetGroups()
@@ -3405,6 +3408,222 @@ function SCB_MaybeStartPresetTutorial()
     SCB_StartPresetTutorial()
 end
 
+
+SCB.APPEARANCE_PANEL_EXTRA = 104
+
+function SCB_SetAppearanceChoiceVisual(button, raceKey, sex, fallbackText)
+    local left, right, top, bottom
+    if not button or not button.scbAppearanceIcon or not button.label then return end
+    if raceKey then
+        left, right, top, bottom = SCB_GetAppearanceRaceTextureCoords(raceKey, sex)
+    end
+    if left then
+        button.scbAppearanceIcon:SetTexture(SCB.APPEARANCE_RACE_TEXTURE)
+        button.scbAppearanceIcon:SetTexCoord(left, right, top, bottom)
+        button.scbAppearanceIcon:Show()
+        button.label:SetText("")
+    else
+        button.scbAppearanceIcon:Hide()
+        button.label:SetText(fallbackText or "?")
+    end
+end
+
+function SCB_RefreshAppearanceRuleRow(row)
+    local race, sex, raceInfo, classInfo, roleInfo, raceLabel, sexLabel
+    if not row then return end
+    race, sex = SCB_GetAppearanceRule(row.classKey, row.role)
+    raceInfo = SCB_FindAppearanceRace(race)
+    classInfo = SCB_FindClass(row.classKey)
+    roleInfo = SCB_PlayerRoleInfo(row.role)
+    raceLabel = raceInfo and raceInfo.label or SCB_L("APPEARANCE_RANDOM", "Random")
+    sexLabel = sex == "male" and SCB_L("SEX_MALE", "Male")
+        or (sex == "female" and SCB_L("SEX_FEMALE", "Female"))
+        or SCB_L("APPEARANCE_RANDOM", "Random")
+
+    SCB_SetAppearanceChoiceVisual(row.raceButton, race, "male", "?")
+    SCB_SetAppearanceChoiceVisual(row.sexButton, sex and (race or "human") or nil, sex, "?")
+
+    row.raceButton.scbTooltip = string.format(
+        SCB_L("TIP_APPEARANCE_RACE", "%s %s race: %s\nLeft/right click to change"),
+        classInfo and classInfo.name or row.classKey,
+        roleInfo and roleInfo.label or row.role,
+        raceLabel
+    )
+    row.sexButton.scbTooltip = string.format(
+        SCB_L("TIP_APPEARANCE_SEX", "%s %s sex: %s\nLeft/right click to change"),
+        classInfo and classInfo.name or row.classKey,
+        roleInfo and roleInfo.label or row.role,
+        sexLabel
+    )
+end
+
+function SCB_RefreshAppearancePanel()
+    local i
+    for i = 1, table.getn(SCB.appearanceRows or {}) do
+        SCB_RefreshAppearanceRuleRow(SCB.appearanceRows[i])
+    end
+end
+
+function SCB_AppearanceRaceOnClick()
+    local row = this and this.scbAppearanceRow or nil
+    local allowed, race, sex, currentIndex, newIndex, i, newRace
+    if not row then return end
+    allowed = SCB_GetAllowedAppearanceRaces(row.classKey)
+    race, sex = SCB_GetAppearanceRule(row.classKey, row.role)
+    currentIndex = 0
+    for i = 1, table.getn(allowed) do
+        if allowed[i].key == race then currentIndex = i break end
+    end
+
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 0 then newIndex = table.getn(allowed) end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > table.getn(allowed) then newIndex = 0 end
+    end
+
+    newRace = newIndex > 0 and allowed[newIndex].key or nil
+    if SCB_SetAppearanceRule(row.classKey, row.role, newRace, sex) then
+        SCB_RefreshAppearanceRuleRow(row)
+    end
+end
+
+function SCB_AppearanceSexOnClick()
+    local row = this and this.scbAppearanceRow or nil
+    local race, sex, currentIndex, newIndex, newSex
+    if not row then return end
+    race, sex = SCB_GetAppearanceRule(row.classKey, row.role)
+    currentIndex = sex == "male" and 1 or (sex == "female" and 2 or 0)
+
+    if arg1 == "RightButton" then
+        newIndex = currentIndex - 1
+        if newIndex < 0 then newIndex = 2 end
+    else
+        newIndex = currentIndex + 1
+        if newIndex > 2 then newIndex = 0 end
+    end
+
+    newSex = newIndex == 1 and "male" or (newIndex == 2 and "female" or nil)
+    if SCB_SetAppearanceRule(row.classKey, row.role, race, newSex) then
+        SCB_RefreshAppearanceRuleRow(row)
+    end
+end
+
+function SCB_CreateAppearanceChoiceButton(parent, clickScript)
+    local button = SCB_CreateTextButton(parent, nil, 18, 18, "?")
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+    icon:Hide()
+    button.scbAppearanceIcon = icon
+    button.label:SetJustifyH("CENTER")
+    button:SetScript("OnClick", clickScript)
+    button:SetScript("OnEnter", SCB_TooltipOnEnter)
+    button:SetScript("OnLeave", SCB_TooltipOnLeave)
+    return button
+end
+
+function SCB_CreateAppearancePanel(panel)
+    local toggle, appearance, classes, classInfo, roleEntry, roleInfo
+    local classIcon, roleIcon, raceButton, sexButton, row, divider
+    local seenRoles, i, r, rowIndex
+
+    toggle = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_wand_sparkles.tga")
+    toggle:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -9)
+    toggle.scbTooltip = SCB_L("TIP_APPEARANCE", "Configure bot race and sex")
+    toggle:SetScript("OnClick", SCB_AppearanceToggleOnClick)
+    toggle:SetScript("OnEnter", SCB_TooltipOnEnter)
+    toggle:SetScript("OnLeave", SCB_TooltipOnLeave)
+    SCB.appearanceToggleButton = toggle
+
+    appearance = CreateFrame("Frame", nil, panel)
+    appearance:SetWidth(88)
+    appearance:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -40)
+    appearance:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    appearance:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
+    appearance:SetBackdropBorderColor(0.45, 0.45, 0.45, 0.9)
+    appearance:Hide()
+    SCB.appearancePanel = appearance
+    SCB.appearanceRows = {}
+
+    classes = SCB_GetVisibleClasses()
+    rowIndex = 0
+    for i = 1, table.getn(classes) do
+        classInfo = classes[i]
+        seenRoles = {}
+        for r = 1, table.getn(classInfo.roles or {}) do
+            roleEntry = classInfo.roles[r]
+            if roleEntry and not seenRoles[roleEntry.role] then
+                seenRoles[roleEntry.role] = true
+                rowIndex = rowIndex + 1
+                row = CreateFrame("Frame", nil, appearance)
+                row:SetWidth(78)
+                row:SetHeight(18)
+                row:SetPoint("TOPLEFT", appearance, "TOPLEFT", 5, -5 - ((rowIndex - 1) * 18))
+                row.classKey = classInfo.key
+                row.role = roleEntry.role
+
+                classIcon = row:CreateTexture(nil, "ARTWORK")
+                classIcon:SetWidth(16)
+                classIcon:SetHeight(16)
+                classIcon:SetPoint("LEFT", row, "LEFT", 0, 0)
+                classIcon:SetTexture(SCB.assetRoot .. classInfo.icon)
+
+                roleInfo = SCB_PlayerRoleInfo(roleEntry.role)
+                roleIcon = row:CreateTexture(nil, "ARTWORK")
+                roleIcon:SetWidth(16)
+                roleIcon:SetHeight(16)
+                roleIcon:SetPoint("LEFT", classIcon, "RIGHT", 3, 0)
+                roleIcon:SetTexture(roleInfo and SCB.assetRoot .. roleInfo.icon or SCB.assetRoot .. "melee.tga")
+
+                raceButton = SCB_CreateAppearanceChoiceButton(row, SCB_AppearanceRaceOnClick)
+                raceButton:SetPoint("LEFT", roleIcon, "RIGHT", 3, 0)
+                raceButton.scbAppearanceRow = row
+                row.raceButton = raceButton
+
+                sexButton = SCB_CreateAppearanceChoiceButton(row, SCB_AppearanceSexOnClick)
+                sexButton:SetPoint("LEFT", raceButton, "RIGHT", 3, 0)
+                sexButton.scbAppearanceRow = row
+                row.sexButton = sexButton
+
+                SCB.appearanceRows[rowIndex] = row
+            end
+        end
+    end
+
+    appearance:SetHeight(10 + (rowIndex * 18))
+    divider = appearance:CreateTexture(nil, "ARTWORK")
+    divider:SetWidth(1)
+    divider:SetPoint("TOP", appearance, "TOP", 0, -4)
+    divider:SetPoint("BOTTOM", appearance, "BOTTOM", 0, 4)
+    divider:SetTexture(0.45, 0.45, 0.45, 0.35)
+    divider:Hide()
+
+    SCB_RefreshAppearancePanel()
+end
+
+function SCB_SetAppearancePanelShown(show)
+    if not SCB.appearancePanel then return end
+    if show then
+        SCB_RefreshAppearancePanel()
+        SCB.appearancePanel:Show()
+    else
+        SCB.appearancePanel:Hide()
+    end
+    if SCB_LayoutPresetGroups then SCB_LayoutPresetGroups() end
+end
+
+function SCB_AppearanceToggleOnClick()
+    if not SCB.appearancePanel then return end
+    SCB_SetAppearancePanelShown(not SCB.appearancePanel:IsShown())
+end
+
 function SCB_SetPresetToggleDirection(open)
     local side
     if not SCB.presetToggle or not SCB.presetToggle.scbArrowTexture then return end
@@ -3426,6 +3645,7 @@ function SCB_SetPresetPanelShown(show)
     if show then
         SCB_RefreshPresetPlayers()
         SCB_RefreshPresetSummonWarning()
+        if SCB_RefreshAppearancePanel then SCB_RefreshAppearancePanel() end
         SCB.presetPanel:Show()
         if SCB_LayoutSidePanels then SCB_LayoutSidePanels() end
         if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
@@ -3670,7 +3890,7 @@ SCB_LayoutPresetGroups = function()
     local groupWidth, groupHeight, gapX, gapY, i, col, row, poolRows, poolExtra
     local headerHeight, twoGroupWidth, contentWidth, menuWidth, iconSize, menuButton
     local poolCount, poolColumns, poolHeight, poolButton, groupAnchor
-    local boxHeaderHeight, groupBoxHeight
+    local boxHeaderHeight, groupBoxHeight, appearanceExtra
 
     if groupCount == 1 then
         columns = 1
@@ -3705,6 +3925,11 @@ SCB_LayoutPresetGroups = function()
     contentWidth = (columns * groupWidth) + ((columns - 1) * gapX)
     if contentWidth < twoGroupWidth then contentWidth = twoGroupWidth end
     panelWidth = contentWidth + 24
+    appearanceExtra = 0
+    if SCB.appearancePanel and SCB.appearancePanel:IsShown() then
+        appearanceExtra = SCB.APPEARANCE_PANEL_EXTRA or 104
+    end
+    panelWidth = panelWidth + appearanceExtra
 
     poolExtra = 0
     groupAnchor = SCB.presetCounterBox
@@ -3889,6 +4114,8 @@ function SCB_CreatePresetUI(frame)
     SCB.presetCloseButton:SetScript("OnClick", function() SCB_SetPresetPanelShown(false) end)
     SCB.presetCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
     SCB.presetCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+    SCB_CreateAppearancePanel(panel)
 
     -- Per-character preset identity: actual class is read-only; role is this
     -- character's default used only to seed newly-created presets.

@@ -1113,12 +1113,140 @@ function SCB_RoleHighlightTexture(roleInfo)
     return SCB.assetRoot .. string.gsub(roleInfo.icon, "%.tga$", "_h.tga")
 end
 
+
+-- -------------------------------------------------------------------------
+-- Bot appearance defaults
+-- -------------------------------------------------------------------------
+
+SCB.APPEARANCE_RACE_TEXTURE = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Races"
+
+SCB.APPEARANCE_RACES = {
+    {
+        key = "human", label = SCB_L("RACE_HUMAN", "Human"), faction = "Alliance",
+        male = { 0, 0.25, 0, 0.25 }, female = { 0, 0.25, 0.5, 0.75 },
+        classes = { warrior = true, paladin = true, rogue = true, priest = true, mage = true, warlock = true },
+    },
+    {
+        key = "dwarf", label = SCB_L("RACE_DWARF", "Dwarf"), faction = "Alliance",
+        male = { 0.25, 0.5, 0, 0.25 }, female = { 0.25, 0.5, 0.5, 0.75 },
+        classes = { warrior = true, paladin = true, hunter = true, rogue = true, priest = true },
+    },
+    {
+        key = "nightelf", label = SCB_L("RACE_NIGHT_ELF", "Night Elf"), faction = "Alliance",
+        male = { 0.75, 1.0, 0, 0.25 }, female = { 0.75, 1.0, 0.5, 0.75 },
+        classes = { warrior = true, hunter = true, rogue = true, priest = true, druid = true },
+    },
+    {
+        key = "gnome", label = SCB_L("RACE_GNOME", "Gnome"), faction = "Alliance",
+        male = { 0.5, 0.75, 0, 0.25 }, female = { 0.5, 0.75, 0.5, 0.75 },
+        classes = { warrior = true, rogue = true, mage = true, warlock = true },
+    },
+    {
+        key = "orc", label = SCB_L("RACE_ORC", "Orc"), faction = "Horde",
+        male = { 0.75, 1.0, 0.25, 0.5 }, female = { 0.75, 1.0, 0.75, 1.0 },
+        classes = { warrior = true, hunter = true, rogue = true, shaman = true, warlock = true },
+    },
+    {
+        key = "undead", label = SCB_L("RACE_UNDEAD", "Undead"), faction = "Horde",
+        male = { 0.25, 0.5, 0.25, 0.5 }, female = { 0.25, 0.5, 0.75, 1.0 },
+        classes = { warrior = true, rogue = true, priest = true, mage = true, warlock = true },
+    },
+    {
+        key = "tauren", label = SCB_L("RACE_TAUREN", "Tauren"), faction = "Horde",
+        male = { 0, 0.25, 0.25, 0.5 }, female = { 0, 0.25, 0.75, 1.0 },
+        classes = { warrior = true, hunter = true, shaman = true, druid = true },
+    },
+    {
+        key = "troll", label = SCB_L("RACE_TROLL", "Troll"), faction = "Horde",
+        male = { 0.5, 0.75, 0.25, 0.5 }, female = { 0.5, 0.75, 0.75, 1.0 },
+        classes = { warrior = true, hunter = true, rogue = true, priest = true, shaman = true, mage = true },
+    },
+}
+
+function SCB_FindAppearanceRace(raceKey)
+    local i, race
+    if not raceKey then return nil end
+    for i = 1, table.getn(SCB.APPEARANCE_RACES) do
+        race = SCB.APPEARANCE_RACES[i]
+        if race.key == raceKey then return race end
+    end
+    return nil
+end
+
+function SCB_GetAllowedAppearanceRaces(classKey)
+    local result = {}
+    local i, race
+    for i = 1, table.getn(SCB.APPEARANCE_RACES) do
+        race = SCB.APPEARANCE_RACES[i]
+        if race.classes and race.classes[classKey] then table.insert(result, race) end
+    end
+    return result
+end
+
+function SCB_IsAppearanceRaceToken(raceKey)
+    return SCB_FindAppearanceRace(raceKey) and true or false
+end
+
+function SCB_IsAppearanceRaceAllowed(classKey, raceKey)
+    local race = SCB_FindAppearanceRace(raceKey)
+    return race and race.classes and race.classes[classKey] and true or false
+end
+
+function SCB_IsAppearanceSexToken(sex)
+    return sex == "male" or sex == "female"
+end
+
+function SCB_EnsureAppearanceDB()
+    SoloCraftBotsDB = SoloCraftBotsDB or {}
+    if type(SoloCraftBotsDB.appearanceRules) ~= "table" then
+        SoloCraftBotsDB.appearanceRules = {}
+    end
+    return SoloCraftBotsDB.appearanceRules
+end
+
+function SCB_GetAppearanceRule(classKey, role)
+    local rules = SCB_EnsureAppearanceDB()
+    local rule = rules[tostring(classKey or "") .. ":" .. tostring(role or "")]
+    local race, sex
+    if type(rule) ~= "table" then return nil, nil end
+    race = rule.race
+    sex = rule.sex
+    if race and not SCB_IsAppearanceRaceAllowed(classKey, race) then race = nil end
+    if sex and not SCB_IsAppearanceSexToken(sex) then sex = nil end
+    return race, sex
+end
+
+function SCB_SetAppearanceRule(classKey, role, race, sex)
+    local rules
+    if not classKey or not role then return false end
+    if race and not SCB_IsAppearanceRaceAllowed(classKey, race) then return false end
+    if sex and not SCB_IsAppearanceSexToken(sex) then return false end
+
+    rules = SCB_EnsureAppearanceDB()
+    if not race and not sex then
+        rules[classKey .. ":" .. role] = nil
+    else
+        rules[classKey .. ":" .. role] = { race = race, sex = sex }
+    end
+    return true
+end
+
+function SCB_GetAppearanceRaceTextureCoords(raceKey, sex)
+    local race = SCB_FindAppearanceRace(raceKey)
+    local coords
+    if not race then return nil end
+    coords = sex == "female" and race.female or race.male
+    if not coords then return nil end
+    return coords[1], coords[2], coords[3], coords[4]
+end
+
 -- -------------------------------------------------------------------------
 -- Spawning
 -- -------------------------------------------------------------------------
 
 function SCB_BuildSpawnCommand(classKey, role, extra)
     local command = "add " .. classKey .. " " .. role
+    local race, sex
     if classKey == "paladin" then
         if extra == SCB.PALADIN_AUTO_BLESSING then extra = nil end
         if not extra or extra == "" then
@@ -1133,6 +1261,10 @@ function SCB_BuildSpawnCommand(classKey, role, extra)
     if extra and extra ~= "" then
         command = command .. " " .. extra
     end
+
+    race, sex = SCB_GetAppearanceRule(classKey, role)
+    if race then command = command .. " " .. race end
+    if sex then command = command .. " " .. sex end
     return command
 end
 
