@@ -3430,6 +3430,7 @@ end
 
 function SCB_RefreshAppearanceRuleRow(row)
     local race, sex, raceInfo, classInfo, roleInfo, raceLabel, sexLabel
+    local allowed, previewRace
     if not row then return end
     race, sex = SCB_GetAppearanceRule(row.classKey, row.role)
     raceInfo = SCB_FindAppearanceRace(race)
@@ -3440,8 +3441,10 @@ function SCB_RefreshAppearanceRuleRow(row)
         or (sex == "female" and SCB_L("SEX_FEMALE", "Female"))
         or SCB_L("APPEARANCE_RANDOM", "Random")
 
+    allowed = SCB_GetAllowedAppearanceRaces(row.classKey)
+    previewRace = race or (allowed[1] and allowed[1].key) or "human"
     SCB_SetAppearanceChoiceVisual(row.raceButton, race, "male", "?")
-    SCB_SetAppearanceChoiceVisual(row.sexButton, sex and (race or "human") or nil, sex, "?")
+    SCB_SetAppearanceChoiceVisual(row.sexButton, sex and previewRace or nil, sex, "?")
 
     row.raceButton.scbTooltip = string.format(
         SCB_L("TIP_APPEARANCE_RACE", "%s %s race: %s\nLeft/right click to change"),
@@ -3511,7 +3514,7 @@ function SCB_AppearanceSexOnClick()
 end
 
 function SCB_CreateAppearanceChoiceButton(parent, clickScript)
-    local button = SCB_CreateTextButton(parent, nil, 18, 18, "?")
+    local button = SCB_CreateTextButton(parent, nil, 18, 18, "?", true)
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
     icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
@@ -3526,7 +3529,7 @@ end
 
 function SCB_CreateAppearancePanel(panel)
     local toggle, appearance, classes, classInfo, roleEntry, roleInfo
-    local classIcon, roleIcon, raceButton, sexButton, row, divider
+    local classIcon, roleIcon, raceButton, sexButton, row
     local seenRoles, i, r, rowIndex
 
     toggle = SCB_CreateArtButton(panel, nil, 18, SCB.assetRoot .. "lucide_wand_sparkles.tga")
@@ -3598,12 +3601,6 @@ function SCB_CreateAppearancePanel(panel)
     end
 
     appearance:SetHeight(10 + (rowIndex * 18))
-    divider = appearance:CreateTexture(nil, "ARTWORK")
-    divider:SetWidth(1)
-    divider:SetPoint("TOP", appearance, "TOP", 0, -4)
-    divider:SetPoint("BOTTOM", appearance, "BOTTOM", 0, 4)
-    divider:SetTexture(0.45, 0.45, 0.45, 0.35)
-    divider:Hide()
 
     SCB_RefreshAppearancePanel()
 end
