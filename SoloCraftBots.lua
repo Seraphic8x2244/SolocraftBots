@@ -1175,10 +1175,13 @@ end
 
 function SCB_GetAllowedAppearanceRaces(classKey)
     local result = {}
+    local faction = SCB_GetPlayerFaction()
     local i, race
     for i = 1, table.getn(SCB.APPEARANCE_RACES) do
         race = SCB.APPEARANCE_RACES[i]
-        if race.classes and race.classes[classKey] then table.insert(result, race) end
+        if race.classes and race.classes[classKey] and race.faction == faction then
+            table.insert(result, race)
+        end
     end
     return result
 end
@@ -1189,7 +1192,9 @@ end
 
 function SCB_IsAppearanceRaceAllowed(classKey, raceKey)
     local race = SCB_FindAppearanceRace(raceKey)
-    return race and race.classes and race.classes[classKey] and true or false
+    local faction = SCB_GetPlayerFaction()
+    return race and race.faction == faction
+        and race.classes and race.classes[classKey] and true or false
 end
 
 function SCB_IsAppearanceSexToken(sex)
@@ -1206,7 +1211,8 @@ end
 
 function SCB_GetAppearanceRule(classKey, role)
     local rules = SCB_EnsureAppearanceDB()
-    local rule = rules[tostring(classKey or "") .. ":" .. tostring(role or "")]
+    local faction = SCB_GetPlayerFaction() or "Unknown"
+    local rule = rules[faction .. ":" .. tostring(classKey or "") .. ":" .. tostring(role or "")]
     local race, sex
     if type(rule) ~= "table" then return nil, nil end
     race = rule.race
@@ -1217,16 +1223,17 @@ function SCB_GetAppearanceRule(classKey, role)
 end
 
 function SCB_SetAppearanceRule(classKey, role, race, sex)
-    local rules
+    local rules, faction
     if not classKey or not role then return false end
     if race and not SCB_IsAppearanceRaceAllowed(classKey, race) then return false end
     if sex and not SCB_IsAppearanceSexToken(sex) then return false end
 
     rules = SCB_EnsureAppearanceDB()
+    faction = SCB_GetPlayerFaction() or "Unknown"
     if not race and not sex then
-        rules[classKey .. ":" .. role] = nil
+        rules[faction .. ":" .. classKey .. ":" .. role] = nil
     else
-        rules[classKey .. ":" .. role] = { race = race, sex = sex }
+        rules[faction .. ":" .. classKey .. ":" .. role] = { race = race, sex = sex }
     end
     return true
 end
