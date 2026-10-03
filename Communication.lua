@@ -2515,7 +2515,7 @@ function SCB_HandleRaidInfoRefreshEvent()
 end
 
 function SCB_TargetIsBossCorpse()
-    local dead, classification, level
+    local dead, classification
     if not UnitExists or not UnitExists("target") then return false end
 
     if UnitIsDeadOrGhost then
@@ -2526,8 +2526,7 @@ function SCB_TargetIsBossCorpse()
     if not dead then return false end
 
     classification = UnitClassification and UnitClassification("target") or nil
-    level = UnitLevel and UnitLevel("target") or nil
-    return classification == "worldboss" or level == -1
+    return classification == "worldboss"
 end
 
 function SCB_IsLootWindowOpen()
