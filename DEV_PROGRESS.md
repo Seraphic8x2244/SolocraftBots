@@ -6,9 +6,9 @@
 - Branch: `dev`
 - TOC version: `0.9.16-dev`
 - Current implementation head: `1183385fcdc17b2a2156f36849c8399e13054790`
-- Current handoff/status head before this acceptance checkpoint: `7146622cd6811c73c3f87d2ad5a99dc0ec27a0c0`
+- Current handoff/status head before this release checkpoint: `2dde4a7759e5b6b7d4076cfc449fcaea2995d5ff`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. `dev` is now `0.9.16-dev`; Preset Manager Appearance is accepted and the Wisdom gate correction is accepted without a sub-30 addon retest. Stable `main` has not changed.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. Release source is current `0.9.16-dev`: Appearance is USER TESTED PASS; the Wisdom level-30 correction is USER ACCEPTED without a direct sub-30 addon retest. `dev` remains `0.9.16-dev` for the next slice.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -572,6 +572,17 @@ Exact `0.8.92-dev` baseline:
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment.
 - Current addon work has since advanced to `0.9.15-dev` on `dev` for Preset Manager Appearance; stable `0.9.9` remains released on `main`. Auto Blessing Send/receive persistence and Request execution are USER TESTED PASS; Auto Blessing validation is closed.
 
+## 0.9.16 release
+- User explicitly authorized promotion of the current accepted dev state to stable using the established release rules.
+- Release source product: `0.9.16-dev` implementation `1183385fcdc17b2a2156f36849c8399e13054790`; later dev commits through `2dde4a7759e5b6b7d4076cfc449fcaea2995d5ff` are documentation/status only.
+- Preset Manager Appearance is USER TESTED PASS / accepted. The SoloCraft Blessing of Wisdom minimum-level correction (`BoW = 30`) is USER ACCEPTED based on observed server behavior but was not directly re-tested on a sub-30 character before release.
+- Stable promotion commit: `03ea60a90b79a29d726c627f7b833ec673251cb6`; stable TOC is `SoloCraft Bots` / `0.9.16`.
+- Promotion used the established snapshot method with prior stable `main` `b374655e145bc0626e5fe112ec9098b96cae0617` as parent; diverged branch histories were not merged.
+- Stable tree audit PASS: compared with current dev, the only root differences are stable `SoloCraftBots.toc` metadata plus omission of `DEV_PROGRESS.md` and `dev_rulebook.md`. All product Lua, locale, artwork and supporting files match the dev snapshot.
+- `Activity.lua` is included in stable and loaded before the runtime owners exactly as on dev.
+- Exact stable metadata/tree was not separately runtime-tested after promotion; runtime behavior inherits the accepted dev source. The documented Wisdom sub-30 validation debt remains unchanged.
+- Canonical Lua 5.0.3 compiler check remains not run/unavailable for this slice; do not infer a compiler pass from the release audit.
+
 ## 0.9.9 release
 - User explicitly accepted the current Auto Blessing state as stable and authorized promotion so Send/receive can be tested on stable clients.
 - Tested/accepted runtime implementation: `0.9.9-dev` at `80464531d7065762d78c7b474f3ab1942297503b`. Later dev commits through `48b604ad808fed523fe7d07da3ebbdb45b8e5e1b` changed only `DEV_PROGRESS.md`.
@@ -583,4 +594,4 @@ Exact `0.8.92-dev` baseline:
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment; no GitHub Actions workflow is configured for this release.
 
 ## Release note
-`0.9.9` is the current stable release on `main`. Paladin Auto Blessing preset-save, Send/receive and Request paths are USER TESTED PASS; `dev` is `0.9.16-dev`: the neutral read-only activity/status surface is **USER TESTED PASS**, Preset Manager Appearance is **USER TESTED PASS / accepted**, the SoloCraft Wisdom minimum-level correction is **USER ACCEPTED without a sub-30 addon retest**, and the visualiser has not started.
+`0.9.16` is the current stable release on `main` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The neutral read-only activity/status surface and Preset Manager Appearance are USER TESTED PASS / accepted. The SoloCraft Wisdom minimum-level correction is released as USER ACCEPTED without a sub-30 addon retest. `dev` remains `0.9.16-dev`; the visualiser has not started and is the next available slice.
