@@ -6,9 +6,9 @@
 - Branch: `dev`
 - TOC version: `0.9.16-dev`
 - Current implementation head: `1183385fcdc17b2a2156f36849c8399e13054790`
-- Current handoff/status head before this Wisdom checkpoint: `1183385fcdc17b2a2156f36849c8399e13054790`
+- Current handoff/status head before this acceptance checkpoint: `7146622cd6811c73c3f87d2ad5a99dc0ec27a0c0`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. `dev` is now `0.9.15-dev` for Preset Manager Appearance; stable `main` has not changed.
+- Stable `main`: `0.9.9` at `b374655e145bc0626e5fe112ec9098b96cae0617`; runtime source is the user-tested/accepted `0.9.9-dev` implementation `80464531d7065762d78c7b474f3ab1942297503b`. `dev` is now `0.9.16-dev`; Preset Manager Appearance is accepted and the Wisdom gate correction is accepted without a sub-30 addon retest. Stable `main` has not changed.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,14 +17,14 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: **runtime validate Preset Manager Appearance plus the Wisdom gate correction on `0.9.16-dev` at implementation head `1183385fcdc17b2a2156f36849c8399e13054790`**. Confirm clean reload, Appearance drawer geometry, Race/Sex cycling and persistence, a preset summon applying the selected appearance, one extra-bearing class retaining its existing extra while applying appearance, and that Auto/manual Blessing of Wisdom is unavailable below level 30 but available at level 30+. The visualiser remains deferred until Appearance is accepted. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
+- Immediate goal / exact next step: Preset Manager Appearance is **USER TESTED PASS / accepted**. The SoloCraft Wisdom threshold correction is **USER ACCEPTED** based on the observed server behavior and the narrow one-value change; no sub-30 character is currently available for an addon retest, so do not label that correction USER TESTED. The visualiser may now proceed as the next development slice when selected. Rare timeout/wrong-actor/mismatch cases remain opportunistic observations, not release blockers.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
 - Narrow correction at implementation head `1183385fcdc17b2a2156f36849c8399e13054790`: `SCB.PALADIN_BLESSING_MIN_LEVEL.BoW` changed from 14 to 30. No other blessing threshold changed.
 - This intentionally models observed SoloCraft PartyBot capability rather than generic Vanilla spell-learning level.
 - Expected effect: Auto Blessing allocation, manual preset blessing availability, main Paladin blessing selection, Request capability validation and execution all inherit the corrected level-30 gate through the existing shared availability functions.
-- Runtime state: **NOT YET RETESTED on 0.9.16-dev**. The user evidence motivating the change is accepted; addon behavior after the code correction still needs a smoke check.
+- Runtime state: **USER ACCEPTED without direct sub-30 addon retest**. The server behavior motivating the change was observed by the user, and the implementation delta is only `BoW = 14` -> `BoW = 30`. A sub-30 character is not currently available, so this must not be recorded as USER TESTED PASS.
 
 ## 0.9.15-dev Preset Manager Appearance
 - Scope explicitly switched by the user after the `0.9.11-dev` activity/status surface was runtime-accepted. Appearance is implemented; the visualiser has not started.
@@ -39,7 +39,7 @@
 - Server syntax assumption is based on SoloCraft's documented optional tokens: `human/dwarf/nightelf/gnome/orc/undead/tauren/troll` plus `male/female`; either dimension may be omitted and remains random.
 - Static/diff review **PASS**: `fd9b974983a5d6d073330d28ddef31a688211af4` -> `6223992ca83f06a351ea308c4271d073263adc2a` changes only `Locale/enGB.lua`, `Presets.lua`, `SoloCraftBots.lua`, `SoloCraftBots.toc`, and `Spawn.lua`; no protocol file or visualiser work changed. TOC is `0.9.15-dev`; stable `main` remains `0.9.9`.
 - Static compatibility inspection found no introduced `#` length syntax or `goto`. The canonical Lua 5.0.3 compiler check is **NOT RUN / unavailable in the current executable environment**; do not treat static inspection as a compiler pass.
-- Runtime state: **NOT RUNTIME TESTED**. Exact next test is the Appearance smoke described in Current above.
+- Runtime state: **USER TESTED PASS on `0.9.15-dev` appearance implementation `6223992ca83f06a351ea308c4271d073263adc2a`**. The user confirmed the Appearance feature works in game, including applying configured race/sex to spawned bots. The later `0.9.16-dev` product delta changes only the Blessing of Wisdom minimum-level value plus TOC metadata; Appearance behavior itself is unchanged and accepted.
 
 ## 0.9.11-dev neutral activity/status surface
 - Implementation commits: `cb10d9dd71a826c393d0414d2d4d86a61360d7e9` introduced the surface and four domain publishers; `c18c8384023c6db12d8cfd2b25be4429da06d87e` completed progress publication and static-review corrections.
@@ -545,8 +545,8 @@ Exact `0.8.92-dev` baseline:
 
 ## Planned / later
 - Neutral read-only activity/status surface: **IMPLEMENTED and USER TESTED PASS on `dev` at `0.9.11-dev`; accepted before visualiser work.**
-- Preset Manager Appearance: **IMPLEMENTED on `dev` at `0.9.15-dev`; runtime validation is the active next step.**
-- Visualiser remains deferred until the current Appearance slice is runtime-accepted; when resumed it must remain a presentation-only consumer of the accepted activity/status surface.
+- Preset Manager Appearance: **USER TESTED PASS / accepted**. Implementation was tested at `0.9.15-dev` / `6223992ca83f06a351ea308c4271d073263adc2a`; the `0.9.16-dev` delta does not alter Appearance behavior.
+- Visualiser may now proceed as the next slice and must remain a presentation-only consumer of the accepted activity/status surface.
 - Remove only proven-dead legacy refill/compatibility code after runtime proof.
 - Historical regression debt: dungeon -> 10-player scope retest; Replace Dead focused smoke; investigate dead-state observation only if the old omitted-dead-bot case recurs.
 
@@ -583,4 +583,4 @@ Exact `0.8.92-dev` baseline:
 - Canonical Lua 5.0.3 compiler check remains **not run/unavailable** in the current executable environment; no GitHub Actions workflow is configured for this release.
 
 ## Release note
-`0.9.9` is the current stable release on `main`. Paladin Auto Blessing preset-save, Send/receive and Request paths are USER TESTED PASS; `dev` is `0.9.16-dev`: the neutral read-only activity/status surface is **USER TESTED PASS**, Preset Manager Appearance is **IMPLEMENTED / runtime pending**, the SoloCraft Wisdom minimum-level correction is implemented / runtime pending, and the visualiser has not started.
+`0.9.9` is the current stable release on `main`. Paladin Auto Blessing preset-save, Send/receive and Request paths are USER TESTED PASS; `dev` is `0.9.16-dev`: the neutral read-only activity/status surface is **USER TESTED PASS**, Preset Manager Appearance is **USER TESTED PASS / accepted**, the SoloCraft Wisdom minimum-level correction is **USER ACCEPTED without a sub-30 addon retest**, and the visualiser has not started.
