@@ -22,6 +22,95 @@ local function SelfName()
     return (UnitName and UnitName("player")) or ""
 end
 
+local function SCB_CommunicationModeName(mode)
+    if mode == "S" then return "send" end
+    if mode == "R" then return "request" end
+    return tostring(mode or "")
+end
+
+local function SCB_AppendCommunicationActivity(activities, direction, mode, phase, peer, tx, current, total, acknowledged)
+    local item = {
+        direction = direction,
+        mode = SCB_CommunicationModeName(mode),
+        phase = phase or "active",
+        peer = peer,
+        transaction = tx,
+    }
+    if current ~= nil then item.current = current end
+    if total ~= nil then item.total = total end
+    if acknowledged ~= nil then item.acknowledged = acknowledged and true or false end
+    table.insert(activities, item)
+end
+
+local function SCB_PublishCommunicationActivity(lastResult)
+    local activities, assemblyKeys = {}, {}
+    local out, incoming, key, assembly, offer
+    local total, current
+
+    if not SCB_PublishActivityStatus then return end
+
+    out = SCB.commOutgoing and SCB.commOutgoing.S or nil
+    if out then
+        total = out.chunks and table.getn(out.chunks) or nil
+        current = total and math.min((out.nextChunk or 1) - 1, total) or nil
+        SCB_AppendCommunicationActivity(activities, "outgoing", "S", out.phase, out.target, out.tx, current, total, out.acknowledged)
+    end
+
+    out = SCB.commOutgoing and SCB.commOutgoing.R or nil
+    if out then
+        total = out.chunks and table.getn(out.chunks) or nil
+        current = total and math.min((out.nextChunk or 1) - 1, total) or nil
+        SCB_AppendCommunicationActivity(activities, "outgoing", "R", out.phase, out.target, out.tx, current, total, out.acknowledged)
+    end
+
+    incoming = SCB.commPromptTransaction
+    if incoming and not incoming.done then
+        SCB_AppendCommunicationActivity(
+            activities,
+            "incoming",
+            incoming.mode,
+            incoming.phase or "prompt",
+            incoming.sender,
+            incoming.tx
+        )
+    end
+
+    for key, assembly in pairs(SCB.commAssemblies or {}) do
+        assemblyKeys[key] = true
+        SCB_AppendCommunicationActivity(
+            activities,
+            "incoming",
+            assembly.mode,
+            "receiving",
+            assembly.sender,
+            assembly.tx,
+            assembly.received or 0,
+            assembly.total
+        )
+    end
+
+    for key, offer in pairs(SCB.commOffers or {}) do
+        if not assemblyKeys[key] then
+            SCB_AppendCommunicationActivity(
+                activities,
+                "incoming",
+                offer.mode,
+                "offered",
+                offer.sender,
+                offer.tx
+            )
+        end
+    end
+
+    SCB_PublishActivityStatus("communication", {
+        active = table.getn(activities) > 0,
+        status = table.getn(activities) > 0 and "active" or (lastResult or "idle"),
+        phase = table.getn(activities) > 0 and "active" or "idle",
+        activityCount = table.getn(activities),
+        activities = activities,
+    })
+end
+
 local function GroupHasName(name)
     local members, i
     if not name or name == "" then return false end
@@ -208,6 +297,7 @@ local function ClearOutgoing(mode, status)
     if not out then return end
     SCB.commOutgoing[mode] = nil
     SCB_CommsSetButtonPending(mode, false)
+    SCB_PublishCommunicationActivity(status)
     if status == "SAVED" then
         SCB_Print(string.format(SCB_L("COMM_SAVED"), out.target))
     elseif status == "SUMMONED" then
@@ -251,6 +341,7 @@ local function BuildChunks(out)
     out.nextChunk = 1
     out.chunkElapsed = 0
     out.phase = "sending"
+    SCB_PublishCommunicationActivity()
 end
 
 local function BeginHandshake(out)
@@ -260,6 +351,7 @@ local function BeginHandshake(out)
     out.handshakeDone = nil
     out.acknowledged = nil
     out.deadline = Now() + COMM_TIMEOUT
+    SCB_PublishCommunicationActivity()
 end
 
 local function BeginOutgoing(mode, target, snapshot)
@@ -477,6 +569,7 @@ function SCB_CommsShowPrompt(incoming)
     local snapshot = incoming.snapshot
     local counts = snapshot.roleCounts or {}
     SCB.commPromptTransaction = incoming
+    incoming.phase = incoming.phase or "prompt"
     if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
     if incoming.mode == "S" then
         frame.title:SetText(string.format(SCB_L("COMM_PROMPT_SEND"), incoming.sender))
@@ -492,6 +585,7 @@ function SCB_CommsShowPrompt(incoming)
     frame.roleCounts.rangedps:SetText(tostring(counts.rangedps or 0))
     frame:Show()
     frame:Raise()
+    SCB_PublishCommunicationActivity()
 end
 
 local function FinishIncoming(incoming, status)
@@ -506,6 +600,7 @@ local function FinishIncoming(incoming, status)
         SCB.pendingReceivedSave = nil
         if StaticPopup_Hide then StaticPopup_Hide("SOLOCRAFTBOTS_RECEIVED_PRESET_NAME") end
     end
+    SCB_PublishCommunicationActivity(status)
 end
 
 local function FindOrCreateSnapshotGroup(snapshot)
@@ -632,6 +727,7 @@ local function SCB_CommsStartAcceptedRequest(incoming)
         incoming.controlLeader = nil
         incoming.phase = "converting"
         incoming.deadline = Now() + COMM_TIMEOUT
+        SCB_PublishCommunicationActivity()
         ConvertToRaid()
         if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
         return true
@@ -661,6 +757,7 @@ local function SCB_CommsRequestLeaderAction(incoming, action)
         return false
     end
     incoming.deadline = Now() + COMM_TIMEOUT
+    SCB_PublishCommunicationActivity()
     if not SendControl("L", incoming.tx, leaderName, action) then
         incoming.controlLeader = nil
         return false
@@ -701,8 +798,10 @@ function SCB_CommsPromptAccept()
     if not incoming or incoming.done then return end
     if incoming.mode == "S" then
         incoming.defaultSaveName = incoming.sender .. "-" .. (incoming.snapshot.presetName or "Preset")
+        incoming.phase = "save-name"
         SCB.pendingReceivedSave = incoming
         if SCB.commPromptFrame then SCB.commPromptFrame:Hide() end
+        SCB_PublishCommunicationActivity()
         StaticPopup_Show("SOLOCRAFTBOTS_RECEIVED_PRESET_NAME")
         return
     end
@@ -720,8 +819,10 @@ function SCB_CommsPromptAccept()
         return
     end
     incoming.requestAccepted = true
+    incoming.phase = "accepted"
     incoming.deadline = Now() + COMM_TIMEOUT
     if SCB.commPromptFrame then SCB.commPromptFrame:Hide() end
+    SCB_PublishCommunicationActivity()
     SCB_CommsContinueAcceptedRequest(incoming)
 end
 
@@ -783,6 +884,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             sender = sender, tx = tx, mode = offerMode,
             deadline = Now() + COMM_TIMEOUT,
         }
+        SCB_PublishCommunicationActivity()
         if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
         SendControl("H", tx, sender, "READY")
         return
@@ -822,10 +924,12 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
             assembly.received = assembly.received + 1
         end
         assembly.deadline = Now() + COMM_TIMEOUT
+        SCB_PublishCommunicationActivity()
         if assembly.received == assembly.total then
             SCB.commAssemblies[key] = nil
             SCB.commOffers[key] = nil
             CompleteAssembly(assembly)
+            SCB_PublishCommunicationActivity()
         end
         return
     end
@@ -838,6 +942,7 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
                 end
                 out.acknowledged = true
                 out.deadline = Now() + COMM_TIMEOUT
+                SCB_PublishCommunicationActivity()
             end
         end
         return
@@ -909,6 +1014,7 @@ commFrame:SetScript("OnUpdate", function()
     local elapsed = arg1 or 0
     local now = Now()
     local mode, out, packet, key, assembly, incoming, offer
+    local communicationChanged
 
     for mode, out in pairs(SCB.commOutgoing) do
         if out then
@@ -927,19 +1033,30 @@ commFrame:SetScript("OnUpdate", function()
                     packet = "C:" .. out.tx .. ":" .. out.target .. ":" .. out.mode .. ":" .. out.nextChunk .. ":" .. table.getn(out.chunks) .. ":" .. out.chunks[out.nextChunk]
                     SendRaw(packet)
                     out.nextChunk = out.nextChunk + 1
-                    if out.nextChunk > table.getn(out.chunks) then out.phase = "waiting" end
+                    SCB_PublishCommunicationActivity()
+                    if out.nextChunk > table.getn(out.chunks) then
+                        out.phase = "waiting"
+                        SCB_PublishCommunicationActivity()
+                    end
                 end
             end
         end
     end
 
     for key, offer in pairs(SCB.commOffers) do
-        if now >= offer.deadline then SCB.commOffers[key] = nil end
+        if now >= offer.deadline then
+            SCB.commOffers[key] = nil
+            communicationChanged = true
+        end
     end
 
     for key, assembly in pairs(SCB.commAssemblies) do
-        if now >= assembly.deadline then SCB.commAssemblies[key] = nil end
+        if now >= assembly.deadline then
+            SCB.commAssemblies[key] = nil
+            communicationChanged = true
+        end
     end
+    if communicationChanged then SCB_PublishCommunicationActivity("timeout") end
 
     incoming = SCB.commPromptTransaction
     if incoming and not incoming.done then
@@ -1154,6 +1271,39 @@ SCB.commands = {
         routes = { all = { "attackstop" } },
     },
 }
+
+local function SCB_PublishCommandActivity(state, finalStatus)
+    local total, current
+    if not SCB_PublishActivityStatus then return end
+
+    total = state and state.bots and table.getn(state.bots) or nil
+    current = state and tonumber(state.index) or nil
+    if current and total and current > total then current = total end
+
+    SCB_PublishActivityStatus("command", {
+        active = state ~= nil and finalStatus == nil,
+        status = finalStatus or (state and "active" or "idle"),
+        action = state and state.commandKey or nil,
+        scope = state and state.scope or nil,
+        phase = finalStatus or (state and state.phase) or "idle",
+        recipient = state and state.currentName or nil,
+        current = current,
+        total = total,
+    })
+end
+
+local function SCB_PublishInstantCommandActivity(commandKey, scope, status)
+    if not SCB_PublishActivityStatus then return end
+    if SCB.targetedCommandState or SCB.pauseHealerCommandState then return end
+    SCB_PublishActivityStatus("command", {
+        active = false,
+        status = status or "sent",
+        action = commandKey,
+        scope = scope,
+        phase = status or "sent",
+        recipient = scope == "target" and UnitName and UnitName("target") or nil,
+    })
+end
 
 function SCB_IsFriendlyBotTarget()
     local name
@@ -1456,9 +1606,12 @@ local function SCB_RestoreTargetedOriginalTarget(state)
     if member and member.unit then TargetUnit(member.unit) end
 end
 
-local function SCB_FinishTargetedCommandSequence()
+local function SCB_FinishTargetedCommandSequence(status)
     local state = SCB.targetedCommandState
-    if state then SCB_RestoreTargetedOriginalTarget(state) end
+    if state then
+        SCB_RestoreTargetedOriginalTarget(state)
+        SCB_PublishCommandActivity(state, status or "complete")
+    end
     SCB.targetedCommandState = nil
     if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
 end
@@ -1473,7 +1626,7 @@ local function SCB_FailGroupTargetedCommand()
         ))
         if PlaySound then PlaySound("igQuestFailed") end
     end
-    SCB_FinishTargetedCommandSequence()
+    SCB_FinishTargetedCommandSequence("failed")
 end
 
 local function SCB_FailSingleTargetCommand()
@@ -1486,6 +1639,7 @@ local function SCB_FailSingleTargetCommand()
         ))
         if PlaySound then PlaySound("igQuestFailed") end
     end
+    if state then SCB_PublishCommandActivity(state, "failed") end
     SCB.targetedCommandState = nil
     if SCB.targetedCommandFrame then SCB.targetedCommandFrame:Hide() end
 end
@@ -1522,12 +1676,14 @@ local function SCB_SelectCurrentGroupRecipient()
                     state.currentName = name
                     state.phase = "settle"
                     state.phaseElapsed = 0
+                    SCB_PublishCommandActivity(state)
                     return true
                 end
             else
                 state.currentName = name
                 state.phase = "settle"
                 state.phaseElapsed = 0
+                SCB_PublishCommandActivity(state)
                 return true
             end
         else
@@ -1585,6 +1741,7 @@ local function SCB_SendCurrentTargetedCommands()
     if not SCB_TargetedCommandBudgetAllows(table.getn(state.commands or {})) then
         state.phase = "budget"
         state.phaseElapsed = 0
+        SCB_PublishCommandActivity(state)
         return
     end
 
@@ -1597,6 +1754,7 @@ local function SCB_SendCurrentTargetedCommands()
             SCB_RecordTargetedCommandSend()
         end
     end
+    SCB_PublishCommandActivity(state)
 end
 
 local function SCB_ResolveTargetedAttempt(state)
@@ -1701,6 +1859,7 @@ function SCB_QueueSingleTargetCommand(commandKey, forceMove)
     for i = 1, table.getn(commands or {}) do
         SCB_SendCommand(commands[i])
     end
+    SCB_PublishInstantCommandActivity(commandKey, "target", "sent")
     return true
 end
 
@@ -1729,6 +1888,8 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
 
     SCB.targetedCommandState = {
         mode = "group",
+        commandKey = commandKey,
+        scope = "group",
         group = group,
         bots = bots,
         commands = commands,
@@ -1789,9 +1950,12 @@ local function SCB_RestorePauseHealersOriginalTarget(state)
     end
 end
 
-local function SCB_FinishPauseHealersSequence()
+local function SCB_FinishPauseHealersSequence(status)
     local state = SCB.pauseHealerCommandState
-    if state then SCB_RestorePauseHealersOriginalTarget(state) end
+    if state then
+        SCB_RestorePauseHealersOriginalTarget(state)
+        SCB_PublishCommandActivity(state, status or "complete")
+    end
     SCB.pauseHealerCommandState = nil
     if SCB.pauseHealerCommandFrame then SCB.pauseHealerCommandFrame:Hide() end
 end
@@ -1806,7 +1970,7 @@ local function SCB_FailPauseHealersSequence()
         ))
         if PlaySound then PlaySound("igQuestFailed") end
     end
-    SCB_FinishPauseHealersSequence()
+    SCB_FinishPauseHealersSequence("failed")
 end
 
 local function SCB_SelectCurrentPauseHealerRecipient()
@@ -1841,6 +2005,7 @@ local function SCB_SelectCurrentPauseHealerRecipient()
                     state.phase = "settle"
                     state.phaseDelay = settleDelay
                     state.phaseElapsed = 0
+                    SCB_PublishCommandActivity(state)
                     return true
                 end
             else
@@ -1851,6 +2016,7 @@ local function SCB_SelectCurrentPauseHealerRecipient()
                 state.phase = "settle"
                 state.phaseDelay = settleDelay
                 state.phaseElapsed = 0
+                SCB_PublishCommandActivity(state)
                 return true
             end
         else
@@ -1902,6 +2068,7 @@ local function SCB_SendCurrentPauseHealerCommand()
     if not SCB_TargetedCommandBudgetAllows(table.getn(state.commands or {})) then
         state.phase = "budget"
         state.phaseElapsed = 0
+        SCB_PublishCommandActivity(state)
         return
     end
 
@@ -1916,6 +2083,7 @@ local function SCB_SendCurrentPauseHealerCommand()
             SCB_RecordTargetedCommandSend()
         end
     end
+    SCB_PublishCommandActivity(state)
 end
 
 local function SCB_ResolvePauseHealerAttempt(state)
@@ -2014,6 +2182,8 @@ function SCB_QueuePauseHealersCommand(commandKey)
     if not SCB_TargetedCommandBudgetAllows(requiredCommands) then return false end
 
     SCB.pauseHealerCommandState = {
+        commandKey = commandKey,
+        scope = "healer",
         bots = bots,
         commands = commands,
         expectedAcks = expectedAcks,
@@ -2085,6 +2255,7 @@ function SCB_RequestCommand(commandKey, scope, modifiers)
     for i = 1, table.getn(route) do
         if not SCB_SendCommand(route[i]) then sent = false end
     end
+    SCB_PublishInstantCommandActivity(commandKey, scope, sent and "sent" or "failed")
     return sent
 end
 

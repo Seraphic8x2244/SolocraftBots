@@ -1,13 +1,14 @@
 ## Interface: 11200
 ## Title: SoloCraft Bots
 ## Notes: Compact SoloCraft PartyBot control panel.
-## Version: 0.9.9
+## Version: 0.9.16
 ## SavedVariables: SoloCraftBotsDB
 ## SavedVariablesPerCharacter: SoloCraftBotsCharDB
 
 Locale\enGB.lua
 Locale\enUS.lua
 Locale\Chat.lua
+Activity.lua
 SoloCraftBots.lua
 Presets.lua
 Roster.lua
