@@ -28,7 +28,7 @@
   - Vanilla exposes `UPDATE_INSTANCE_INFO` after `RequestRaidInfo()`; use that action-driven refresh instead of boss/NPC death scanning.
   - ZG is explicitly included in `SCB_IsT3RaidLocation()` with AQ20/MC/Onyxia/BWL/AQ40/Naxx.
   - Full preset Summon already supports empty T3 raid bootstrap/party->raid conversion. Replace Dead maintenance does not currently ensure raid topology before replacement bursts, so a full teardown can strand it in a 5-man party.
-- Agreed policy:
+- Proposed policy / current design direction (not yet accepted wholesale by the user):
   - Do not monitor boss deaths or scan NPC deaths in the background.
   - Final-bot removal decisions are made from explicit user actions.
   - Kick All / removal actions that need an instance-safety decision should call `RequestRaidInfo()`, wait for `UPDATE_INSTANCE_INFO` (with a bounded conservative timeout), then evaluate the fresh saved-ID state.
@@ -41,10 +41,10 @@
   - When enabled and the player is the only real human, removal of the final bot is allowed only when all are true: fresh saved Raid ID is valid; a boss corpse is currently targeted; loot window is currently open.
   - Otherwise keep one bot. There is no second-click override while Loot Safe is enabled; disabling the option is the explicit override.
   - Loot state must be re-evaluated immediately before physical final-bot removal after the asynchronous Raid-ID refresh, not only when the button was first clicked.
-  - Recommended default: OFF, preserving existing user agency unless the user explicitly enables protection.
+  - User correction: Loot Safe should default **ON**. Disabling it is the explicit opt-out; with it disabled, loot loss from an intentional Kick All remains user responsibility.
 - Reuse one shared "can remove final bot?" decision seam for Kick All and maintenance rather than adding ZG-specific branches.
 - Runtime tests for this slice should cover: ZG no-ID Kick All survivor; ZG post-boss fresh-ID Kick All removes all bots; solo Loot Safe blocks final removal without boss+loot-open; solo Loot Safe allows final removal with boss corpse targeted + loot open + valid ID; 2-human path bypasses Loot Safe restriction; Replace Dead after full wipe rebuilds through T3 bootstrap and converts to raid before continuing past the first party.
-- No implementation has started yet. Visualiser remains deferred until this slice is resolved.
+- No implementation has started yet. The broader design above remains proposed rather than fully accepted; only the Loot Safe default-ON correction is explicitly confirmed in this checkpoint. Visualiser remains deferred until this slice is resolved.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
