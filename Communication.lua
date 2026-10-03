@@ -2424,6 +2424,116 @@ function SCB_GetSavedRaidDecision()
     return false, "nomatch", zoneName, nil, nil, count
 end
 
+SCB.RAID_INFO_REFRESH_TIMEOUT = 2.5
+
+function SCB_MakeFinalRemovalDecision(fresh, overrideReason)
+    local matched, reason, zoneName, savedID, reset, count
+    if not fresh then
+        return {
+            scbFinalRemovalDecision = true,
+            fresh = false,
+            matched = false,
+            reason = overrideReason or "timeout",
+            zoneName = (GetRealZoneText and GetRealZoneText()) or "",
+            savedID = nil,
+            reset = nil,
+            count = 0,
+        }
+    end
+
+    matched, reason, zoneName, savedID, reset, count = SCB_GetSavedRaidDecision()
+    return {
+        scbFinalRemovalDecision = true,
+        fresh = true,
+        matched = matched and true or false,
+        reason = reason,
+        zoneName = zoneName,
+        savedID = savedID,
+        reset = reset,
+        count = count or 0,
+    }
+end
+
+function SCB_FinishFinalRemovalRaidInfo(decision)
+    local pending = SCB.finalRemovalRaidInfoPending
+    if not pending then return end
+
+    SCB.finalRemovalRaidInfoPending = nil
+    if SCB.finalRemovalRaidInfoFrame then
+        SCB.finalRemovalRaidInfoFrame:SetScript("OnUpdate", nil)
+        SCB.finalRemovalRaidInfoFrame:Hide()
+    end
+
+    if pending.callback then pending.callback(decision) end
+end
+
+function SCB_FinalRemovalRaidInfoOnUpdate()
+    local pending = SCB.finalRemovalRaidInfoPending
+    if not pending then
+        this:SetScript("OnUpdate", nil)
+        this:Hide()
+        return
+    end
+
+    pending.elapsed = (pending.elapsed or 0) + (arg1 or 0)
+    if pending.elapsed >= (SCB.RAID_INFO_REFRESH_TIMEOUT or 2.5) then
+        SCB_FinishFinalRemovalRaidInfo(SCB_MakeFinalRemovalDecision(false, "timeout"))
+    end
+end
+
+function SCB_RequestFinalBotRemovalDecision(callback)
+    local frame
+    if type(callback) ~= "function" then return false end
+    if SCB.finalRemovalRaidInfoPending then return false end
+
+    SCB.finalRemovalRaidInfoPending = {
+        callback = callback,
+        elapsed = 0,
+    }
+
+    if not SCB.finalRemovalRaidInfoFrame then
+        frame = CreateFrame("Frame", nil, UIParent)
+        frame:Hide()
+        SCB.finalRemovalRaidInfoFrame = frame
+    end
+    frame = SCB.finalRemovalRaidInfoFrame
+    frame:SetScript("OnUpdate", SCB_FinalRemovalRaidInfoOnUpdate)
+    frame:Show()
+
+    if not RequestRaidInfo then
+        SCB_FinishFinalRemovalRaidInfo(SCB_MakeFinalRemovalDecision(false, "api"))
+        return true
+    end
+
+    RequestRaidInfo()
+    return true
+end
+
+function SCB_HandleRaidInfoRefreshEvent()
+    if not SCB.finalRemovalRaidInfoPending then return end
+    SCB_FinishFinalRemovalRaidInfo(SCB_MakeFinalRemovalDecision(true))
+end
+
+function SCB_TargetIsBossCorpse()
+    local dead, classification, level
+    if not UnitExists or not UnitExists("target") then return false end
+
+    if UnitIsDeadOrGhost then
+        dead = UnitIsDeadOrGhost("target") and true or false
+    elseif UnitIsDead then
+        dead = UnitIsDead("target") and true or false
+    end
+    if not dead then return false end
+
+    classification = UnitClassification and UnitClassification("target") or nil
+    level = UnitLevel and UnitLevel("target") or nil
+    return classification == "worldboss" or level == -1
+end
+
+function SCB_IsLootWindowOpen()
+    return LootFrame and LootFrame:IsShown() and true or false
+end
+
 function SCB_CurrentRaidHasSavedID()
     local matched = SCB_GetSavedRaidDecision()
     return matched
@@ -2452,6 +2562,46 @@ local function SCB_PresetNeedsRetainedBootstrap()
     context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
     raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
     return size > 0 and size <= 5 and context and context.inInstance and raidCount == 0
+end
+
+function SCB_CanRemoveFinalBot(decision)
+    local observed = SCB_GetLiveRoster and SCB_GetLiveRoster(false) or nil
+    local otherHumans = SCB_CountOtherHumans and SCB_CountOtherHumans(observed) or 0
+    local context, currentZone
+
+    -- Another real player keeps both the group and any open loot state alive.
+    if otherHumans > 0 then return true, "other-human" end
+
+    if SCB_PresetNeedsRetainedBootstrap() then return false, "bootstrap" end
+
+    context = SCB_GetLocationContext and SCB_GetLocationContext() or nil
+    if not context then return false, "location" end
+
+    currentZone = (GetRealZoneText and GetRealZoneText()) or ""
+    if decision and decision.zoneName and decision.zoneName ~= "" and currentZone ~= decision.zoneName then
+        return false, "zone-changed"
+    end
+
+    -- Instance safety remains conservative unless this explicit removal action
+    -- received a fresh valid saved Raid ID.
+    if context.inInstance then
+        if not decision or not decision.fresh or not decision.matched then
+            return false, "instance"
+        end
+    end
+
+    SCB_EnsureOptionsDB()
+    if not SoloCraftBotsDB.options.lootSafe then return true, "loot-safe-off" end
+
+    -- Loot Safe is independent of the instance-retention check. With only one
+    -- real human, removing the final bot requires the fresh saved ID plus the
+    -- live boss-corpse target and open loot window at the moment of removal.
+    if not decision or not decision.fresh or not decision.matched then
+        return false, "loot-id"
+    end
+    if not SCB_TargetIsBossCorpse() then return false, "loot-target" end
+    if not SCB_IsLootWindowOpen() then return false, "loot-window" end
+    return true, "loot-safe"
 end
 
 function SCB_SurvivorSafetyRequired()
@@ -2525,6 +2675,16 @@ function SCB_ShowSafetyMessage(message)
     SCB.safetyMessageFrame:SetScript("OnUpdate", SCB_SafetyMessageOnUpdate)
 end
 
+function SCB_ShowFinalBotSafety(reason)
+    if reason and string.find(reason, "^loot") then
+        SCB_Print(SCB_L("LOOT_SAFE_CHAT"))
+        SCB_ShowSafetyMessage(SCB_L("LOOT_SAFE_MESSAGE"))
+    else
+        SCB_Print(SCB_L("SURVIVOR_CHAT"))
+        SCB_ShowSafetyMessage()
+    end
+end
+
 local SCB_KICK_BATCH_SIZE = 5
 local SCB_KICK_BATCH_INTERVAL = 0.10
 local SCB_kickQueueFrame = CreateFrame("Frame", nil, UIParent)
@@ -2552,7 +2712,7 @@ end
 
 local function SCB_RunKickQueueBatch()
     local state = SCB.kickQueueState
-    local sent, name = 0, nil
+    local sent, name, allowed, reason = 0, nil, nil, nil
     if not state or not state.active then
         SCB_FinishKickQueue()
         return
@@ -2561,9 +2721,30 @@ local function SCB_RunKickQueueBatch()
     while state.index <= table.getn(state.names) and sent < SCB_KICK_BATCH_SIZE do
         name = state.names[state.index]
         state.index = state.index + 1
-        UninviteByName(name)
-        state.issued = (state.issued or 0) + 1
-        sent = sent + 1
+
+        if state.finalBotName and name == state.finalBotName and state.finalRemovalDecision then
+            if SCB_CanRemoveFinalBot then
+                allowed, reason = SCB_CanRemoveFinalBot(state.finalRemovalDecision)
+            else
+                allowed, reason = false, "instance"
+            end
+
+            if not allowed then
+                state.safetyApplied = true
+                state.preservedName = name
+                state.finalSafetyReason = reason
+                if state.onFinalPreserved then state.onFinalPreserved(name, reason) end
+                if not state.silent and SCB_ShowFinalBotSafety then SCB_ShowFinalBotSafety(reason) end
+            else
+                UninviteByName(name)
+                state.issued = (state.issued or 0) + 1
+                sent = sent + 1
+            end
+        else
+            UninviteByName(name)
+            state.issued = (state.issued or 0) + 1
+            sent = sent + 1
+        end
     end
 
     if state.index > table.getn(state.names) then
@@ -2588,7 +2769,7 @@ local function SCB_KickQueueOnUpdate()
     SCB_RunKickQueueBatch()
 end
 
-local function SCB_StartKickQueue(names, mode, safetyApplied, silent)
+local function SCB_StartKickQueue(names, mode, safetyApplied, silent, finalRemovalDecision, finalBotName, onFinalPreserved)
     if table.getn(names or {}) == 0 then return true end
     if SCB_IsKickQueueActive() then return false end
 
@@ -2601,6 +2782,9 @@ local function SCB_StartKickQueue(names, mode, safetyApplied, silent)
         mode = mode,
         safetyApplied = safetyApplied and true or false,
         silent = silent and true or false,
+        finalRemovalDecision = finalRemovalDecision,
+        finalBotName = finalBotName,
+        onFinalPreserved = onFinalPreserved,
     }
     if SCB_RefreshManualAddButtons then SCB_RefreshManualAddButtons() end
 
@@ -2619,13 +2803,17 @@ end
 -- options.manageSafety: false when a higher-level coordinator already owns the survivor
 -- options.preserveName: explicit name to preserve
 -- options.silent: suppress normal kick-count chat (used by maintenance)
+-- options.finalRemovalDecision: fresh decision already owned by a maintenance coordinator
+-- options.onFinalPreserved: callback when the live last-moment guard retains a bot
 function SCB_KickBots(mode, options)
     local members
     if SCB_CanOperateBots and not SCB_CanOperateBots(not (options and options.silent)) then return false end
     members = SCB_CollectGroupMembers()
     local bots, candidates, kickNames = {}, {}, {}
     local otherHumans = 0
-    local i, member, survivorName, safetyApplied
+    local i, member, survivorName, safetyApplied, key, value
+    local finalRemovalRequested, finalRemovalAllowed, finalRemovalReason
+    local fallbackSurvivorName, deferredFinalName, finalBotName, raidDecision
     local names = options and options.names or nil
     if options and options.name then
         names = names or {}
@@ -2668,19 +2856,63 @@ function SCB_KickBots(mode, options)
         return false
     end
 
-    if manageSafety and otherHumans == 0 and SCB_SurvivorSafetyRequired() then
-        survivorName = SCB_FindGroupOneSurvivor(members)
-    else
-        survivorName = preserveName
+    finalRemovalRequested = otherHumans == 0
+        and table.getn(candidates) == table.getn(bots)
+        and not preserveName
+
+    raidDecision = options and (options.raidDecision or options.finalRemovalDecision) or nil
+    if finalRemovalRequested and manageSafety
+        and (not raidDecision or not raidDecision.scbFinalRemovalDecision) then
+        local retryOptions = {}
+        for key, value in pairs(options or {}) do retryOptions[key] = value end
+
+        if not SCB_RequestFinalBotRemovalDecision
+            or not SCB_RequestFinalBotRemovalDecision(function(decision)
+                retryOptions.raidDecision = decision
+                SCB_KickBots(mode, retryOptions)
+            end) then
+            return false
+        end
+        return true
+    end
+
+    fallbackSurvivorName = finalRemovalRequested and SCB_FindGroupOneSurvivor(members) or nil
+    survivorName = preserveName
+
+    if finalRemovalRequested and raidDecision and raidDecision.scbFinalRemovalDecision then
+        if SCB_CanRemoveFinalBot then
+            finalRemovalAllowed, finalRemovalReason = SCB_CanRemoveFinalBot(raidDecision)
+        else
+            finalRemovalAllowed, finalRemovalReason = false, "instance"
+        end
+        if not finalRemovalAllowed then
+            survivorName = fallbackSurvivorName
+            if survivorName and options and options.onFinalPreserved then
+                options.onFinalPreserved(survivorName, finalRemovalReason)
+            end
+        end
+    elseif finalRemovalRequested and manageSafety then
+        survivorName = fallbackSurvivorName
+        finalRemovalReason = "instance"
     end
 
     safetyApplied = false
     for i = 1, table.getn(candidates) do
         if survivorName and candidates[i].name == survivorName then
             safetyApplied = true
+        elseif finalRemovalRequested and not survivorName
+            and fallbackSurvivorName and candidates[i].name == fallbackSurvivorName then
+            deferredFinalName = candidates[i].name
         else
             table.insert(kickNames, candidates[i].name)
         end
+    end
+    if deferredFinalName then table.insert(kickNames, deferredFinalName) end
+
+    finalBotName = finalRemovalRequested and not survivorName and deferredFinalName or nil
+    if finalRemovalRequested and not survivorName and not finalBotName
+        and table.getn(kickNames) > 0 then
+        finalBotName = kickNames[table.getn(kickNames)]
     end
 
     if mode == "all" and manageSafety then
@@ -2692,11 +2924,28 @@ function SCB_KickBots(mode, options)
     end
 
     if safetyApplied and not silent then
-        SCB_Print(SCB_L("SURVIVOR_CHAT"))
-        SCB_ShowSafetyMessage()
+        if SCB_ShowFinalBotSafety then
+            SCB_ShowFinalBotSafety(finalRemovalReason)
+        else
+            SCB_Print(SCB_L("SURVIVOR_CHAT"))
+            SCB_ShowSafetyMessage()
+        end
     end
 
-    return SCB_StartKickQueue(kickNames, mode, safetyApplied, silent)
+    local function onFinalPreserved(name, reason)
+        if mode == "all" and manageSafety and name then SCB_SetKickAllAnchor(name) end
+        if options and options.onFinalPreserved then options.onFinalPreserved(name, reason) end
+    end
+
+    return SCB_StartKickQueue(
+        kickNames,
+        mode,
+        safetyApplied,
+        silent,
+        finalBotName and raidDecision or nil,
+        finalBotName,
+        onFinalPreserved
+    )
 end
 
 function SCB_KickDeadOnClick()

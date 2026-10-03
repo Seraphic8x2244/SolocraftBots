@@ -529,6 +529,7 @@ function SCB_EnsureOptionsDB()
     SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
     options = SoloCraftBotsDB.options
     if options.autoLootMethod == nil then options.autoLootMethod = "off" end
+    if options.lootSafe == nil then options.lootSafe = true end
     -- Split the old combined filter without overwriting either new preference.
     if options.hideSCBChatMessages == nil then
         options.hideSCBChatMessages = options.hideSCBMessages == true
@@ -2149,6 +2150,7 @@ eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
+eventFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
@@ -2166,6 +2168,10 @@ eventFrame:SetScript("OnEvent", function()
     end
     if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.20) end
+        return
+    end
+    if event == "UPDATE_INSTANCE_INFO" then
+        if SCB_HandleRaidInfoRefreshEvent then SCB_HandleRaidInfoRefreshEvent() end
         return
     end
     if event == "ADDON_LOADED" and arg1 == "SoloCraftBots" then

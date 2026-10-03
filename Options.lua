@@ -408,6 +408,7 @@ function SCB_RefreshOptionsUI()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
     if SCB.optionAutoPromotePlayersCheck then SCB.optionAutoPromotePlayersCheck:SetChecked(options.autoPromotePlayers and 1 or nil) end
+    if SCB.optionLootSafeCheck then SCB.optionLootSafeCheck:SetChecked(options.lootSafe and 1 or nil) end
     if SCB.optionSCBChatCheck then SCB.optionSCBChatCheck:SetChecked(options.hideSCBChatMessages and 1 or nil) end
     if SCB.optionSCBScreenCheck then SCB.optionSCBScreenCheck:SetChecked(options.hideSCBScreenWarnings and 1 or nil) end
     if SCB.optionAutoSwapPresetGroupCheck then SCB.optionAutoSwapPresetGroupCheck:SetChecked(options.autoSwapPresetGroup and 1 or nil) end
@@ -528,7 +529,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionsCloseButton:SetScript("OnEnter", SCB_TooltipOnEnter)
     SCB.optionsCloseButton:SetScript("OnLeave", SCB_TooltipOnLeave)
 
-    SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 140)
+    SCB.optionMiscSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_MISC", 164)
     miscContent = SCB.optionMiscSection.scbContent
     miscContent:ClearAllPoints()
     miscContent:SetPoint("TOPLEFT", SCB.optionMiscSection, "TOPLEFT", 12, -26)
@@ -536,8 +537,9 @@ function SCB_CreateOptionsUI(frame)
     SCB_CreateAutoLootOption(miscContent)
     SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
     SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
+    SCB.optionLootSafeCheck = SCB_CreateOptionCheck(miscContent, "lootSafe", "OPTION_LOOT_SAFE", -78)
     resetTutorials = SCB_CreateTextButton(miscContent, nil, 112, 22, SCB_L("RESET_TUTORIALS"))
-    resetTutorials:SetPoint("TOPLEFT", miscContent, "TOPLEFT", 16, -84)
+    resetTutorials:SetPoint("TOPLEFT", miscContent, "TOPLEFT", 16, -108)
     resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
 
     SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)

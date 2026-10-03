@@ -290,6 +290,24 @@ local function SCB_0826SortMaintenanceAssignments(assignments)
     end)
 end
 
+local function SCB_0826AdoptPreservedSurvivor(state, name)
+    local i, record
+    if not state or not name or state.survivorName == name then return end
+
+    for i = state.remainingHead or 1, table.getn(state.remaining or {}) do
+        record = state.remaining[i]
+        if record and record.sourceName == name then
+            state.survivorAssignment = record
+            state.survivorName = name
+            table.remove(state.remaining, i)
+            break
+        end
+    end
+
+    if state.removedNames then state.removedNames[name] = nil end
+    SCB_0826MaintenanceDebug("live final-bot guard retained " .. tostring(name))
+end
+
 local function SCB_0826SetMaintenanceSentinel(operation, active)
     if active then
         SCB.replaceDeadState = {
@@ -460,11 +478,23 @@ local function SCB_0826MaintenanceRemainingCount(state)
     return count
 end
 
-local function SCB_0826BeginMaintenanceBurst(operation, state, now)
+local function SCB_0826MaintenanceNeedsRaidTopology(state)
+    local i, assignment
+    if not state or not SCB_IsT3RaidLocation or not SCB_IsT3RaidLocation() then return false end
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then return false end
+
+    for i = state.remainingHead or 1, table.getn(state.remaining or {}) do
+        assignment = state.remaining[i]
+        if assignment and (assignment.group or 1) > 1 then return true end
+    end
+    return false
+end
+
+local function SCB_0826BeginMaintenanceBurst(operation, state, now, maxAssignments)
     local assignments, plan = {}, nil
     local i, assignment
     local head = state.remainingHead or 1
-    local limit = math.min(SCB.MAINTENANCE_BURST_SIZE or 5, SCB_0826MaintenanceRemainingCount(state))
+    local limit = math.min(maxAssignments or SCB.MAINTENANCE_BURST_SIZE or 5, SCB_0826MaintenanceRemainingCount(state))
 
     for i = 0, limit - 1 do
         assignment = state.remaining[head + i]
@@ -543,13 +573,16 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
 end
 
-function SCB_MaintenanceResummonGroup(group)
+function SCB_MaintenanceResummonGroup(group, raidDecision)
     local operation, roster, observed, members
     local assignments, removedNames = {}, {}
     local survivorName, survivorRecord
     local botCount, otherHumans, targetedLiveCount, unavailableCount = 0, 0, 0, 0
     local destinationOccupants, destinationAssignments = 0, 0
     local id, slot, record, member, i, now, readyAt, state
+    local finalRemovalRequested
+
+    if type(raidDecision) ~= "table" or not raidDecision.scbFinalRemovalDecision then raidDecision = nil end
 
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     if (SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation())
@@ -643,8 +676,19 @@ function SCB_MaintenanceResummonGroup(group)
         return
     end
 
-    if otherHumans == 0 and targetedLiveCount == botCount and botCount > 0
-        and SCB_SurvivorSafetyRequired and SCB_SurvivorSafetyRequired() then
+    finalRemovalRequested = otherHumans == 0 and targetedLiveCount == botCount and botCount > 0
+    if finalRemovalRequested and not raidDecision then
+        if not SCB_RequestFinalBotRemovalDecision
+            or not SCB_RequestFinalBotRemovalDecision(function(decision)
+                SCB_MaintenanceResummonGroup(group, decision)
+            end) then
+            SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        end
+        return
+    end
+
+    if finalRemovalRequested
+        and (not SCB_CanRemoveFinalBot or not SCB_CanRemoveFinalBot(raidDecision)) then
         survivorName = SCB_FindGroupOneSurvivor and SCB_FindGroupOneSurvivor(members) or nil
         if survivorName then
             for i = 1, table.getn(assignments) do
@@ -704,6 +748,10 @@ function SCB_MaintenanceResummonGroup(group)
         manageSafety = false,
         preserveName = survivorName,
         silent = true,
+        finalRemovalDecision = raidDecision,
+        onFinalPreserved = function(name)
+            SCB_0826AdoptPreservedSurvivor(state, name)
+        end,
     }) then
         SCB_0826FinishMaintenance("failed", "shared resummon removal queue unavailable",
             SCB_L("REPLACE_DEAD_BUSY"))
@@ -730,7 +778,7 @@ function SCB_MaintenanceResummonGroupOnClick()
     SCB_MaintenanceResummonGroup(group)
 end
 
-function SCB_MaintenanceReplaceOnClick()
+function SCB_MaintenanceReplaceOnClick(raidDecision)
     local missing, dead, unavailableMissing, unavailableDead
     if SCB_CanOperateBots and not SCB_CanOperateBots(true) then return end
     missing, dead, unavailableMissing, unavailableDead = SCB_GetActiveMaintenanceRecords()
@@ -739,7 +787,9 @@ function SCB_MaintenanceReplaceOnClick()
     local survivorName, survivorRecord
     local assignments, removedNames = {}, {}
     local i, member, slot, record, now, readyAt
-    local operation, state, unavailableCount
+    local operation, state, unavailableCount, finalRemovalRequested
+
+    if type(raidDecision) ~= "table" or not raidDecision.scbFinalRemovalDecision then raidDecision = nil end
 
     if (SCB_HasBotSpawnOperation and SCB_HasBotSpawnOperation())
         or (SCB_IsKickQueueActive and SCB_IsKickQueueActive())
@@ -771,8 +821,19 @@ function SCB_MaintenanceReplaceOnClick()
         end
     end
 
-    if otherHumans == 0 and table.getn(dead) == botCount and botCount > 0
-        and SCB_SurvivorSafetyRequired and SCB_SurvivorSafetyRequired() then
+    finalRemovalRequested = otherHumans == 0 and table.getn(dead) == botCount and botCount > 0
+    if finalRemovalRequested and not raidDecision then
+        if not SCB_RequestFinalBotRemovalDecision
+            or not SCB_RequestFinalBotRemovalDecision(function(decision)
+                SCB_MaintenanceReplaceOnClick(decision)
+            end) then
+            SCB_Print(SCB_L("REPLACE_DEAD_BUSY"))
+        end
+        return
+    end
+
+    if finalRemovalRequested
+        and (not SCB_CanRemoveFinalBot or not SCB_CanRemoveFinalBot(raidDecision)) then
         survivorName = SCB_FindGroupOneSurvivor and SCB_FindGroupOneSurvivor(members) or nil
         for i = 1, table.getn(dead) do
             slot = dead[i]
@@ -854,6 +915,10 @@ function SCB_MaintenanceReplaceOnClick()
         manageSafety = false,
         preserveName = survivorName,
         silent = true,
+        finalRemovalDecision = raidDecision,
+        onFinalPreserved = function(name)
+            SCB_0826AdoptPreservedSurvivor(state, name)
+        end,
     }) then
         SCB_0826FinishMaintenance("failed", "shared removal queue unavailable",
             SCB_L("REPLACE_DEAD_BUSY"))
@@ -962,7 +1027,47 @@ function SCB_MaintenanceReplaceOnUpdate()
         end
 
         state.phase = "nextgroup"
-        SCB_0826BeginMaintenanceBurst(operation, state, now)
+
+        if SCB_0826MaintenanceNeedsRaidTopology(state) then
+            local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+
+            if raidCount == 0 and partyCount > 0 then
+                if not ConvertToRaid then
+                    SCB_0826FinishMaintenance("failed", "raid conversion unavailable",
+                        "Bot maintenance stopped because the raid could not be rebuilt.")
+                    return
+                end
+                if not state.raidConvertStartedAt then state.raidConvertStartedAt = now end
+                if (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+                    SCB_0826FinishMaintenance("failed", "raid conversion timed out",
+                        "Bot maintenance stopped because the party did not convert back to a raid.")
+                    return
+                end
+                if not state.raidConvertRequestedAt or (now - state.raidConvertRequestedAt) >= 1.0 then
+                    ConvertToRaid()
+                    state.raidConvertRequestedAt = now
+                    SCB_0826MaintenanceDebug("requested party-to-raid recovery before replacement bursts")
+                end
+                return
+            end
+
+            if raidCount == 0 then
+                state.raidBootstrapPending = true
+                SCB_0826MaintenanceDebug("starting one-bot T3 bootstrap before raid conversion")
+            end
+        else
+            state.raidBootstrapPending = nil
+            state.raidConvertRequestedAt = nil
+            state.raidConvertStartedAt = nil
+        end
+
+        SCB_0826BeginMaintenanceBurst(
+            operation,
+            state,
+            now,
+            state.raidBootstrapPending and 1 or nil
+        )
         return
     end
 
@@ -999,6 +1104,34 @@ function SCB_MaintenanceReplaceOnUpdate()
         end
 
         raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+        if state.raidBootstrapPending and raidCount == 0 then
+            local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            if not state.raidConvertStartedAt then state.raidConvertStartedAt = now end
+            if (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "bootstrap raid conversion timed out",
+                    "Bot maintenance stopped because its bootstrap party did not convert to a raid.")
+                return
+            end
+            if partyCount > 0 then
+                if not ConvertToRaid then
+                    SCB_0826FinishMaintenance("failed", "bootstrap raid conversion unavailable",
+                        "Bot maintenance stopped because the raid could not be rebuilt.")
+                    return
+                end
+                if not state.raidConvertRequestedAt or (now - state.raidConvertRequestedAt) >= 1.0 then
+                    ConvertToRaid()
+                    state.raidConvertRequestedAt = now
+                    SCB_0826MaintenanceDebug("bootstrap joined; requested party-to-raid conversion")
+                end
+            end
+            return
+        elseif state.raidBootstrapPending and raidCount > 0 then
+            state.raidBootstrapPending = nil
+            state.raidConvertRequestedAt = nil
+            state.raidConvertStartedAt = nil
+            SCB_0826MaintenanceDebug("raid topology restored; continuing replacement burst")
+        end
+
         if raidCount > 0 and not SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots) then
             if SCB_0826MaintenanceCombatBlocked(state, now) then return end
             if not state.groupMoveStartedAt then state.groupMoveStartedAt = now end
