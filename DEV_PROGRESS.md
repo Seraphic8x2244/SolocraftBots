@@ -8,7 +8,7 @@
 - Current implementation head: `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`
 - Accepted design handoff before this implementation: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. Release source is current `0.9.16-dev`: Appearance is USER TESTED PASS; the Wisdom level-30 correction is USER ACCEPTED without a direct sub-30 addon retest. `dev` remains `0.9.16-dev` for the next slice.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state; current `dev` is `0.9.18-dev` for the ZG / final-bot removal runtime-validation slice.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
