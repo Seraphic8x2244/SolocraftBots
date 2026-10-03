@@ -4,9 +4,9 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.16-dev`
-- Current implementation head: `1183385fcdc17b2a2156f36849c8399e13054790`
-- Current handoff/status head before this release checkpoint: `2dde4a7759e5b6b7d4076cfc449fcaea2995d5ff`
+- TOC version: `0.9.18-dev`
+- Current implementation head: `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`
+- Accepted design handoff before this implementation: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
 - Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. Release source is current `0.9.16-dev`: Appearance is USER TESTED PASS; the Wisdom level-30 correction is USER ACCEPTED without a direct sub-30 addon retest. `dev` remains `0.9.16-dev` for the next slice.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
@@ -17,34 +17,38 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: **ZG / final-bot removal safety correction** is now the active planned slice before the visualiser. Fix fresh Raid-ID checking on user removal actions, make Replace Dead recover raid topology after full teardown in T3 raid locations, and add optional Loot Safe final-bot protection as documented below. Preset Manager Appearance remains USER TESTED PASS / accepted; the Wisdom threshold remains USER ACCEPTED without a sub-30 addon retest.
+- Immediate goal / exact next step: **runtime-validate the implemented ZG / final-bot removal safety slice on `0.9.18-dev` / `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`**. Do not begin the visualiser until this slice is runtime-tested and accepted. Preset Manager Appearance remains USER TESTED PASS / accepted; the Wisdom threshold remains USER ACCEPTED without a sub-30 addon retest.
 
-## Planned ZG / final-bot removal safety slice
-- Runtime issue observed in Zul'Gurub after first boss:
-  1. Kick All retained one safety bot even though the player should already have a saved ZG instance ID.
-  2. After a wipe/re-entry with all bots dead, Replace Dead removed the dead bots correctly but then rebuilt only the first party-sized group and never converted back to raid.
-- Root cause / source audit:
-  - Survivor safety is decided at removal time through `SCB_SurvivorSafetyRequired()` -> `SCB_GetSavedRaidDecision()`, but that path only reads the currently cached `GetSavedInstanceInfo()` data. `RequestRaidInfo()` is currently issued on `PLAYER_ENTERING_WORLD`, so a boss kill can create a new saved ID that is not reflected when Kick All is pressed.
-  - Vanilla exposes `UPDATE_INSTANCE_INFO` after `RequestRaidInfo()`; use that action-driven refresh instead of boss/NPC death scanning.
-  - ZG is explicitly included in `SCB_IsT3RaidLocation()` with AQ20/MC/Onyxia/BWL/AQ40/Naxx.
-  - Full preset Summon already supports empty T3 raid bootstrap/party->raid conversion. Replace Dead maintenance does not currently ensure raid topology before replacement bursts, so a full teardown can strand it in a 5-man party.
-- **User-accepted implementation policy:**
-  - Do not monitor boss deaths or scan NPC deaths in the background.
-  - Final-bot removal decisions are made from explicit user actions.
-  - Kick All / removal actions that need an instance-safety decision should call `RequestRaidInfo()`, wait for `UPDATE_INSTANCE_INFO` (with a bounded conservative timeout), then evaluate the fresh saved-ID state.
-  - Valid saved raid ID: instance safety does not require a survivor.
-  - Confirmed no saved ID, unknown/invalid data, API failure, or refresh timeout: preserve one safety bot when otherwise necessary.
-  - When a continuing operation such as Replace Dead leaves the player solo/non-raid in a T3 raid and still needs >5 roster capacity, it must run the same logical prerequisite as full Summon: bootstrap -> party -> convert to raid -> continue replacement bursts. A short bootstrap delay is accepted.
-- Optional **Loot Safe** setting:
-  - This is independent of instance safety and should protect only removal of the final bot(s); when disabled, loot loss from Kick All is user error and no loot-specific protection applies.
-  - When enabled and 2+ real human players remain in the raid/group, Loot Safe does not block removing every bot.
-  - When enabled and the player is the only real human, removal of the final bot is allowed only when all are true: fresh saved Raid ID is valid; a boss corpse is currently targeted; loot window is currently open.
-  - Otherwise keep one bot. There is no second-click override while Loot Safe is enabled; disabling the option is the explicit override.
-  - Loot state must be re-evaluated immediately before physical final-bot removal after the asynchronous Raid-ID refresh, not only when the button was first clicked.
-  - User correction: Loot Safe should default **ON**. Disabling it is the explicit opt-out; with it disabled, loot loss from an intentional Kick All remains user responsibility.
-- Reuse one shared "can remove final bot?" decision seam for Kick All and maintenance rather than adding ZG-specific branches.
-- Runtime tests for this slice should cover: ZG no-ID Kick All survivor; ZG post-boss fresh-ID Kick All removes all bots; solo Loot Safe blocks final removal without boss+loot-open; solo Loot Safe allows final removal with boss corpse targeted + loot open + valid ID; 2-human path bypasses Loot Safe restriction; Replace Dead after full wipe rebuilds through T3 bootstrap and converts to raid before continuing past the first party.
-- **Design state: USER ACCEPTED.** No implementation has started yet. Implement this slice as documented before beginning the visualiser; do not broaden it with boss-death monitoring or unrelated refactors.
+## 0.9.18-dev ZG / final-bot removal safety
+- User-accepted design handoff: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`.
+- Implementation commits: `350ebd8ca8fb1efacca2f64d5e10e2636dcec7d2` implemented the slice; `ebf547e4a39af361a5f7b6a6519b1e0ee288be50` tightened the boss-target predicate after static review so `UnitLevel() == -1` cannot admit a merely over-level hostile mob. Current TOC is `0.9.18-dev`.
+- Original runtime issues in Zul'Gurub:
+  1. Kick All retained one safety bot after the first boss because the removal path read cached saved-instance data instead of refreshing it for the action.
+  2. After a wipe/re-entry with all bots dead, Replace Dead could remove the dead bots but rebuild only a party-sized group because maintenance did not recover raid topology after a full teardown.
+- Fresh Raid-ID decisions are now action-driven. `SCB_RequestFinalBotRemovalDecision()` issues `RequestRaidInfo()` and waits for `UPDATE_INSTANCE_INFO`; a 2.5-second timeout, unavailable API, invalid/no matching ID, or zone mismatch fails conservatively. `SCB_MakeFinalRemovalDecision()` carries the refreshed decision into the removal action.
+- `SCB_CanRemoveFinalBot()` is the shared final-bot-removal decision seam used by manual Kick All/Kick Dead and maintenance. Existing preset-rebuild bootstrap requirements still win before ordinary final removal.
+- Instance-safety rule: with no other real human, an in-instance final bot is removable only after a fresh valid saved Raid ID. With another real human present, the pre-existing no-survivor behavior is retained.
+- **Loot Safe** is account-wide option state under `SoloCraftBotsDB.options.lootSafe`, defaults **ON**, and appears in Misc options. It is independent of instance-retention safety:
+  - disabled: no loot-specific protection; intentional loot loss is user responsibility;
+  - enabled + another real human remains: does not block removal of every bot;
+  - enabled + player is the only real human: final removal requires the fresh valid saved Raid ID, a currently targeted **dead `worldboss`**, and an open `LootFrame`;
+  - there is no second-click override while enabled; disabling Loot Safe is the explicit override.
+- The physical kick queue defers the Group-1 fallback bot to the final removal position and re-runs `SCB_CanRemoveFinalBot()` immediately before that final `UninviteByName()`. This re-evaluates live human count, location, boss-corpse target and loot-window state after the asynchronous Raid-ID refresh rather than trusting click-time state.
+- Maintenance requests the same fresh decision before a true all-bot teardown. If the last-moment guard changes from allowed to blocked, `SCB_0826AdoptPreservedSurvivor()` adopts that retained bot into the existing survivor-replacement flow instead of losing its tracked assignment.
+- Replace Dead / Resummon Group T3 topology recovery is maintenance-owned and does not alter the full Summon scheduler. If maintenance is non-raid in a T3 raid and remaining assignments require later raid groups:
+  - party present -> request `ConvertToRaid()` with the existing bounded maintenance timeout;
+  - fully solo -> send one real replacement assignment as the bootstrap, wait for it to join, convert the resulting party to raid, then continue normal subgroup placement and replacement bursts.
+- Scope audit: no boss-death monitoring, NPC scanning, visualiser work, protocol change, SavedVariable migration, or unrelated refactor was added.
+- Static source/diff review **PASS** for the intended scope. The implementation changes only `Communication.lua`, `Spawn.lua`, `SoloCraftBots.lua`, `Options.lua`, `Locale/enGB.lua`, and `SoloCraftBots.toc`; the correction commit then changes only `Communication.lua` and the TOC. No introduced `#` length syntax or `goto` tokens were found in the touched Lua files. The large maintenance prelude contains 25 local-function declarations / 96 textual `local` tokens after the two added helpers, so static inspection does not indicate local-scope pressure, but this is not a compiler result.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. The canonical VanillaTemplate checker exists and GCC is available, but the checker/vendor files are not mounted here and direct shell access to GitHub fails DNS. GitHub has no workflow/check run configured for the implementation commits. Do not record a compiler pass.
+- Runtime state: **NOT YET TESTED**. Required focused runtime matrix:
+  1. In ZG before a saved ID exists, set Loot Safe **OFF**, press Kick All while solo-human, and confirm one Group-1 safety bot remains.
+  2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
+  3. Enable Loot Safe, remain the only real human with a valid ZG ID, and press Kick All without both a targeted dead boss and open loot window; confirm one bot remains with the Loot Safe warning.
+  4. With Loot Safe enabled + valid ZG ID, target the dead boss, open its loot window without looting, press Kick All, and confirm the final bot is removed and the open corpse remains lootable.
+  5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
+  6. For the full-teardown Replace Dead recovery case, use a valid ZG ID and set Loot Safe **OFF**, wipe all tracked bots, re-enter if needed, press Replace Dead, and confirm all dead bots are removed, one replacement bootstraps a party, SCB converts back to raid, and replacements continue beyond the first party-sized group.
+- Visualiser remains deferred until this runtime matrix is accepted.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
