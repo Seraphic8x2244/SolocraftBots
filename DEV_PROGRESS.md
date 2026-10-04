@@ -589,6 +589,8 @@ Exact `0.8.92-dev` baseline:
 - Runtime evidence motivating the policy remains the level-33 test where manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work.
 
 ## Planned / later
+- Main-window controls TODO: add **Kick Dead** between the existing **Replace Missing/Dead** control and **Kick All**.
+
 - Main-window 30-second role countdown indicators (deferred; do not mix into the current ZG/bootstrap runtime slice):
   - **Tank Pull / DPS:** when the server chat reports the Tank Pull DPS-delay message (user-observed wording: `Tanks are not pulling *mobname*, DPS will join in 30 seconds!`), show one shared 30-second countdown adjacent to the main-window Melee DPS and Ranged DPS controls, preferably immediately to their left. The server message should be the timing authority rather than button-click time.
   - **Pause Healers:** show the equivalent 30-second countdown adjacent to the Healer control. The existing targeted pause pipeline already confirms each healer with `<name> paused for 30 seconds.`; start the displayed countdown from the **first successfully confirmed healer pause**, not the final healer, because that first healer is the earliest one that can resume.
