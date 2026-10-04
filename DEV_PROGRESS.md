@@ -45,6 +45,7 @@
   - Test 1 **USER TESTED PASS**: fresh Zul'Gurub with no saved Raid ID, solo human, Loot Safe OFF -> Kick All preserved one Group-1 safety bot, preventing the player from being stranded.
   - Test 3 **USER TESTED PASS**: after obtaining a valid ZG saved Raid ID, solo human, Loot Safe ON, no targeted dead boss and no open loot window -> Kick All triggered Loot Safe and preserved one bot.
   - Test 4 **USER TESTED FAIL**: with the same valid ZG saved Raid ID, Loot Safe ON, dead boss targeted and loot window open, Kick All still triggered the Loot Safe warning and preserved the final bot instead of allowing removal.
+  - Runtime diagnosis from the live target/loot probe: `class=worldboss dead=1 loot=nil level=-1`. The dead-boss predicate is therefore correct for High Priest Venoxis; the failing condition is loot-window detection because the global Blizzard `LootFrame` is nil under the user's pfUI setup. The user's pfUI fork creates its replacement loot window as global `pfLootFrame`, so the current `SCB_IsLootWindowOpen()` implementation is UI-frame-specific and not robust.
 - Required focused runtime matrix:
   1. **PASS** — In ZG before a saved ID exists, Loot Safe **OFF**, solo-human, Kick All preserved one Group-1 safety bot.
   2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
@@ -53,7 +54,7 @@
   5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
   6. For the full-teardown Replace Dead recovery case, use a valid ZG ID and set Loot Safe **OFF**, wipe all tracked bots, re-enter if needed, press Replace Dead, and confirm all dead bots are removed, one replacement bootstraps a party, SCB converts back to raid, and replacements continue beyond the first party-sized group.
 - Visualiser remains deferred until this runtime matrix is accepted.
-- Exact next runtime step: diagnose which Loot Safe allow-condition is failing in the targeted-dead-boss + open-loot-window path before proceeding with further runtime matrix items. Do not consume the boss corpse if it remains available.
+- Exact next step: correct Loot Safe open-loot detection so it is not tied only to the Blizzard `LootFrame` global (the user's pfUI uses `pfLootFrame`), bump the dev version per the rulebook, then re-run the same Test 4 corpse path if the corpse is still available. Do not start the visualiser.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
