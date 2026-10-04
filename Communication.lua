@@ -2530,7 +2530,9 @@ function SCB_TargetIsBossCorpse()
 end
 
 function SCB_IsLootWindowOpen()
-    return LootFrame and LootFrame:IsShown() and true or false
+    -- UI replacements such as pfUI may remove the Blizzard LootFrame global.
+    -- The main event owner tracks native LOOT_OPENED/LOOT_CLOSED instead.
+    return SCB.lootWindowOpen == true
 end
 
 function SCB_CurrentRaidHasSavedID()
