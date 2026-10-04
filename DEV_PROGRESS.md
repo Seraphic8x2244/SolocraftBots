@@ -44,15 +44,16 @@
 - Runtime state: **IN PROGRESS** on `0.9.18-dev` / implementation `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`.
   - Test 1 **USER TESTED PASS**: fresh Zul'Gurub with no saved Raid ID, solo human, Loot Safe OFF -> Kick All preserved one Group-1 safety bot, preventing the player from being stranded.
   - Test 3 **USER TESTED PASS**: after obtaining a valid ZG saved Raid ID, solo human, Loot Safe ON, no targeted dead boss and no open loot window -> Kick All triggered Loot Safe and preserved one bot.
+  - Test 4 **USER TESTED FAIL**: with the same valid ZG saved Raid ID, Loot Safe ON, dead boss targeted and loot window open, Kick All still triggered the Loot Safe warning and preserved the final bot instead of allowing removal.
 - Required focused runtime matrix:
   1. **PASS** — In ZG before a saved ID exists, Loot Safe **OFF**, solo-human, Kick All preserved one Group-1 safety bot.
   2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
   3. **PASS** — With Loot Safe enabled, solo-human and valid ZG ID, Kick All without both a targeted dead boss and open loot window triggered Loot Safe and preserved one bot.
-  4. With Loot Safe enabled + valid ZG ID, target the dead boss, open its loot window without looting, press Kick All, and confirm the final bot is removed and the open corpse remains lootable.
+  4. **FAIL** — With Loot Safe enabled + valid ZG ID, dead boss targeted and loot window open, Kick All still triggered Loot Safe and preserved the final bot.
   5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
   6. For the full-teardown Replace Dead recovery case, use a valid ZG ID and set Loot Safe **OFF**, wipe all tracked bots, re-enter if needed, press Replace Dead, and confirm all dead bots are removed, one replacement bootstraps a party, SCB converts back to raid, and replacements continue beyond the first party-sized group.
 - Visualiser remains deferred until this runtime matrix is accepted.
-- Exact next runtime step: with the same fresh boss corpse still available, target the dead boss, open its loot window without looting, and press Kick All with Loot Safe ON to validate allowed final-bot removal while preserving corpse lootability.
+- Exact next runtime step: diagnose which Loot Safe allow-condition is failing in the targeted-dead-boss + open-loot-window path before proceeding with further runtime matrix items. Do not consume the boss corpse if it remains available.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
