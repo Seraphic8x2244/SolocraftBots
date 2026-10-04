@@ -479,10 +479,20 @@ local function SCB_0826MaintenanceRemainingCount(state)
 end
 
 local function SCB_0826MaintenanceNeedsRaidTopology(state)
-    local i, assignment
-    if not state or not SCB_IsT3RaidLocation or not SCB_IsT3RaidLocation() then return false end
+    local tracker, i, assignment
+    if not state or SCB_0826MaintenanceRemainingCount(state) == 0 then return false end
+    if not SCB_IsT3RaidLocation or not SCB_IsT3RaidLocation() then return false end
     if GetNumRaidMembers and GetNumRaidMembers() > 0 then return false end
 
+    -- A tracked raid preset must already be a raid before any real replacement
+    -- is spawned in a T3 raid zone. The server decides T3 at summon time, so
+    -- using the first real missing assignment to create the party permanently
+    -- leaves that preset bot non-T3.
+    tracker = SoloCraftBotsCharDB and SoloCraftBotsCharDB.raidRoleTracker or nil
+    if tracker and tracker.mode == "raid" then return true end
+
+    -- Compatibility fallback for an active raid roster whose tracker is absent:
+    -- any remaining G2+ assignment proves raid topology is required.
     for i = state.remainingHead or 1, table.getn(state.remaining or {}) do
         assignment = state.remaining[i]
         if assignment and (assignment.group or 1) > 1 then return true end
@@ -510,6 +520,64 @@ local function SCB_0826PrepareRecoveredRaidHumanGroups(state, now)
         return false
     end
     return true
+end
+
+local function SCB_0826BeginMaintenanceBootstrap(state, now)
+    local command, plan
+    if not state then return false end
+
+    command = SCB_BuildSpawnCommand and SCB_BuildSpawnCommand("warrior", "tank", nil) or nil
+    if not command then
+        SCB_0826FinishMaintenance("failed", "maintenance bootstrap command unavailable",
+            "Bot maintenance stopped because its temporary raid bootstrap could not be prepared.")
+        return false
+    end
+
+    plan = {
+        kind = "bootstrap",
+        assignments = {
+            {
+                command = command,
+                class = "warrior",
+                role = "tank",
+                extra = nil,
+            },
+        },
+    }
+    state.bootstrapBeforeNames = SCB_0826CollectCurrentBotNames()
+    if not SCB_BeginAssumedSpawnBurst or not SCB_BeginAssumedSpawnBurst(plan) then
+        SCB_0826FinishMaintenance("failed", "maintenance bootstrap identity unavailable",
+            "Bot maintenance stopped because its temporary raid bootstrap identity could not be prepared.")
+        return false
+    end
+
+    state.bootstrapBurstID = plan.burstID
+    state.bootstrapStartedAt = now
+    state.phase = "waitbootstrap"
+    if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-bootstrap") end
+
+    if not SCB_SendSpawnCommand or not SCB_SendSpawnCommand(command) then
+        SCB_0826FinishMaintenance("failed", "maintenance bootstrap spawn rejected",
+            "Bot maintenance stopped because its temporary raid bootstrap could not be summoned.")
+        return false
+    end
+    SCB_0826MaintenanceDebug("requested dedicated temporary T3 raid bootstrap")
+    return true
+end
+
+local function SCB_0826ResolveMaintenanceBootstrap(state)
+    local bots, i, bot, intent
+    if not state then return nil end
+    bots = SCB_GetNewRefillBots and SCB_GetNewRefillBots(state.bootstrapBeforeNames or {}) or {}
+    for i = 1, table.getn(bots) do
+        bot = bots[i]
+        intent = bot and bot.name and SCB.assumedRolesByName and SCB.assumedRolesByName[bot.name] or nil
+        if intent and intent.spawnKind == "bootstrap"
+            and intent.burstID == state.bootstrapBurstID then
+            return bot
+        end
+    end
+    return nil
 end
 
 local function SCB_0826BeginMaintenanceBurst(operation, state, now, maxAssignments)
@@ -590,8 +658,17 @@ local function SCB_0826CompleteMaintenanceBurst(state, resolvedBots)
     state.burstStartedAt = nil
     state.combatSeenAt = nil
     state.combatOverrideLogged = nil
-    state.phase = "nextgroup"
-    if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
+    if state.bootstrapName then
+        -- The first real T3 replacement now exists, so the temporary G8
+        -- bootstrap is no longer needed. Remove it before later bursts can
+        -- approach the instance/player cap.
+        state.phase = "removebootstrap"
+        state.bootstrapRemovalStartedAt = nil
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-remove-bootstrap") end
+    else
+        state.phase = "nextgroup"
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
+    end
     if SCB_RefreshReplaceDeadButton then SCB_RefreshReplaceDeadButton() end
 end
 
@@ -1001,6 +1078,107 @@ function SCB_MaintenanceReplaceOnUpdate()
         return
     end
 
+    if state.phase == "removebootstrap" then
+        if state.bootstrapName and SCB_GroupHasName and SCB_GroupHasName(state.bootstrapName) then
+            if SCB_0826MaintenanceCombatBlocked(state, now) then return end
+            if state.bootstrapRemovalStartedAt
+                and (now - state.bootstrapRemovalStartedAt) >= SCB.MAINTENANCE_REMOVAL_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "temporary bootstrap removal timed out",
+                    "Bot maintenance stopped because its temporary raid bootstrap could not be removed.")
+                return
+            end
+            if not state.bootstrapRemovalStartedAt then
+                if not SCB_KickBots or not SCB_KickBots("all", {
+                    name = state.bootstrapName,
+                    manageSafety = false,
+                    silent = true,
+                }) then
+                    SCB_0826FinishMaintenance("failed", "temporary bootstrap removal queue unavailable",
+                        SCB_L("REPLACE_DEAD_BUSY"))
+                    return
+                end
+                state.bootstrapRemovalStartedAt = now
+                SCB_0826MaintenanceDebug("queued temporary G8 bootstrap removal before later replacement bursts")
+            end
+            return
+        end
+
+        if state.bootstrapName and SCB_ClearKickAllAnchor then
+            SCB_ClearKickAllAnchor(state.bootstrapName)
+        end
+        state.bootstrapName = nil
+        state.bootstrapBurstID = nil
+        state.bootstrapBeforeNames = nil
+        state.bootstrapStartedAt = nil
+        state.bootstrapRemovalStartedAt = nil
+        state.settleUntil = now + (SCB.REPLACE_REMOVAL_SETTLE_DELAY or 3.0)
+        state.phase = "settle"
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-settle") end
+        SCB_0826MaintenanceDebug("temporary bootstrap removed; starting capacity settle")
+        return
+    end
+
+    if state.phase == "waitbootstrap" then
+        local bootstrapBot = SCB_0826ResolveMaintenanceBootstrap(state)
+        local partyCount
+
+        if not bootstrapBot then
+            if state.bootstrapStartedAt
+                and (now - state.bootstrapStartedAt) >= SCB.MAINTENANCE_BURST_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "temporary bootstrap join timed out",
+                    "Bot maintenance stopped because its temporary raid bootstrap did not join.")
+            end
+            return
+        end
+
+        if not state.bootstrapName then
+            state.bootstrapName = bootstrapBot.name
+            SCB_0826MaintenanceDebug("temporary bootstrap joined as " .. tostring(state.bootstrapName))
+        end
+
+        raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+        if raidCount == 0 then
+            partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+            if not ConvertToRaid then
+                SCB_0826FinishMaintenance("failed", "bootstrap raid conversion unavailable",
+                    "Bot maintenance stopped because the raid could not be rebuilt.")
+                return
+            end
+            if not state.raidConvertStartedAt then state.raidConvertStartedAt = now end
+            if (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "bootstrap raid conversion timed out",
+                    "Bot maintenance stopped because its bootstrap party did not convert to a raid.")
+                return
+            end
+            if partyCount > 0
+                and (not state.raidConvertRequestedAt or (now - state.raidConvertRequestedAt) >= 1.0) then
+                ConvertToRaid()
+                state.raidConvertRequestedAt = now
+                SCB_0826MaintenanceDebug("temporary bootstrap joined; requested party-to-raid conversion")
+            end
+            return
+        end
+
+        if not state.raidConvertStartedAt then state.raidConvertStartedAt = now end
+        if not SCB.scb072TryParkSurvivorInGroupEight
+            or not SCB.scb072TryParkSurvivorInGroupEight(state.bootstrapName) then
+            if (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+                SCB_0826FinishMaintenance("failed", "temporary bootstrap G8 move timed out",
+                    "Bot maintenance stopped because its temporary raid bootstrap could not be parked.")
+            end
+            return
+        end
+
+        if not SCB_0826PrepareRecoveredRaidHumanGroups(state, now) then return end
+
+        state.raidConvertRequestedAt = nil
+        state.raidConvertStartedAt = nil
+        state.phase = "nextgroup"
+        if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("maintenance-spawn") end
+        SCB_0826MaintenanceDebug("raid topology ready; bootstrap parked G8 and human groups restored")
+        return
+    end
+
     if state.phase == "settle" then
         if now < (state.settleUntil or state.readyAt or 0) then return end
         state.settleUntil = nil
@@ -1075,25 +1253,19 @@ function SCB_MaintenanceReplaceOnUpdate()
             end
 
             if raidCount == 0 then
-                state.raidBootstrapPending = true
-                SCB_0826MaintenanceDebug("starting one-bot T3 bootstrap before raid conversion")
+                SCB_0826BeginMaintenanceBootstrap(state, now)
+                return
             end
         else
             if state.raidConvertStartedAt
                 and not SCB_0826PrepareRecoveredRaidHumanGroups(state, now) then
                 return
             end
-            state.raidBootstrapPending = nil
             state.raidConvertRequestedAt = nil
             state.raidConvertStartedAt = nil
         end
 
-        SCB_0826BeginMaintenanceBurst(
-            operation,
-            state,
-            now,
-            state.raidBootstrapPending and 1 or nil
-        )
+        SCB_0826BeginMaintenanceBurst(operation, state, now)
         return
     end
 
@@ -1130,37 +1302,6 @@ function SCB_MaintenanceReplaceOnUpdate()
         end
 
         raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-        if state.raidBootstrapPending and raidCount == 0 then
-            local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-            if not state.raidConvertStartedAt then state.raidConvertStartedAt = now end
-            if (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
-                SCB_0826FinishMaintenance("failed", "bootstrap raid conversion timed out",
-                    "Bot maintenance stopped because its bootstrap party did not convert to a raid.")
-                return
-            end
-            if partyCount > 0 then
-                if not ConvertToRaid then
-                    SCB_0826FinishMaintenance("failed", "bootstrap raid conversion unavailable",
-                        "Bot maintenance stopped because the raid could not be rebuilt.")
-                    return
-                end
-                if not state.raidConvertRequestedAt or (now - state.raidConvertRequestedAt) >= 1.0 then
-                    ConvertToRaid()
-                    state.raidConvertRequestedAt = now
-                    SCB_0826MaintenanceDebug("bootstrap joined; requested party-to-raid conversion")
-                end
-            end
-            return
-        elseif state.raidBootstrapPending and raidCount > 0 then
-            if not SCB_0826PrepareRecoveredRaidHumanGroups(state, now) then
-                return
-            end
-            state.raidBootstrapPending = nil
-            state.raidConvertRequestedAt = nil
-            state.raidConvertStartedAt = nil
-            SCB_0826MaintenanceDebug("raid topology restored; human groups restored before replacement bursts")
-        end
-
         if raidCount > 0 and not SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots) then
             if SCB_0826MaintenanceCombatBlocked(state, now) then return end
             if not state.groupMoveStartedAt then state.groupMoveStartedAt = now end
