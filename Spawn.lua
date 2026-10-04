@@ -490,6 +490,28 @@ local function SCB_0826MaintenanceNeedsRaidTopology(state)
     return false
 end
 
+local function SCB_0826PrepareRecoveredRaidHumanGroups(state, now)
+    if not state or not state.raidConvertStartedAt then return true end
+
+    if now and (now - state.raidConvertStartedAt) >= SCB.MAINTENANCE_GROUP_MOVE_TIMEOUT then
+        SCB_0826FinishMaintenance("failed", "recovered raid human subgroup move timed out",
+            "Bot maintenance stopped because player raid groups could not be restored.")
+        return false
+    end
+
+    -- Normal full Summon restores configured human subgroups before bot bursts.
+    -- Maintenance must do the same after rebuilding raid topology; otherwise a
+    -- human temporarily left in G1 can consume a G1 bot slot and make a later
+    -- replacement spill into another subgroup with no free destination slot.
+    if not SCB_ArrangePresetHumanGroups or not SCB_ArrangePresetHumanGroups() then
+        return false
+    end
+    if SCB_PresetSubgroupMoveBarrierPassed and not SCB_PresetSubgroupMoveBarrierPassed() then
+        return false
+    end
+    return true
+end
+
 local function SCB_0826BeginMaintenanceBurst(operation, state, now, maxAssignments)
     local assignments, plan = {}, nil
     local i, assignment
@@ -1057,6 +1079,10 @@ function SCB_MaintenanceReplaceOnUpdate()
                 SCB_0826MaintenanceDebug("starting one-bot T3 bootstrap before raid conversion")
             end
         else
+            if state.raidConvertStartedAt
+                and not SCB_0826PrepareRecoveredRaidHumanGroups(state, now) then
+                return
+            end
             state.raidBootstrapPending = nil
             state.raidConvertRequestedAt = nil
             state.raidConvertStartedAt = nil
@@ -1126,10 +1152,13 @@ function SCB_MaintenanceReplaceOnUpdate()
             end
             return
         elseif state.raidBootstrapPending and raidCount > 0 then
+            if not SCB_0826PrepareRecoveredRaidHumanGroups(state, now) then
+                return
+            end
             state.raidBootstrapPending = nil
             state.raidConvertRequestedAt = nil
             state.raidConvertStartedAt = nil
-            SCB_0826MaintenanceDebug("raid topology restored; continuing replacement burst")
+            SCB_0826MaintenanceDebug("raid topology restored; human groups restored before replacement bursts")
         end
 
         if raidCount > 0 and not SCB_0826MaintenanceBurstGroupsReady(state, resolvedBots) then
