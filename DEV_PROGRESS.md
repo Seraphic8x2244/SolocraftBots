@@ -589,6 +589,11 @@ Exact `0.8.92-dev` baseline:
 - Runtime evidence motivating the policy remains the level-33 test where manual PartyBot Paladin healer summons accepted `BoM`, `BoW`, and `BoS`, while `BoK` and `BoL` did not work.
 
 ## Planned / later
+- Main-window 30-second role countdown indicators (deferred; do not mix into the current ZG/bootstrap runtime slice):
+  - **Tank Pull / DPS:** when the server chat reports the Tank Pull DPS-delay message (user-observed wording: `Tanks are not pulling *mobname*, DPS will join in 30 seconds!`), show one shared 30-second countdown adjacent to the main-window Melee DPS and Ranged DPS controls, preferably immediately to their left. The server message should be the timing authority rather than button-click time.
+  - **Pause Healers:** show the equivalent 30-second countdown adjacent to the Healer control. The existing targeted pause pipeline already confirms each healer with `<name> paused for 30 seconds.`; start the displayed countdown from the **first successfully confirmed healer pause**, not the final healer, because that first healer is the earliest one that can resume.
+  - These counters are presentation/status consumers of existing command/server-message events only. Do not create a parallel command scheduler or gameplay-timing owner.
+
 - Neutral read-only activity/status surface: **IMPLEMENTED and USER TESTED PASS on `dev` at `0.9.11-dev`; accepted before visualiser work.**
 - Preset Manager Appearance: **USER TESTED PASS / accepted**. Implementation was tested at `0.9.15-dev` / `6223992ca83f06a351ea308c4271d073263adc2a`; the `0.9.16-dev` delta does not alter Appearance behavior.
 - Visualiser may now proceed as the next slice and must remain a presentation-only consumer of the accepted activity/status surface.
