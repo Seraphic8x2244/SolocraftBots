@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.18-dev`
-- Current implementation head: `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`
+- TOC version: `0.9.19-dev`
+- Current implementation head: `6cece1343993948c79d26dc5836ef326a05ecbd9`
 - Accepted design handoff before this implementation: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state; current `dev` is `0.9.18-dev` for the ZG / final-bot removal runtime-validation slice.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state; current `dev` is `0.9.19-dev` for the narrow Loot Safe/pfUI correction discovered during ZG runtime validation.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: **runtime-validate the implemented ZG / final-bot removal safety slice on `0.9.18-dev` / `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`**. Do not begin the visualiser until this slice is runtime-tested and accepted. Preset Manager Appearance remains USER TESTED PASS / accepted; the Wisdom threshold remains USER ACCEPTED without a sub-30 addon retest.
+- Immediate goal / exact next step: finish the ZG/final-bot runtime matrix. `0.9.18-dev` exposed the pfUI loot-frame bug and a server-capacity interruption during full-teardown recovery; `0.9.19-dev` contains only the narrow loot-state fix plus the requested option-label wording. Do not begin the visualiser until this slice is runtime-tested and accepted.
 
 ## 0.9.18-dev ZG / final-bot removal safety
 - User-accepted design handoff: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`.
@@ -46,15 +46,16 @@
   - Test 3 **USER TESTED PASS**: after obtaining a valid ZG saved Raid ID, solo human, Loot Safe ON, no targeted dead boss and no open loot window -> Kick All triggered Loot Safe and preserved one bot.
   - Test 4 **USER TESTED FAIL**: with the same valid ZG saved Raid ID, Loot Safe ON, dead boss targeted and loot window open, Kick All still triggered the Loot Safe warning and preserved the final bot instead of allowing removal.
   - Runtime diagnosis from the live target/loot probe: `class=worldboss dead=1 loot=nil level=-1`. The dead-boss predicate is therefore correct for High Priest Venoxis; the failing condition is loot-window detection because the global Blizzard `LootFrame` is nil under the user's pfUI setup. The user's pfUI fork creates its replacement loot window as global `pfLootFrame`, so the current `SCB_IsLootWindowOpen()` implementation is UI-frame-specific and not robust.
+  - Test 6 **PARTIAL RUNTIME PASS / capacity-interrupted**: after the user manually left the retained final-bot group and looted Venoxis, Replace Missing started from a full teardown. The screenshot shows the server rejection `Cannot add more bots. Instance is full.` after 6 bots had joined. Reaching 6 bots proves the one-bot bootstrap, party->raid conversion, and continuation beyond party size all occurred; full rebuild completion was not validated because the server still considered the instance physically full after the immediately preceding mass removal.
 - Required focused runtime matrix:
   1. **PASS** — In ZG before a saved ID exists, Loot Safe **OFF**, solo-human, Kick All preserved one Group-1 safety bot.
   2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
   3. **PASS** — With Loot Safe enabled, solo-human and valid ZG ID, Kick All without both a targeted dead boss and open loot window triggered Loot Safe and preserved one bot.
   4. **FAIL** — With Loot Safe enabled + valid ZG ID, dead boss targeted and loot window open, Kick All still triggered Loot Safe and preserved the final bot.
   5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
-  6. For the full-teardown Replace Dead recovery case, use a valid ZG ID and set Loot Safe **OFF**, wipe all tracked bots, re-enter if needed, press Replace Dead, and confirm all dead bots are removed, one replacement bootstraps a party, SCB converts back to raid, and replacements continue beyond the first party-sized group.
+  6. **PARTIAL** — Full teardown Replace Missing reached 6 joined bots, proving bootstrap + party->raid conversion + beyond-party continuation. Completion was interrupted by server `Cannot add more bots. Instance is full.` after the immediately preceding mass removal; repeat from a physically settled/clean instance state is still required.
 - Visualiser remains deferred until this runtime matrix is accepted.
-- Exact next step: correct Loot Safe open-loot detection so it is not tied only to the Blizzard `LootFrame` global (the user's pfUI uses `pfLootFrame`), bump the dev version per the rulebook, then re-run the same Test 4 corpse path if the corpse is still available. Do not start the visualiser.
+- `0.9.19-dev` correction is implemented: Loot Safe now tracks native `LOOT_OPENED` / `LOOT_CLOSED` events instead of the Blizzard `LootFrame` global, and the option label is now `Auto-Swap Presets by Location`. Exact next runtime step on the still-loaded `0.9.18-dev` client: use the valid saved ZG ID with Loot Safe OFF to validate Kick All removes the current bots completely, then allow physical bot capacity to settle before repeating the full-teardown Replace Missing recovery. Retest Loot Safe Test 4 on `0.9.19-dev` at the next boss corpse. Visualiser remains deferred.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
