@@ -2151,9 +2151,19 @@ eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
 eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
 eventFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
+eventFrame:RegisterEvent("LOOT_OPENED")
+eventFrame:RegisterEvent("LOOT_CLOSED")
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function()
+    if event == "LOOT_OPENED" then
+        SCB.lootWindowOpen = true
+        return
+    end
+    if event == "LOOT_CLOSED" then
+        SCB.lootWindowOpen = nil
+        return
+    end
     if event == "PLAYER_TARGET_CHANGED" then
         if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
             SCB_RefreshTargetCommandRow()
@@ -2197,6 +2207,10 @@ eventFrame:SetScript("OnEvent", function()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        -- Loot UI replacements still emit the native LOOT_OPENED/LOOT_CLOSED
+        -- events, so reset stale state at the loading-screen boundary and let
+        -- those events own the live open-loot truth independently of UI frames.
+        SCB.lootWindowOpen = nil
         SCB_ApplyAutoPromotePlayers()
         -- Freeze normal Active Roster sync from the first frame of a loading-
         -- screen completion. Roster events/UI refreshes may fire before WoW has
