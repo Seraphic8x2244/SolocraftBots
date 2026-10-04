@@ -41,14 +41,17 @@
 - Scope audit: no boss-death monitoring, NPC scanning, visualiser work, protocol change, SavedVariable migration, or unrelated refactor was added.
 - Static source/diff review **PASS** for the intended scope. The implementation changes only `Communication.lua`, `Spawn.lua`, `SoloCraftBots.lua`, `Options.lua`, `Locale/enGB.lua`, and `SoloCraftBots.toc`; the correction commit then changes only `Communication.lua` and the TOC. No introduced `#` length syntax or `goto` tokens were found in the touched Lua files. The large maintenance prelude contains 25 local-function declarations / 96 textual `local` tokens after the two added helpers, so static inspection does not indicate local-scope pressure, but this is not a compiler result.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. The canonical VanillaTemplate checker exists and GCC is available, but the checker/vendor files are not mounted here and direct shell access to GitHub fails DNS. GitHub has no workflow/check run configured for the implementation commits. Do not record a compiler pass.
-- Runtime state: **NOT YET TESTED**. Required focused runtime matrix:
-  1. In ZG before a saved ID exists, set Loot Safe **OFF**, press Kick All while solo-human, and confirm one Group-1 safety bot remains.
+- Runtime state: **IN PROGRESS** on `0.9.18-dev` / implementation `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`.
+  - Test 1 **USER TESTED PASS**: fresh Zul'Gurub with no saved Raid ID, solo human, Loot Safe OFF -> Kick All preserved one Group-1 safety bot, preventing the player from being stranded.
+- Required focused runtime matrix:
+  1. **PASS** — In ZG before a saved ID exists, Loot Safe **OFF**, solo-human, Kick All preserved one Group-1 safety bot.
   2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
   3. Enable Loot Safe, remain the only real human with a valid ZG ID, and press Kick All without both a targeted dead boss and open loot window; confirm one bot remains with the Loot Safe warning.
   4. With Loot Safe enabled + valid ZG ID, target the dead boss, open its loot window without looting, press Kick All, and confirm the final bot is removed and the open corpse remains lootable.
   5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
   6. For the full-teardown Replace Dead recovery case, use a valid ZG ID and set Loot Safe **OFF**, wipe all tracked bots, re-enter if needed, press Replace Dead, and confirm all dead bots are removed, one replacement bootstraps a party, SCB converts back to raid, and replacements continue beyond the first party-sized group.
 - Visualiser remains deferred until this runtime matrix is accepted.
+- Exact next runtime step: obtain the first ZG saved Raid ID by killing a boss while keeping its corpse available; use that same fresh corpse to exercise the Loot Safe blocked-final-removal case and then the targeted-dead-boss + open-loot-window allow case before moving on to later saved-ID tests.
 
 ## 0.9.16-dev SoloCraft Wisdom capability correction
 - User runtime evidence indicates PartyBot Paladins do not actually cast Blessing of Wisdom below level 30, despite normal Vanilla spell availability being lower.
