@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.25-dev`
-- Current implementation head: `3152df694ec258b261cfa53170cb8ca4e732ef8c`
+- TOC version: `0.9.26-dev`
+- Current implementation head: `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`
 - Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.25-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt plus the unchanged `0.9.23-dev` raid-convert delegation slice. `0.9.24-dev` was a failed layout-only attempt; `0.9.25-dev` fixes the demonstrated Misc checkbox collision at `3152df694ec258b261cfa53170cb8ca4e732ef8c`.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.26-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt plus the unchanged `0.9.23-dev` raid-convert delegation slice. `0.9.24-dev` was a failed layout attempt; `0.9.25-dev` separated the colliding rows but was superseded before runtime retest; `0.9.26-dev` normalizes all five Misc checkboxes to the established 24px cadence at `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,17 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-retest **only** Options > Misc layout on `0.9.25-dev` at implementation `3152df694ec258b261cfa53170cb8ca4e732ef8c`. Do not continue the remaining `0.9.23` runtime matrix until this layout retest passes. After that, resume tests 2-9, then the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: runtime-retest **only** Options > Misc layout on `0.9.26-dev` at implementation `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`. Do not continue the remaining `0.9.23` runtime matrix until this layout retest passes. After that, resume tests 2-9, then the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+
+## 0.9.26-dev Options > Misc normalized checkbox spacing retest
+- User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
+- Implementation: `de203c6aec51a4588c5264410d3f5b4dee9cd5d4` / `0.9.26-dev`.
+- The five checkbox anchors now follow one exact 24px cadence: `-30, -54, -78, -102, -126` for Auto-Swap Presets by Location, Auto-promote players in raid, Loot Safe, Auto-accept raid convert requests, and Confirm Bot Roles from Combat respectively.
+- Misc expanded height is `188` with content height `162`, matching the normalized final row while preserving bottom clearance before Chat Filtering.
+- Static implementation diff review: **PASS**. Product delta is limited to the two row anchors, matching section/content heights, and required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Exact next step: retest only Options > Misc on `0.9.26-dev`. Confirm all five checkbox rows have the same visual spacing and Chat Filtering remains clear below them.
 
 ## 0.9.25-dev Options > Misc checkbox collision retest
 - `0.9.24-dev` layout retest: **FAIL / worse**. User screenshot shows the previous diagnosis was incorrect: `Auto-accept raid convert requests` was not merely wrapping into `Loot Safe`; it was colliding with the pre-existing `Confirm Bot Roles from Combat` checkbox that is created later in `SCB_CreateOptionsUI()`.
@@ -26,8 +36,8 @@
 - Fix is layout-only: Auto-accept remains at `-108`; Confirm Bot Roles moves from `-112` to `-138`; Misc expanded height increases from `168` to `194`, and content height from `142` to `168`, preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is only the Confirm Bot Roles row position, matching Misc/content heights, and the required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
-- Exact next step: retest only Options > Misc on `0.9.25-dev`. Confirm Loot Safe, Auto-accept raid convert requests, and Confirm Bot Roles from Combat are three distinct readable rows and Chat Filtering remains clear below them. Stop again if any layout defect remains.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
+- Superseded by the `0.9.26-dev` normalized 24px cadence above.
 
 ## 0.9.24-dev Options > Misc wrapped-label spacing retest
 - `0.9.23-dev` runtime matrix Test 1: **FAIL**. In Options > Misc, `Loot Safe` and `Auto-accept raid convert requests` are too close because the final checkbox label wraps while the original rows remained on a fixed 24px cadence (`-78 / -102`).
