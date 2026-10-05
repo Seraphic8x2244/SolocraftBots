@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.23-dev`
-- Current implementation head: `c52e04a877e73d2e8df660b0c806de14f110b048`
+- TOC version: `0.9.24-dev`
+- Current implementation head: `584198e28f76d40724ff3e2e523c5bc5e4b3e94b`
 - Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.23-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt, then adds only the non-leader raid-convert delegation / Options cleanup slice at `c52e04a877e73d2e8df660b0c806de14f110b048`.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.24-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt plus the unchanged `0.9.23-dev` raid-convert delegation slice, and adds only the focused Misc wrapped-label spacing correction at `584198e28f76d40724ff3e2e523c5bc5e4b3e94b`.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,16 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test `0.9.23-dev` at implementation `c52e04a877e73d2e8df660b0c806de14f110b048`. First exercise the new non-leader raid-convert request / Options UI slice below, then complete the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: runtime-retest **only** Options > Misc layout on `0.9.24-dev` at implementation `584198e28f76d40724ff3e2e523c5bc5e4b3e94b`. Do not continue the remaining `0.9.23` runtime matrix until this layout retest passes. After that, resume tests 2-9, then the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+
+## 0.9.24-dev Options > Misc wrapped-label spacing retest
+- `0.9.23-dev` runtime matrix Test 1: **FAIL**. In Options > Misc, `Loot Safe` and `Auto-accept raid convert requests` are too close because the final checkbox label wraps while the original rows remained on a fixed 24px cadence (`-78 / -102`).
+- Implementation: `584198e28f76d40724ff3e2e523c5bc5e4b3e94b` / `0.9.24-dev`.
+- Fix is layout-only: the final Auto-accept checkbox moves from `-102` to `-108`, giving 30px separation from `Loot Safe`. No option defaults, handlers, localization, communication, raid-convert behavior, Kick Dead behavior, ZG/bootstrap behavior, or visualiser work changed.
+- Static implementation diff review: **PASS**. Product delta is only the one-line `Options.lua` row-position change plus the required TOC version bump.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Exact next step: retest only original matrix Test 1 on `0.9.24-dev`. If it passes, continue tests 2-9. If it fails, stop again on the demonstrated layout defect.
 
 ## 0.9.23-dev non-leader raid-convert delegation / Options cleanup
 - User-reported defect: two humans form a party, zone into a dungeon, and a non-leader presses Summon for a preset larger than five. The preset scheduler reaches its party->raid conversion marker, native `ConvertToRaid()` silently cannot act for the non-leader, the queue changes to its raid-wait state, and the requester is left indefinitely showing Summoning with no recovery other than a leader-side forced action.
@@ -42,7 +51,7 @@
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. GCC is present, but the private VanillaTemplate `tools/lua50/` checker/vendor files are accessible only through the GitHub connector and are not mounted in the executable container; no system Lua/luac is installed. Do not record a compiler pass.
 - Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
 - Required focused runtime matrix:
-  1. Options layout: Misc shows Loot Type Control, Auto-Swap Presets by Location, Auto-promote players in raid, Loot Safe, and Auto-accept raid convert requests; Reset Tutorials is absent; Chat Filtering no longer overlaps Misc.
+  1. Options layout: Misc shows Loot Type Control, Auto-Swap Presets by Location, Auto-promote players in raid, Loot Safe, and Auto-accept raid convert requests; Reset Tutorials is absent; Chat Filtering no longer overlaps Misc. **0.9.23-dev FAIL** on Loot Safe / wrapped Auto-accept spacing; retest this item only on `0.9.24-dev` before continuing.
   2. Auto-accept **OFF**: two real humans in a normal party, non-leader presses Summon for a >5 preset -> leader receives Accept/Decline prompt; requester reports it is waiting; Accept converts to raid and the requester's original summon proceeds without a second Summon click.
   3. Decline with Auto-accept OFF -> requester aborts cleanly and does not remain in Summoning.
   4. Auto-accept **ON** -> no prompt; leader converts automatically and the requester's original summon proceeds.
