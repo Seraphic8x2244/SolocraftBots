@@ -539,7 +539,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
     SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
     SCB.optionLootSafeCheck = SCB_CreateOptionCheck(miscContent, "lootSafe", "OPTION_LOOT_SAFE", -78)
-    SCB.optionAutoAcceptRaidConvertCheck = SCB_CreateOptionCheck(miscContent, "autoAcceptRaidConvertRequests", "OPTION_AUTO_ACCEPT_RAID_CONVERT", -102)
+    SCB.optionAutoAcceptRaidConvertCheck = SCB_CreateOptionCheck(miscContent, "autoAcceptRaidConvertRequests", "OPTION_AUTO_ACCEPT_RAID_CONVERT", -108)
 
     SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)
     SCB.optionChatSection.scbExpanded = false
