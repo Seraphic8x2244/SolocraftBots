@@ -599,13 +599,13 @@ function SCB_CreateOptionsUI(frame)
     SCB_LayoutOptionsUI()
     panel:Hide()
     if miscContent and SCB_CreateOptionCheck and not SCB.optionConfirmBotRolesCheck then
-        check = SCB_CreateOptionCheck(miscContent, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -112)
+        check = SCB_CreateOptionCheck(miscContent, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -138)
         check.scbTooltip = SCB_L("OPTION_CONFIRM_BOT_ROLES_TIP")
         check:SetScript("OnEnter", SCB_TooltipOnEnter)
         check:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.optionConfirmBotRolesCheck = check
-        SCB.optionMiscSection.scbExpandedHeight = 168
-        miscContent:SetHeight(142)
+        SCB.optionMiscSection.scbExpandedHeight = 194
+        miscContent:SetHeight(168)
     end
     SCB_RefreshOptionsUI()
     if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
