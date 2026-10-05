@@ -1689,19 +1689,24 @@ function SCB_LayoutCommandUI()
     end
 
     y = y - buttonSize - 6
-    -- Explicit maintenance actions: Replace Dead preserves the tracked preset
-    -- assignment, while Kick All is the manual safe-clear action.
-    local utilityWidth = 96
-    local utilityGap = 6
-    local utilityTotal = (2 * utilityWidth) + utilityGap
+    -- Explicit maintenance actions stay on one centred row. Replace keeps the
+    -- wider label because it can become "Replace Missing"; the two kick
+    -- actions use compact widths and both route through the shared kick owner.
+    local replaceWidth = 96
+    local kickWidth = 70
+    local utilityGap = 5
+    local utilityTotal = replaceWidth + (2 * kickWidth) + (2 * utilityGap)
     local utilityLeft = math.floor((SCB.frame:GetWidth() - utilityTotal) / 2)
 
     layout.replaceDead:ClearAllPoints()
-    layout.replaceDead:SetWidth(utilityWidth)
+    layout.replaceDead:SetWidth(replaceWidth)
     layout.replaceDead:SetPoint("TOPLEFT", layout.content, "TOPLEFT", utilityLeft, y)
+    layout.kickDead:ClearAllPoints()
+    layout.kickDead:SetWidth(kickWidth)
+    layout.kickDead:SetPoint("LEFT", layout.replaceDead, "RIGHT", utilityGap, 0)
     layout.kickAll:ClearAllPoints()
-    layout.kickAll:SetWidth(utilityWidth)
-    layout.kickAll:SetPoint("LEFT", layout.replaceDead, "RIGHT", utilityGap, 0)
+    layout.kickAll:SetWidth(kickWidth)
+    layout.kickAll:SetPoint("LEFT", layout.kickDead, "RIGHT", utilityGap, 0)
 
     -- Positive spacing can make the command block taller than its original
     -- fixed content area. Grow the section only when needed; negative spacing
@@ -1863,7 +1868,13 @@ function SCB_CreateCommandUI(frame)
     SCB.replaceDeadButton = replaceDead
     SCB_SetPresetButtonGrey(replaceDead)
 
-    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 96, 24, SCB_L("KICK_ALL"))
+    local kickDead = SCB_CreateTextButton(content, "SoloCraftBotsKickDead", 70, 24, SCB_L("KICK_DEAD"))
+    kickDead.scbTooltip = SCB_L("TIP_KICK_DEAD")
+    kickDead:SetScript("OnClick", SCB_KickDeadOnClick)
+    kickDead:SetScript("OnEnter", SCB_TooltipOnEnter)
+    kickDead:SetScript("OnLeave", SCB_TooltipOnLeave)
+
+    local kickAll = SCB_CreateTextButton(content, "SoloCraftBotsKickAll", 70, 24, SCB_L("KICK_ALL"))
     kickAll.scbTooltip = SCB_L("TIP_KICK_ALL")
     kickAll:SetScript("OnClick", SCB_KickAllOnClick)
     kickAll:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1877,6 +1888,7 @@ function SCB_CreateCommandUI(frame)
         pairedComeButtons = pairedComeButtons,
         standaloneButtons = standaloneButtons,
         replaceDead = replaceDead,
+        kickDead = kickDead,
         kickAll = kickAll,
     }
     SCB_LayoutCommandUI()
