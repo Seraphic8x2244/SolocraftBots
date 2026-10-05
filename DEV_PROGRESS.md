@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.22-dev`
-- Current implementation head: `d886fa150358f7ce2c6d1370639abf79a1b6a3ab`
-- Accepted design handoff before this implementation: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
+- TOC version: `0.9.23-dev`
+- Current implementation head: `c52e04a877e73d2e8df660b0c806de14f110b048`
+- Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state; current `dev` is `0.9.22-dev`; the `0.9.21-dev` solo/non-raid T3 maintenance-bootstrap correction is unchanged and `0.9.22-dev` adds only the requested main-window Kick Dead control.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.23-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt, then adds only the non-leader raid-convert delegation / Options cleanup slice at `c52e04a877e73d2e8df660b0c806de14f110b048`.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,41 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the combined `0.9.22-dev` build. Its only delta over the untested `0.9.21-dev` maintenance-bootstrap correction is the main-window Kick Dead button, wired to the already-existing shared Kick Dead path. Do not begin the visualiser until the ZG/final-bot slice is runtime-tested and accepted.
+- Immediate goal / exact next step: runtime-test `0.9.23-dev` at implementation `c52e04a877e73d2e8df660b0c806de14f110b048`. First exercise the new non-leader raid-convert request / Options UI slice below, then complete the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+
+## 0.9.23-dev non-leader raid-convert delegation / Options cleanup
+- User-reported defect: two humans form a party, zone into a dungeon, and a non-leader presses Summon for a preset larger than five. The preset scheduler reaches its party->raid conversion marker, native `ConvertToRaid()` silently cannot act for the non-leader, the queue changes to its raid-wait state, and the requester is left indefinitely showing Summoning with no recovery other than a leader-side forced action.
+- Implementation: `c52e04a877e73d2e8df660b0c806de14f110b048` / `0.9.23-dev`.
+- Local preset Summon now reuses the existing protocol-8 leader-control `L:...:CONVERT` transport instead of adding a second communication mechanism. All preset-owned conversion points that can encounter a human party use one `SCB_RequestRaidConvertForPresetOperation()` owner; the existing preset bot-operation lifecycle and summon scheduler remain authoritative.
+- If the summoner is already party leader, the existing direct native `ConvertToRaid()` behavior is preserved. If the summoner is not leader, SCB identifies the current party leader, sends one targeted conversion request, leaves the original preset operation pending, and resumes through the existing raid-wait queue only after raid state is actually observed.
+- Incoming conversion requests now have explicit leader-side policy:
+  - new account-wide Options > Misc checkbox `Auto-accept raid convert requests`, default **OFF**;
+  - OFF -> the current party leader receives an Accept / Decline prompt;
+  - ON -> the current party leader immediately runs the same accepted conversion path without the prompt.
+- Failure ownership is bounded by the existing 30-second communication timeout. Decline, explicit error/busy response, requester operation cancellation, sender departure, leadership loss/change, missing/non-responsive SCB leader, or conversion that never produces raid state all clear/abort the pending request instead of leaving Summon stuck indefinitely.
+- The same shared `L CONVERT` receiver is still used by protocol-8 remote Preset Request conversion. That path therefore inherits the new leader prompt/auto-accept preference rather than maintaining a second conversion policy. Protocol remains 8; no snapshot/data-model fields changed.
+- Options cleanup:
+  - obsolete `Reset Tutorials` control, its reset-only handler/helper and reset-only locale strings were removed; the tutorial system itself was not otherwise changed;
+  - Misc checkbox rows are now at `-30 / -54 / -78 / -102` beneath Loot Type Control, preserving the existing 24px cadence;
+  - Misc subsection height remains 164; the new final 24px checkbox ends with approximately 12px of section clearance before Chat Filtering, replacing the old lower reset button that produced the screenshot overlap.
+- Scope audit / static review **PASS** against the implementation diff:
+  - product changes are limited to `Communication.lua`, `Spawn.lua`, `SoloCraftBots.lua`, `Options.lua`, `Presets.lua`, `Locale/enGB.lua`, and the required TOC bump;
+  - `Spawn.lua` changes are limited to preset conversion routing plus stale-request cleanup on preset abort; maintenance conversion logic was not changed;
+  - no new spawn scheduler, PartyBot transport, preset snapshot fields, SavedVariable migration, ZG/final-bot behavior, Kick Dead behavior, or visualiser work was added;
+  - new communication helpers are SCB-owned functions rather than additional top-level locals, avoiding unnecessary Lua 5.0.3 chunk-local pressure.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. GCC is present, but the private VanillaTemplate `tools/lua50/` checker/vendor files are accessible only through the GitHub connector and are not mounted in the executable container; no system Lua/luac is installed. Do not record a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Required focused runtime matrix:
+  1. Options layout: Misc shows Loot Type Control, Auto-Swap Presets by Location, Auto-promote players in raid, Loot Safe, and Auto-accept raid convert requests; Reset Tutorials is absent; Chat Filtering no longer overlaps Misc.
+  2. Auto-accept **OFF**: two real humans in a normal party, non-leader presses Summon for a >5 preset -> leader receives Accept/Decline prompt; requester reports it is waiting; Accept converts to raid and the requester's original summon proceeds without a second Summon click.
+  3. Decline with Auto-accept OFF -> requester aborts cleanly and does not remain in Summoning.
+  4. Auto-accept **ON** -> no prompt; leader converts automatically and the requester's original summon proceeds.
+  5. Non-responsive / no compatible SCB leader -> requester times out cleanly after the existing 30-second communication timeout; no stuck preset operation.
+  6. Leadership changes while waiting -> requester fails cleanly; no stuck preset operation.
+  7. Leader-initiated >5 preset summon -> existing direct conversion behavior remains unchanged.
+  8. Existing remote Preset Request that needs party->raid conversion -> OFF prompts the actual leader; ON auto-accepts; accepted request still resumes only after raid state exists.
+  9. <=5 preset summon -> no raid-convert request and existing five-player behavior remains unchanged.
+- After this focused matrix, continue the previously pending `0.9.22-dev` Kick Dead UI + ZG tests 2, 5 and corrected Test 6. Visualiser remains deferred.
 
 ## 0.9.18-dev ZG / final-bot removal safety
 - User-accepted design handoff: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`.
