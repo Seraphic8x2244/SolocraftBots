@@ -412,6 +412,7 @@ function SCB_RefreshOptionsUI()
     if SCB.optionSCBChatCheck then SCB.optionSCBChatCheck:SetChecked(options.hideSCBChatMessages and 1 or nil) end
     if SCB.optionSCBScreenCheck then SCB.optionSCBScreenCheck:SetChecked(options.hideSCBScreenWarnings and 1 or nil) end
     if SCB.optionAutoSwapPresetGroupCheck then SCB.optionAutoSwapPresetGroupCheck:SetChecked(options.autoSwapPresetGroup and 1 or nil) end
+    if SCB.optionAutoAcceptRaidConvertCheck then SCB.optionAutoAcceptRaidConvertCheck:SetChecked(options.autoAcceptRaidConvertRequests and 1 or nil) end
     if SCB.optionBotSummonMessageCheck then SCB.optionBotSummonMessageCheck:SetChecked(options.hideBotSummonMessage and 1 or nil) end
     if SCB.optionBotGroupMessagesCheck then SCB.optionBotGroupMessagesCheck:SetChecked(options.hideBotGroupMessages and 1 or nil) end
     if SCB.optionBotMovementMessagesCheck then SCB.optionBotMovementMessagesCheck:SetChecked(options.hideBotMovementMessages and 1 or nil) end
@@ -498,7 +499,7 @@ end
 
 function SCB_CreateOptionsUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
-    local heading, resetTutorials, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control, check
+    local heading, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control, check
     panel:SetWidth(290)
     panel:SetHeight(220)
     panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
@@ -538,9 +539,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
     SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
     SCB.optionLootSafeCheck = SCB_CreateOptionCheck(miscContent, "lootSafe", "OPTION_LOOT_SAFE", -78)
-    resetTutorials = SCB_CreateTextButton(miscContent, nil, 112, 22, SCB_L("RESET_TUTORIALS"))
-    resetTutorials:SetPoint("TOPLEFT", miscContent, "TOPLEFT", 16, -108)
-    resetTutorials:SetScript("OnClick", SCB_ResetTutorialsOnClick)
+    SCB.optionAutoAcceptRaidConvertCheck = SCB_CreateOptionCheck(miscContent, "autoAcceptRaidConvertRequests", "OPTION_AUTO_ACCEPT_RAID_CONVERT", -102)
 
     SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)
     SCB.optionChatSection.scbExpanded = false

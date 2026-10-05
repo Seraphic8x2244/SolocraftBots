@@ -3668,25 +3668,6 @@ function SCB_PresetToggleOnClick()
     SCB_SetPresetPanelShown(not SCB.presetPanel:IsShown())
 end
 
-function SCB_ResetTutorialHelpers()
-    -- Closing Presets first mirrors what the user would do manually and also
-    -- stops any running helper cleanly.  Reset afterwards so reopening the
-    -- drawer can immediately demonstrate the tutorial again.
-    if SCB.presetPanel and SCB.presetPanel:IsShown() then
-        SCB_SetPresetPanelShown(false)
-    else
-        SCB_StopPresetTutorial(false)
-    end
-    SoloCraftBotsCharDB = SoloCraftBotsCharDB or {}
-    SoloCraftBotsCharDB.helpers = {}
-    SCB_Print(SCB_L("HELPERS_RESET"))
-end
-
-function SCB_ResetTutorialsOnClick()
-    SCB_ResetTutorialHelpers()
-end
-
-
 function SCB_CreateDropdownArrow(parent)
     local arrow = CreateFrame("Button", nil, parent)
     arrow:SetWidth(18)

@@ -550,6 +550,7 @@ function SCB_EnsureOptionsDB()
     if options.hideBotAttackMessages == nil then options.hideBotAttackMessages = false end
     if options.autoPromotePlayers == nil then options.autoPromotePlayers = false end
     if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
+    if options.autoAcceptRaidConvertRequests == nil then options.autoAcceptRaidConvertRequests = false end
     if options.drawerJustification ~= "left" and options.drawerJustification ~= "right" then
         options.drawerJustification = "right"
     end

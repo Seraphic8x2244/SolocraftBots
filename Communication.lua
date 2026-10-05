@@ -13,6 +13,8 @@ SCB.commOutgoing = SCB.commOutgoing or { S = nil, R = nil }
 SCB.commOffers = SCB.commOffers or {}
 SCB.commAssemblies = SCB.commAssemblies or {}
 SCB.commSequence = SCB.commSequence or 0
+SCB.localRaidConvertRequest = SCB.localRaidConvertRequest or nil
+SCB.pendingRaidConvertRequest = SCB.pendingRaidConvertRequest or nil
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -44,7 +46,7 @@ end
 
 local function SCB_PublishCommunicationActivity(lastResult)
     local activities, assemblyKeys = {}, {}
-    local out, incoming, key, assembly, offer
+    local out, incoming, key, assembly, offer, convertRequest
     local total, current
 
     if not SCB_PublishActivityStatus then return end
@@ -72,6 +74,30 @@ local function SCB_PublishCommunicationActivity(lastResult)
             incoming.phase or "prompt",
             incoming.sender,
             incoming.tx
+        )
+    end
+
+    convertRequest = SCB.localRaidConvertRequest
+    if convertRequest then
+        SCB_AppendCommunicationActivity(
+            activities,
+            "outgoing",
+            "raid-convert",
+            convertRequest.phase or "waiting",
+            convertRequest.leader,
+            convertRequest.tx
+        )
+    end
+
+    convertRequest = SCB.pendingRaidConvertRequest
+    if convertRequest then
+        SCB_AppendCommunicationActivity(
+            activities,
+            "incoming",
+            "raid-convert",
+            convertRequest.phase or "prompt",
+            convertRequest.sender,
+            convertRequest.tx
         )
     end
 
@@ -278,6 +304,101 @@ local function NextTransactionID()
     SCB.commSequence = (SCB.commSequence or 0) + 1
     if SCB.commSequence > 999 then SCB.commSequence = 1 end
     return tostring(math.floor(Now() * 1000)) .. tostring(SCB.commSequence)
+end
+
+function SCB_ClearLocalRaidConvertRequest(status)
+    local request = SCB.localRaidConvertRequest
+    SCB.localRaidConvertRequest = nil
+    if request and status == "complete" and SCB_SetBotOperationPhase then
+        SCB_SetBotOperationPhase("summon")
+    end
+    SCB_PublishCommunicationActivity(status)
+    return request
+end
+
+function SCB_CancelLocalRaidConvertRequest(silent)
+    local request = SCB.localRaidConvertRequest
+    if not request then return false end
+    if request.tx and request.leader then
+        SendControl("L", request.tx, request.leader, "CANCEL")
+    end
+    SCB_ClearLocalRaidConvertRequest(silent and "cancelled" or "aborted")
+    return true
+end
+
+function SCB_AbortPresetForRaidConvertFailure(text)
+    if text and text ~= "" then SCB_Print(text) end
+    if SCB_CancelActiveRosterPresetTransition then SCB_CancelActiveRosterPresetTransition() end
+    if SCB_AbortBotSpawnOperations then
+        SCB_AbortBotSpawnOperations()
+    elseif SCB_AbortBotOperation then
+        SCB_AbortBotOperation("raid conversion failed")
+    end
+end
+
+function SCB_FailLocalRaidConvertRequest(text)
+    if not SCB.localRaidConvertRequest then return end
+    SCB_ClearLocalRaidConvertRequest("error")
+    SCB_AbortPresetForRaidConvertFailure(text or SCB_L("COMM_RAID_CONVERT_FAILED"))
+end
+
+function SCB_RequestRaidConvertForPresetOperation()
+    local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local leaderName, request
+
+    if raidCount > 0 then
+        if SCB.localRaidConvertRequest then SCB_ClearLocalRaidConvertRequest("complete") end
+        return true
+    end
+    if not operation or operation.kind ~= "preset" then return false end
+    if partyCount <= 0 then
+        SCB_AbortPresetForRaidConvertFailure(SCB_L("COMM_RAID_CONVERT_FAILED"))
+        return false
+    end
+
+    if SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() then
+        if not ConvertToRaid then
+            SCB_AbortPresetForRaidConvertFailure(SCB_L("COMM_RAID_CONVERT_FAILED"))
+            return false
+        end
+        ConvertToRaid()
+        return true
+    end
+
+    leaderName = CurrentGroupLeaderName()
+    if not leaderName or leaderName == SelfName() or not SendAddonMessage then
+        SCB_AbortPresetForRaidConvertFailure(SCB_L("COMM_RAID_CONVERT_FAILED"))
+        return false
+    end
+
+    request = SCB.localRaidConvertRequest
+    if request then
+        if request.operationID == operation.id and request.leader == leaderName then return true end
+        SCB_FailLocalRaidConvertRequest(SCB_L("COMM_RAID_CONVERT_LEADER_CHANGED"))
+        return false
+    end
+
+    request = {
+        tx = NextTransactionID(),
+        leader = leaderName,
+        operationID = operation.id,
+        phase = "waiting",
+        deadline = Now() + COMM_TIMEOUT,
+    }
+    SCB.localRaidConvertRequest = request
+    if not SendControl("L", request.tx, leaderName, "CONVERT") then
+        SCB_ClearLocalRaidConvertRequest("error")
+        SCB_AbortPresetForRaidConvertFailure(SCB_L("COMM_RAID_CONVERT_FAILED"))
+        return false
+    end
+
+    if SCB_SetBotOperationPhase then SCB_SetBotOperationPhase("await-raid-convert") end
+    SCB_Print(string.format(SCB_L("COMM_RAID_CONVERT_WAIT"), leaderName))
+    SCB_PublishCommunicationActivity()
+    if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+    return true
 end
 
 function SCB_CommsSetButtonPending(mode, pending)
@@ -703,6 +824,100 @@ StaticPopupDialogs["SOLOCRAFTBOTS_RECEIVED_PRESET_NAME"] = {
     timeout = 0, whileDead = 1, hideOnEscape = 1, exclusive = 1,
 }
 
+function SCB_CreateRaidConvertPromptUI()
+    local frame, title, accept, decline
+    if SCB.raidConvertPromptFrame then return SCB.raidConvertPromptFrame end
+
+    frame = CreateFrame("Frame", "SoloCraftBotsRaidConvertPrompt", UIParent)
+    frame:SetWidth(340)
+    frame:SetHeight(106)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -45)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 24,
+        insets = { left = 8, right = 8, top = 8, bottom = 8 },
+    })
+    frame:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
+
+    title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetWidth(310)
+    title:SetPoint("TOP", frame, "TOP", 0, -18)
+    title:SetJustifyH("CENTER")
+    frame.title = title
+
+    accept = SCB_CreateTextButton(frame, nil, 112, 24, SCB_L("BUTTON_ACCEPT"))
+    accept:SetPoint("BOTTOMRIGHT", frame, "BOTTOM", -5, 16)
+    accept:SetScript("OnClick", function() SCB_CommsAcceptRaidConvertRequest() end)
+    frame.accept = accept
+
+    decline = SCB_CreateTextButton(frame, nil, 112, 24, SCB_L("BUTTON_DECLINE"))
+    decline:SetPoint("BOTTOMLEFT", frame, "BOTTOM", 5, 16)
+    decline:SetScript("OnClick", function() SCB_CommsDeclineRaidConvertRequest() end)
+    frame.decline = decline
+
+    frame:Hide()
+    SCB.raidConvertPromptFrame = frame
+    return frame
+end
+
+function SCB_ClearPendingRaidConvertRequest(status)
+    local request = SCB.pendingRaidConvertRequest
+    SCB.pendingRaidConvertRequest = nil
+    if SCB.raidConvertPromptFrame then SCB.raidConvertPromptFrame:Hide() end
+    SCB_PublishCommunicationActivity(status)
+    return request
+end
+
+function SCB_RaidConvertRequestCanRun(request)
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    if not request or not GroupHasName(request.sender) then return false end
+    if raidCount > 0 then return true end
+    if partyCount <= 0 or not ConvertToRaid then return false end
+    if not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then return false end
+    return true
+end
+
+function SCB_CommsAcceptRaidConvertRequest()
+    local request = SCB.pendingRaidConvertRequest
+    local raidCount
+    if not request then return end
+
+    if not SCB_RaidConvertRequestCanRun(request) then
+        SendControl("L", request.tx, request.sender, "ERROR")
+        SCB_ClearPendingRaidConvertRequest("error")
+        return
+    end
+
+    raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    if raidCount == 0 then ConvertToRaid() end
+    SendControl("L", request.tx, request.sender, "CONVERTING")
+    SCB_ClearPendingRaidConvertRequest("accepted")
+end
+
+function SCB_CommsDeclineRaidConvertRequest()
+    local request = SCB.pendingRaidConvertRequest
+    if not request then return end
+    SendControl("L", request.tx, request.sender, "DECLINED")
+    SCB_ClearPendingRaidConvertRequest("declined")
+end
+
+function SCB_ShowRaidConvertPrompt(request)
+    local frame = SCB_CreateRaidConvertPromptUI()
+    if not request or not frame then return end
+    frame.title:SetText(string.format(SCB_L("COMM_RAID_CONVERT_PROMPT"), request.sender))
+    frame:Show()
+    frame:Raise()
+end
+
+function SCB_ShouldAutoAcceptRaidConvertRequest()
+    if SCB_EnsureOptionsDB then SCB_EnsureOptionsDB() end
+    return SoloCraftBotsDB and SoloCraftBotsDB.options
+        and SoloCraftBotsDB.options.autoAcceptRaidConvertRequests == true
+end
+
 local function SCB_CommsStartAcceptedRequest(incoming)
     local ok, errorText, raidCount, partyCount
     if not incoming or incoming.done or incoming.mode ~= "R" then return false end
@@ -949,23 +1164,73 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
     end
 
     if kind == "L" and table.getn(parts) == 4 then
-        if parts[4] == "CONVERT" then
+        local control = parts[4]
+
+        if control == "CONVERT" then
             local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
             local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-            if GroupHasName(sender) and raidCount == 0 and partyCount > 0
-                and SCB_IsLocalGroupLeader and SCB_IsLocalGroupLeader() and ConvertToRaid then
-                ConvertToRaid()
+            local pending = SCB.pendingRaidConvertRequest
+
+            if GroupHasName(sender) and raidCount > 0 then
                 SendControl("L", tx, sender, "CONVERTING")
-            else
+                return
+            end
+
+            if not GroupHasName(sender) or raidCount > 0 or partyCount <= 0
+                or not ConvertToRaid or not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then
                 SendControl("L", tx, sender, "ERROR")
+                return
+            end
+
+            if pending then
+                if pending.tx == tx and pending.sender == sender then return end
+                SendControl("L", tx, sender, "BUSY")
+                return
+            end
+
+            SCB.pendingRaidConvertRequest = {
+                tx = tx,
+                sender = sender,
+                phase = "prompt",
+                deadline = Now() + COMM_TIMEOUT,
+            }
+            SCB_PublishCommunicationActivity()
+            if SCB_CommsWakeTimer then SCB_CommsWakeTimer() end
+
+            if SCB_ShouldAutoAcceptRaidConvertRequest() then
+                SCB_CommsAcceptRaidConvertRequest()
+            else
+                SCB_ShowRaidConvertPrompt(SCB.pendingRaidConvertRequest)
             end
             return
         end
 
-        if parts[4] == "REQUEST" then
+        if control == "CANCEL" then
+            local pending = SCB.pendingRaidConvertRequest
+            if pending and pending.tx == tx and pending.sender == sender then
+                SCB_ClearPendingRaidConvertRequest("cancelled")
+            end
+            return
+        end
+
+        if control == "REQUEST" then
             -- Leadership-transfer Request controls are obsolete; protocol 8
             -- keeps leadership fixed for the entire preset Request lifecycle.
             SendControl("L", tx, sender, "ERROR")
+            return
+        end
+
+        local localConvert = SCB.localRaidConvertRequest
+        if localConvert and localConvert.tx == tx and localConvert.leader == sender then
+            localConvert.deadline = Now() + COMM_TIMEOUT
+            if control == "CONVERTING" then
+                localConvert.phase = "converting"
+                SCB_PublishCommunicationActivity()
+            elseif control == "DECLINED" then
+                SCB_FailLocalRaidConvertRequest(string.format(SCB_L("COMM_RAID_CONVERT_DECLINED"), sender))
+            elseif control == "ERROR" or control == "BUSY" then
+                SCB_FailLocalRaidConvertRequest(SCB_L("COMM_RAID_CONVERT_FAILED"))
+            end
             return
         end
 
@@ -973,7 +1238,10 @@ function SCB_CommsOnAddonMessage(prefix, message, channel, sender)
         if incoming and not incoming.done and incoming.tx == tx and incoming.controlLeader == sender
             and incoming.mode == "R" and incoming.requestAccepted then
             incoming.deadline = Now() + COMM_TIMEOUT
-            if parts[4] == "ERROR" then
+            if control == "DECLINED" then
+                SCB_Print(string.format(SCB_L("COMM_RAID_CONVERT_DECLINED"), sender))
+                FinishIncoming(incoming, "ERROR")
+            elseif control == "ERROR" or control == "BUSY" then
                 SCB_Print(SCB_L("COMM_REQUEST_CONVERT_FAILED"))
                 FinishIncoming(incoming, "ERROR")
             end
@@ -1000,6 +1268,8 @@ local function SCB_CommsHasTimedWork()
     if next(SCB.commOffers or {}) then return true end
     if next(SCB.commAssemblies or {}) then return true end
     if SCB.commPromptTransaction and not SCB.commPromptTransaction.done then return true end
+    if SCB.localRaidConvertRequest then return true end
+    if SCB.pendingRaidConvertRequest then return true end
     return false
 end
 
@@ -1057,6 +1327,34 @@ commFrame:SetScript("OnUpdate", function()
         end
     end
     if communicationChanged then SCB_PublishCommunicationActivity("timeout") end
+
+    local convertRequest = SCB.pendingRaidConvertRequest
+    if convertRequest then
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            SendControl("L", convertRequest.tx, convertRequest.sender, "CONVERTING")
+            SCB_ClearPendingRaidConvertRequest("complete")
+        elseif now >= convertRequest.deadline
+            or not GroupHasName(convertRequest.sender)
+            or not SCB_IsLocalGroupLeader or not SCB_IsLocalGroupLeader() then
+            SendControl("L", convertRequest.tx, convertRequest.sender, "ERROR")
+            SCB_ClearPendingRaidConvertRequest("error")
+        end
+    end
+
+    convertRequest = SCB.localRaidConvertRequest
+    if convertRequest then
+        local operation = SCB_GetActiveBotOperation and SCB_GetActiveBotOperation() or nil
+        local leaderName = CurrentGroupLeaderName()
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+            SCB_ClearLocalRaidConvertRequest("complete")
+        elseif not operation or operation.kind ~= "preset" or operation.id ~= convertRequest.operationID then
+            SCB_CancelLocalRaidConvertRequest(true)
+        elseif leaderName and leaderName ~= convertRequest.leader then
+            SCB_FailLocalRaidConvertRequest(SCB_L("COMM_RAID_CONVERT_LEADER_CHANGED"))
+        elseif now >= convertRequest.deadline then
+            SCB_FailLocalRaidConvertRequest(string.format(SCB_L("COMM_RAID_CONVERT_TIMEOUT"), convertRequest.leader))
+        end
+    end
 
     incoming = SCB.commPromptTransaction
     if incoming and not incoming.done then

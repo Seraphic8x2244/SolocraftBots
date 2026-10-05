@@ -1815,8 +1815,14 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
         elseif head == SCB_CONVERT_NOW then
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
                 SCB_PresetSpawnQueuePop()
-            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
-                ConvertToRaid()
+            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 then
+                if SCB_RequestRaidConvertForPresetOperation then
+                    if not SCB_RequestRaidConvertForPresetOperation() then return end
+                elseif ConvertToRaid then
+                    ConvertToRaid()
+                else
+                    return
+                end
                 SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
                 return
             else
@@ -1839,6 +1845,9 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
             safety.survivorName = bootstrapName
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
                 SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
+            elseif SCB_RequestRaidConvertForPresetOperation then
+                if not SCB_RequestRaidConvertForPresetOperation() then return end
+                SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
             elseif ConvertToRaid then
                 ConvertToRaid()
                 SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
@@ -1852,8 +1861,14 @@ local function SCB_PresetSpawnQueueOnUpdateCore()
 
             if GetNumRaidMembers and GetNumRaidMembers() > 0 then
                 SCB_PresetSpawnQueuePop()
-            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 and ConvertToRaid then
-                ConvertToRaid()
+            elseif GetNumPartyMembers and GetNumPartyMembers() > 0 then
+                if SCB_RequestRaidConvertForPresetOperation then
+                    if not SCB_RequestRaidConvertForPresetOperation() then return end
+                elseif ConvertToRaid then
+                    ConvertToRaid()
+                else
+                    return
+                end
                 SCB_PresetSpawnQueueReplaceHead(SCB_WAIT_RAID)
                 return
             else
@@ -2250,7 +2265,10 @@ function SCB_AbortBotSpawnOperations(preserveOperation)
         return
     end
 
-    if operation and operation.kind == "preset" then operation.safety = nil end
+    if operation and operation.kind == "preset" then
+        operation.safety = nil
+        if SCB_CancelLocalRaidConvertRequest then SCB_CancelLocalRaidConvertRequest(true) end
+    end
     if preserveOperation and operation then
         SCB_ClearOperationRebuild(operation)
         operation.phase = "replacing"
@@ -2608,9 +2626,15 @@ function SCB_PresetRebuildOnUpdate()
         raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
         if raidCount == 0 then
             partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-            if partyCount > 0 and ConvertToRaid then
+            if partyCount > 0 then
                 if not state.scbConvertRequestedAt or (now - state.scbConvertRequestedAt) >= 1.0 then
-                    ConvertToRaid()
+                    if SCB_RequestRaidConvertForPresetOperation then
+                        if not SCB_RequestRaidConvertForPresetOperation() then return end
+                    elseif ConvertToRaid then
+                        ConvertToRaid()
+                    else
+                        return
+                    end
                     state.scbConvertRequestedAt = now
                     if SCB.developerDebugEnabled and SCB_DebugLog then
                         SCB_DebugLog("Spawn", "Coordinator requested party-to-raid conversion with survivor " .. tostring(anchorName))
