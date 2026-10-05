@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-retest **only** Options > Misc layout on `0.9.26-dev` at implementation `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`. Do not continue the remaining `0.9.23` runtime matrix until this layout retest passes. After that, resume tests 2-9, then the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: Options > Misc layout is **USER TESTED PASS** on `0.9.26-dev`. Continue the remaining `0.9.23` runtime matrix tests 2-9 with Revenga/Gaia, then the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
@@ -26,8 +26,8 @@
 - Misc expanded height is `188` with content height `162`, matching the normalized final row while preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is limited to the two row anchors, matching section/content heights, and required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
-- Exact next step: retest only Options > Misc on `0.9.26-dev`. Confirm all five checkbox rows have the same visual spacing and Chat Filtering remains clear below them.
+- Runtime state: **USER TESTED PASS**. User confirmed the normalized five-row Misc layout is correct on `0.9.26-dev`; all five checkboxes now read with the intended consistent spacing.
+- Next step: continue `0.9.23` runtime matrix tests 2-9.
 
 ## 0.9.25-dev Options > Misc checkbox collision retest
 - `0.9.24-dev` layout retest: **FAIL / worse**. User screenshot shows the previous diagnosis was incorrect: `Auto-accept raid convert requests` was not merely wrapping into `Loot Safe`; it was colliding with the pre-existing `Confirm Bot Roles from Combat` checkbox that is created later in `SCB_CreateOptionsUI()`.
@@ -71,7 +71,7 @@
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. GCC is present, but the private VanillaTemplate `tools/lua50/` checker/vendor files are accessible only through the GitHub connector and are not mounted in the executable container; no system Lua/luac is installed. Do not record a compiler pass.
 - Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
 - Required focused runtime matrix:
-  1. Options layout: Misc shows Loot Type Control, Auto-Swap Presets by Location, Auto-promote players in raid, Loot Safe, and Auto-accept raid convert requests; Reset Tutorials is absent; Chat Filtering no longer overlaps Misc. **0.9.23-dev FAIL** on Loot Safe / wrapped Auto-accept spacing; retest this item only on `0.9.24-dev` before continuing.
+  1. **PASS on `0.9.26-dev`** — Options layout is accepted: all five Misc checkboxes use the same spacing and Chat Filtering is clear below them.
   2. Auto-accept **OFF**: two real humans in a normal party, non-leader presses Summon for a >5 preset -> leader receives Accept/Decline prompt; requester reports it is waiting; Accept converts to raid and the requester's original summon proceeds without a second Summon click.
   3. Decline with Auto-accept OFF -> requester aborts cleanly and does not remain in Summoning.
   4. Auto-accept **ON** -> no prompt; leader converts automatically and the requester's original summon proceeds.
