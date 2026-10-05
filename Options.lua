@@ -539,7 +539,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionAutoSwapPresetGroupCheck = SCB_CreateOptionCheck(miscContent, "autoSwapPresetGroup", "OPTION_AUTO_SWAP_PRESET_GROUP", -30)
     SCB.optionAutoPromotePlayersCheck = SCB_CreateOptionCheck(miscContent, "autoPromotePlayers", "OPTION_AUTO_PROMOTE_PLAYERS", -54)
     SCB.optionLootSafeCheck = SCB_CreateOptionCheck(miscContent, "lootSafe", "OPTION_LOOT_SAFE", -78)
-    SCB.optionAutoAcceptRaidConvertCheck = SCB_CreateOptionCheck(miscContent, "autoAcceptRaidConvertRequests", "OPTION_AUTO_ACCEPT_RAID_CONVERT", -108)
+    SCB.optionAutoAcceptRaidConvertCheck = SCB_CreateOptionCheck(miscContent, "autoAcceptRaidConvertRequests", "OPTION_AUTO_ACCEPT_RAID_CONVERT", -102)
 
     SCB.optionChatSection = SCB_CreateOptionsSubsection(panel, nil, "OPTIONS_BOT_CHAT_FILTER", 202)
     SCB.optionChatSection.scbExpanded = false
@@ -599,13 +599,13 @@ function SCB_CreateOptionsUI(frame)
     SCB_LayoutOptionsUI()
     panel:Hide()
     if miscContent and SCB_CreateOptionCheck and not SCB.optionConfirmBotRolesCheck then
-        check = SCB_CreateOptionCheck(miscContent, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -138)
+        check = SCB_CreateOptionCheck(miscContent, "confirmBotRolesFromCombat", "OPTION_CONFIRM_BOT_ROLES", -126)
         check.scbTooltip = SCB_L("OPTION_CONFIRM_BOT_ROLES_TIP")
         check:SetScript("OnEnter", SCB_TooltipOnEnter)
         check:SetScript("OnLeave", SCB_TooltipOnLeave)
         SCB.optionConfirmBotRolesCheck = check
-        SCB.optionMiscSection.scbExpandedHeight = 194
-        miscContent:SetHeight(168)
+        SCB.optionMiscSection.scbExpandedHeight = 188
+        miscContent:SetHeight(162)
     end
     SCB_RefreshOptionsUI()
     if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
