@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.23` runtime matrix Tests 1-6, 8 and 9 are **USER TESTED PASS** on the current `0.9.26-dev` product tree; only Test 7 remains. Re-enable/reload Gaia's SCB, reform a normal party if needed, then run the leader-initiated >5 preset summon. After that, continue the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: the full `0.9.23` non-leader raid-convert delegation / Options matrix is **USER TESTED PASS** on the current `0.9.26-dev` product tree. Return now to the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix: Kick Dead UI smoke plus ZG tests 2, 5 and corrected 6. Do not begin the visualiser until those are accepted.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
@@ -36,7 +36,7 @@
 - Fix is layout-only: Auto-accept remains at `-108`; Confirm Bot Roles moves from `-112` to `-138`; Misc expanded height increases from `168` to `194`, and content height from `142` to `168`, preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is only the Confirm Bot Roles row position, matching Misc/content heights, and the required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **IN PROGRESS on the current `0.9.26-dev` product tree**. Tests 1-6, 8 and 9 are USER TESTED PASS; only Test 7 remains. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
+- Runtime state: **USER TESTED PASS on the current `0.9.26-dev` product tree**. All focused matrix tests 1-9 are accepted. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
 - Superseded by the `0.9.26-dev` normalized 24px cadence above.
 
 ## 0.9.24-dev Options > Misc wrapped-label spacing retest
@@ -77,7 +77,7 @@
   4. **PASS on `0.9.26-dev`** — With Gaia as leader, Revenga as non-leader and Auto-accept ON, Gaia received no confirmation popup; the party converted to raid automatically; Revenga's original >5 preset summon continued; and summon ownership remained with Revenga rather than transferring to Gaia.
   5. **PASS on `0.9.26-dev`** — Gaia was party leader with SCB disabled while Revenga, as non-leader, attempted a >5 preset summon. No raid conversion or bot spawn occurred; Revenga timed out after the existing 30-second communication timeout and the operation cleared cleanly so a fresh summon could be attempted afterward.
   6. **PASS on `0.9.26-dev`** — With Gaia initially leader and Auto-accept OFF, Revenga began a >5 preset summon and waited on the conversion request. Leadership was transferred while the request was pending; Revenga's pending summon failed/cleared cleanly with no stuck Summoning state.
-  7. Leader-initiated >5 preset summon -> existing direct conversion behavior remains unchanged.
+  7. **PASS on `0.9.26-dev`** — Revenga was made party leader while Gaia's SCB remained disabled. Revenga initiated a >5 preset summon; no delegation popup appeared, the party converted directly to raid, the original summon proceeded normally, and summon ownership remained with Revenga.
   8. **PASS on `0.9.26-dev`** — Remote Preset Request uses the shared leader-conversion policy correctly in both modes. OFF/Decline: Gaia (party leader) sent Revenga a >5 preset Request; Revenga accepted; Gaia received the separate raid-conversion confirmation popup; Gaia declined; no conversion or spawn occurred and the Request cleared cleanly. ON/Accept: with Gaia's Auto-accept enabled, Revenga accepted the same >5 Request, Gaia showed no conversion popup, the party converted automatically, Revenga performed the requested summon, and bot ownership remained with Revenga.
   9. **PASS on `0.9.26-dev`** — With Gaia as party leader and Revenga as non-leader, a <=5-player preset summoned normally with no raid-convert prompt, no conversion wait, and no raid conversion; summon ownership remained with Revenga.
 - After this focused matrix, continue the previously pending `0.9.22-dev` Kick Dead UI + ZG tests 2, 5 and corrected Test 6. Visualiser remains deferred.
