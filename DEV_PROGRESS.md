@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.26-dev`
-- Current implementation head: `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`
+- TOC version: `0.9.27-dev`
+- Current implementation head: `fad88e78fd3bad5934d024b82dff580adb56d081`
 - Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.26-dev`: it inherits the still-pending `0.9.21-dev` T3 maintenance-bootstrap and `0.9.22-dev` Kick Dead runtime debt plus the unchanged `0.9.23-dev` raid-convert delegation slice. `0.9.24-dev` was a failed layout attempt; `0.9.25-dev` separated the colliding rows but was superseded before runtime retest; `0.9.26-dev` normalizes all five Misc checkboxes to the established 24px cadence at `de203c6aec51a4588c5264410d3f5b4dee9cd5d4`.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.27-dev`: it inherits the accepted `0.9.23` raid-convert delegation matrix and the still-pending `0.9.21-dev` T3 maintenance-bootstrap / `0.9.22-dev` Kick Dead runtime debt. `0.9.27-dev` changes presentation only: equal-width centred Replace Dead / Kick Dead / Kick All controls and SCB-blue preset-name styling in the loaded-preset chat line.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,21 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: the full `0.9.23` non-leader raid-convert delegation / Options matrix is **USER TESTED PASS** on the current `0.9.26-dev` product tree. Return now to the still-pending `0.9.22-dev` Kick Dead + ZG/bootstrap matrix: Kick Dead UI smoke plus ZG tests 2, 5 and corrected 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: runtime-retest the bounded `0.9.27-dev` presentation delta: confirm the three maintenance buttons are equal-width and centred inside the main window, the loaded preset name is SCB blue, and Kick Dead still removes only dead bots. Then continue the still-pending ZG tests 2, 5 and corrected 6. Do not begin the visualiser until those are accepted.
+
+## 0.9.27-dev maintenance-row / loaded-preset chat presentation correction
+- Runtime screenshot during the pending Kick Dead smoke exposed a layout defect inherited from `0.9.22-dev`: Replace Dead was 96px wide while Kick Dead and Kick All were 70px, making the row read off-centre and visually overhang the main window.
+- User also requested that the preset name in the existing `Loaded <preset> preset with <n> bots` chat message use the addon's established SCB blue.
+- Implementation sequence: `016f6bff2ef9dc33f2e04694f4b322223133106b` normalizes the three maintenance buttons to 70px and keeps the existing centred-row calculation; `822d3f3deb1edf7c7052bbacdcab042aab2348f4` wraps only the loaded preset name in the existing `COLOR_SCB` / `SCB_ColorText` path; `fad88e78fd3bad5934d024b82dff580adb56d081` bumps the TOC to `0.9.27-dev`.
+- Scope is presentation-only. Replace Dead still routes to `SCB_MaintenanceReplaceOnClick`; Kick Dead still routes to `SCB_KickDeadOnClick`; Kick All still routes to `SCB_KickAllOnClick`. No kick/safety, maintenance, spawn, raid-convert, protocol, ZG/bootstrap, SavedVariable or visualiser behavior changed.
+- Static diff review: **PASS**. From `eff771a123d74161abc95a7d944f5e3d081f9946` to implementation head `fad88e78fd3bad5934d024b82dff580adb56d081`, product changes are limited to `SoloCraftBots.lua`, `Communication.lua`, and the required `SoloCraftBots.toc` bump.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** in this environment because the checker/vendor files and addon checkout are not mounted in the executable container; do not claim a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Focused retest:
+  1. Main window shows Replace Dead, Kick Dead and Kick All at equal width, centred within the frame with no overhang.
+  2. Trigger the loaded-preset chat line and confirm the preset name uses the same SCB blue as the existing blue bot-count styling.
+  3. With at least one dead and one living bot, Kick Dead removes only the dead bot(s) and leaves living bots untouched.
+- After this retest, continue ZG tests 2, 5 and corrected 6. Visualiser remains deferred.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
@@ -36,7 +50,7 @@
 - Fix is layout-only: Auto-accept remains at `-108`; Confirm Bot Roles moves from `-112` to `-138`; Misc expanded height increases from `168` to `194`, and content height from `142` to `168`, preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is only the Confirm Bot Roles row position, matching Misc/content heights, and the required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **USER TESTED PASS on the current `0.9.26-dev` product tree**. All focused matrix tests 1-9 are accepted. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
+- Runtime state: **SUPERSEDED BEFORE RETEST**. The `0.9.25-dev` collision fix was replaced by `0.9.26-dev` after the user clarified that all five Misc rows should use the original 24px cadence.
 - Superseded by the `0.9.26-dev` normalized 24px cadence above.
 
 ## 0.9.24-dev Options > Misc wrapped-label spacing retest
