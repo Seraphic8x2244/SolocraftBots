@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.23` runtime matrix Tests 1-3 are **USER TESTED PASS** on the current `0.9.26-dev` product tree. Continue with Test 4 (Auto-accept ON), then Tests 5-9, followed by the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: `0.9.23` runtime matrix Tests 1-4 are **USER TESTED PASS** on the current `0.9.26-dev` product tree. Continue with Test 5 (non-responsive/incompatible leader timeout), then Tests 6-9, followed by the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
@@ -36,7 +36,7 @@
 - Fix is layout-only: Auto-accept remains at `-108`; Confirm Bot Roles moves from `-112` to `-138`; Misc expanded height increases from `168` to `194`, and content height from `142` to `168`, preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is only the Confirm Bot Roles row position, matching Misc/content heights, and the required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **IN PROGRESS on the current `0.9.26-dev` product tree**. Tests 1-3 are USER TESTED PASS; Tests 4-9 remain. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
+- Runtime state: **IN PROGRESS on the current `0.9.26-dev` product tree**. Tests 1-4 are USER TESTED PASS; Tests 5-9 remain. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
 - Superseded by the `0.9.26-dev` normalized 24px cadence above.
 
 ## 0.9.24-dev Options > Misc wrapped-label spacing retest
@@ -74,7 +74,7 @@
   1. **PASS on `0.9.26-dev`** — Options layout is accepted: all five Misc checkboxes use the same spacing and Chat Filtering is clear below them.
   2. **PASS on `0.9.26-dev`** — Auto-accept **OFF** with Gaia as party leader and Revenga as non-leader: Revenga pressed Summon for a >5 preset; Gaia received the confirmation popup; Revenga's client waited; Accept converted the party to raid; the original summon resumed without a second click; and the spawned bots belonged to Revenga, confirming Gaia's client delegated conversion only and did not become the summon owner.
   3. **PASS on `0.9.26-dev`** — With Auto-accept OFF, Gaia declined Revenga's >5 preset conversion request. No raid conversion occurred and no bots spawned. Revenga could immediately press Summon again and receive a fresh request flow, confirming the declined operation cleared cleanly rather than remaining stuck/waiting.
-  4. Auto-accept **ON** -> no prompt; leader converts automatically and the requester's original summon proceeds.
+  4. **PASS on `0.9.26-dev`** — With Gaia as leader, Revenga as non-leader and Auto-accept ON, Gaia received no confirmation popup; the party converted to raid automatically; Revenga's original >5 preset summon continued; and summon ownership remained with Revenga rather than transferring to Gaia.
   5. Non-responsive / no compatible SCB leader -> requester times out cleanly after the existing 30-second communication timeout; no stuck preset operation.
   6. Leadership changes while waiting -> requester fails cleanly; no stuck preset operation.
   7. Leader-initiated >5 preset summon -> existing direct conversion behavior remains unchanged.
