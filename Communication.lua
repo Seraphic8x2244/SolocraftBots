@@ -3446,7 +3446,10 @@ function SCB_PresetSummonOnClick()
     botWord = botCount == 1 and SCB_L("CHAT_BOT_ONE", "bot") or SCB_L("CHAT_BOT_MANY", "bots")
     SCB_Print(string.format(
         SCB_L("CHAT_LOADED_PRESET", "Loaded %s preset with %s %s"),
-        tostring(snapshot.presetName or SCB_L("PRESET_PLACEHOLDER", "Preset")),
+        SCB_ColorText(
+            SCB_ThemeColor("COLOR_SCB", "88CCFF"),
+            tostring(snapshot.presetName or SCB_L("PRESET_PLACEHOLDER", "Preset"))
+        ),
         SCB_ColorText(SCB_ThemeColor("COLOR_SCB", "88CCFF"), tostring(botCount)),
         botWord
     ))
