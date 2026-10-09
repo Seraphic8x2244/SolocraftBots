@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-retest the bounded `0.9.27-dev` presentation delta: confirm the three maintenance buttons are equal-width and centred inside the main window, the loaded preset name is SCB blue, and Kick Dead still removes only dead bots. Then continue the still-pending ZG tests 2, 5 and corrected 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: `0.9.27-dev` presentation/Kick Dead retest is **USER TESTED PASS**. Continue the still-pending ZG matrix with Test 2, then Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
 
 ## 0.9.27-dev maintenance-row / loaded-preset chat presentation correction
 - Runtime screenshot during the pending Kick Dead smoke exposed a layout defect inherited from `0.9.22-dev`: Replace Dead was 96px wide while Kick Dead and Kick All were 70px, making the row read off-centre and visually overhang the main window.
@@ -26,12 +26,12 @@
 - Scope is presentation-only. Replace Dead still routes to `SCB_MaintenanceReplaceOnClick`; Kick Dead still routes to `SCB_KickDeadOnClick`; Kick All still routes to `SCB_KickAllOnClick`. No kick/safety, maintenance, spawn, raid-convert, protocol, ZG/bootstrap, SavedVariable or visualiser behavior changed.
 - Static diff review: **PASS**. From `eff771a123d74161abc95a7d944f5e3d081f9946` to implementation head `fad88e78fd3bad5934d024b82dff580adb56d081`, product changes are limited to `SoloCraftBots.lua`, `Communication.lua`, and the required `SoloCraftBots.toc` bump.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** in this environment because the checker/vendor files and addon checkout are not mounted in the executable container; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Runtime state: **USER TESTED PASS on `0.9.27-dev` / implementation `fad88e78fd3bad5934d024b82dff580adb56d081`**. User reported the full four-step smoke PASS: clean reload; equal-width centred maintenance row with no overhang; loaded preset name rendered in SCB blue; and Kick Dead removed only dead bot(s) while leaving living bots in the group.
 - Focused retest:
   1. Main window shows Replace Dead, Kick Dead and Kick All at equal width, centred within the frame with no overhang.
   2. Trigger the loaded-preset chat line and confirm the preset name uses the same SCB blue as the existing blue bot-count styling.
   3. With at least one dead and one living bot, Kick Dead removes only the dead bot(s) and leaves living bots untouched.
-- After this retest, continue ZG tests 2, 5 and corrected 6. Visualiser remains deferred.
+- Retest complete. Continue ZG tests 2, 5 and corrected 6. Visualiser remains deferred.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
