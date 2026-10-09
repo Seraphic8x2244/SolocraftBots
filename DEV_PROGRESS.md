@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.23` runtime matrix Tests 1-4 and 6 are **USER TESTED PASS** on the current `0.9.26-dev` product tree. Continue in the optimized live-test order with Tests 7, 8, 9, then Test 5 last (requires disabling SCB on Gaia), followed by the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
+- Immediate goal / exact next step: `0.9.23` runtime matrix Tests 1-4, 6 and 9 are **USER TESTED PASS** on the current `0.9.26-dev` product tree. Continue with Test 5 (non-responsive/incompatible leader timeout), then Test 8 and Test 7 in an order that minimizes party/raid reforming, followed by the still-pending `0.9.22-dev` Kick Dead + ZG tests 2, 5 and corrected 6. Do not begin the visualiser until both are accepted.
 
 ## 0.9.26-dev Options > Misc normalized checkbox spacing retest
 - User clarified that the spacing of the first three Misc checkboxes is already correct and should be used for all five rows.
@@ -36,7 +36,7 @@
 - Fix is layout-only: Auto-accept remains at `-108`; Confirm Bot Roles moves from `-112` to `-138`; Misc expanded height increases from `168` to `194`, and content height from `142` to `168`, preserving bottom clearance before Chat Filtering.
 - Static implementation diff review: **PASS**. Product delta is only the Confirm Bot Roles row position, matching Misc/content heights, and the required TOC version bump. No settings behavior, communication, raid-convert logic, Kick Dead, ZG/bootstrap, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the existing documented environment limitation; do not claim a compiler pass.
-- Runtime state: **IN PROGRESS on the current `0.9.26-dev` product tree**. Tests 1-4 and 6 are USER TESTED PASS; Tests 5, 7, 8 and 9 remain. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
+- Runtime state: **IN PROGRESS on the current `0.9.26-dev` product tree**. Tests 1-4, 6 and 9 are USER TESTED PASS; Tests 5, 7 and 8 remain. Superseded before runtime retest when the user clarified that the existing first-three-row spacing should be preserved exactly across all five rows.
 - Superseded by the `0.9.26-dev` normalized 24px cadence above.
 
 ## 0.9.24-dev Options > Misc wrapped-label spacing retest
@@ -79,7 +79,7 @@
   6. **PASS on `0.9.26-dev`** — With Gaia initially leader and Auto-accept OFF, Revenga began a >5 preset summon and waited on the conversion request. Leadership was transferred while the request was pending; Revenga's pending summon failed/cleared cleanly with no stuck Summoning state.
   7. Leader-initiated >5 preset summon -> existing direct conversion behavior remains unchanged.
   8. Existing remote Preset Request that needs party->raid conversion -> OFF prompts the actual leader; ON auto-accepts; accepted request still resumes only after raid state exists.
-  9. <=5 preset summon -> no raid-convert request and existing five-player behavior remains unchanged.
+  9. **PASS on `0.9.26-dev`** — With Gaia as party leader and Revenga as non-leader, a <=5-player preset summoned normally with no raid-convert prompt, no conversion wait, and no raid conversion; summon ownership remained with Revenga.
 - After this focused matrix, continue the previously pending `0.9.22-dev` Kick Dead UI + ZG tests 2, 5 and corrected Test 6. Visualiser remains deferred.
 - UX follow-up from runtime testing: the existing 30-second raid-convert wait should likely expose a visible countdown/status on both requester and leader so a pending conversion does not look hung. This is not a demonstrated functional defect and is deferred until the current runtime matrices are complete unless explicitly brought into scope.
 
