@@ -1690,10 +1690,9 @@ function SCB_LayoutCommandUI()
     end
 
     y = y - buttonSize - 6
-    -- Explicit maintenance actions stay on one centred row. Replace keeps the
-    -- wider label because it can become "Replace Missing"; the two kick
-    -- actions use compact widths and both route through the shared kick owner.
-    local replaceWidth = 96
+    -- Explicit maintenance actions stay on one centred row with equal widths.
+    -- Button behavior remains owned by the existing maintenance/kick handlers.
+    local replaceWidth = 70
     local kickWidth = 70
     local utilityGap = 5
     local utilityTotal = replaceWidth + (2 * kickWidth) + (2 * utilityGap)
@@ -1861,7 +1860,7 @@ function SCB_CreateCommandUI(frame)
 
     -- One maintenance button changes meaning from live Active Roster state:
     -- Dead-only -> Replace Dead; any absent expected bot -> Replace Missing.
-    local replaceDead = SCB_CreateTextButton(content, "SoloCraftBotsReplaceDead", 96, 24, SCB_L("REPLACE_DEAD"))
+    local replaceDead = SCB_CreateTextButton(content, "SoloCraftBotsReplaceDead", 70, 24, SCB_L("REPLACE_DEAD"))
     replaceDead.scbTooltip = SCB_L("REPLACE_DEAD_NONE")
     replaceDead:SetScript("OnClick", SCB_MaintenanceReplaceOnClick)
     replaceDead:SetScript("OnEnter", SCB_TooltipOnEnter)
