@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.29-dev`
-- Current implementation head: `6837dda886ba490f4190e1fdd24a541099d38ce1`
+- TOC version: `0.9.30-dev`
+- Current implementation head: `f1505545cb857bcc7133a755edf4d7b69f7834e8`
 - Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.29-dev`: it inherits the accepted `0.9.23` raid-convert delegation matrix and the still-pending `0.9.21-dev` T3 maintenance-bootstrap / final-bot runtime debt. `0.9.27-dev` presentation/Kick Dead smoke is USER TESTED PASS. `0.9.29-dev` supersedes the untested `0.9.28-dev` overwrite behavior and allows multiple saved human/alt identities to intentionally target the same logical preset slot.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.30-dev`: it inherits the accepted `0.9.23` raid-convert delegation matrix and the still-pending `0.9.21-dev` T3 maintenance-bootstrap / final-bot runtime debt. `0.9.27-dev` presentation/Kick Dead smoke is USER TESTED PASS. `0.9.29-dev` shared human-slot/alt identity behavior is implemented and pending runtime validation. `0.9.30-dev` fixes Loot Safe incorrectly retaining the final bot in the open world.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,20 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the `0.9.29-dev` shared human-slot model using the demonstrated G1/S5 case and two alt identities. Confirm multiple saved characters can target G1/S5, one present character occupies it, and any additional simultaneously present candidate remains in Unassigned until manually placed elsewhere. Then resume final-bot Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: runtime-test the `0.9.30-dev` open-world Loot Safe correction plus the still-pending `0.9.29-dev` shared human-slot model. In the world with one real human and Loot Safe ON, Kick All should now remove the final bot normally. Then validate the shared G1/S5 alt-slot behavior before resuming final-bot Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+
+## 0.9.30-dev open-world Loot Safe scope correction
+- User runtime observation: with Loot Safe enabled while outside an instance, Kick All still preserved one final bot.
+- Code inspection confirmed the defect in `SCB_CanRemoveFinalBot()`: after instance-retention handling, the Loot Safe gate was evaluated regardless of `context.inInstance`. With one real human in the open world, the subsequent fresh saved-Raid-ID requirement cannot be satisfied, so the final bot was incorrectly retained and reported as Loot Safe protection.
+- Implementation: `e1c82acc049717d6a55f4aee8498b4f31b464fa7`. After the existing other-human and preset-bootstrap checks and the zone-stability check, open-world context now returns allowed immediately. Instance removal continues to require the existing fresh valid saved Raid ID before Loot Safe policy is considered.
+- TOC bump: `f1505545cb857bcc7133a755edf4d7b69f7834e8` -> `0.9.30-dev`.
+- Scope is narrow: no changes to the preset-bootstrap retention rule, instance saved-ID safety, Loot Safe dead-boss/open-loot requirements, kick queue, maintenance behavior, protocol, SavedVariables, Preset Manager, or visualiser.
+- Static diff review: **PASS**. Product change from the `0.9.29-dev` implementation is limited to `Communication.lua` plus the required TOC bump.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the documented executable-environment limitation; do not claim a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Focused retest: outside an instance, only one real human, Loot Safe ON, bots present -> Kick All should remove every bot including the final bot, with no Loot Safe retention warning.
+- Instance expectations are unchanged: solo-human removal inside a saved raid still follows the existing saved-ID and Loot Safe gates; 2+ real humans still bypass the loot-specific final-bot gate.
+- After this focused retest, continue the pending shared human-slot validation, final-bot Test 5 and corrected Test 6. Visualiser remains deferred.
 
 ## 0.9.29-dev Preset Manager shared human-slot / alt identity model
 - User clarified the intended model after the untested `0.9.28-dev` fix: multiple saved human character identities may intentionally target the same logical preset slot because they can be alts that are rarely online together. Example: both `Gaiamania -> G1/S5` and `Gaiia -> G1/S5` should persist in the same preset.
