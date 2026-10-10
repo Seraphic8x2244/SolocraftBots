@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-test the `0.9.30-dev` open-world Loot Safe correction plus the still-pending `0.9.29-dev` shared human-slot model. In the world with one real human and Loot Safe ON, Kick All should now remove the final bot normally. Then validate the shared G1/S5 alt-slot behavior before resuming final-bot Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: `0.9.30-dev` open-world Loot Safe correction is **USER TESTED PASS**. Instance behavior has not yet been re-tested on this build. Validate the pending `0.9.29-dev` shared G1/S5 alt-slot behavior, then complete the remaining instance/final-bot checks: Test 5 (Loot Safe ON with 2+ real humans) and corrected Test 6 (solo full-teardown T3 maintenance bootstrap). Do not begin the visualiser until those are accepted.
 
 ## 0.9.30-dev open-world Loot Safe scope correction
 - User runtime observation: with Loot Safe enabled while outside an instance, Kick All still preserved one final bot.
@@ -27,8 +27,8 @@
 - Scope is narrow: no changes to the preset-bootstrap retention rule, instance saved-ID safety, Loot Safe dead-boss/open-loot requirements, kick queue, maintenance behavior, protocol, SavedVariables, Preset Manager, or visualiser.
 - Static diff review: **PASS**. Product change from the `0.9.29-dev` implementation is limited to `Communication.lua` plus the required TOC bump.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the documented executable-environment limitation; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
-- Focused retest: outside an instance, only one real human, Loot Safe ON, bots present -> Kick All should remove every bot including the final bot, with no Loot Safe retention warning.
+- Runtime state: **USER TESTED PASS for the demonstrated open-world defect on `0.9.30-dev`**. Outside an instance with Loot Safe ON, Kick All now removes the final bot normally. Instance behavior has **not yet been re-tested on `0.9.30-dev`**.
+- Focused open-world retest: **PASS** — outside an instance, only one real human, Loot Safe ON, bots present -> Kick All removed every bot including the final bot; the erroneous Loot Safe retention is fixed.
 - Instance expectations are unchanged: solo-human removal inside a saved raid still follows the existing saved-ID and Loot Safe gates; 2+ real humans still bypass the loot-specific final-bot gate.
 - After this focused retest, continue the pending shared human-slot validation, final-bot Test 5 and corrected Test 6. Visualiser remains deferred.
 
