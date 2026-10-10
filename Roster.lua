@@ -2202,25 +2202,18 @@ end
 
 function SCB_AssignPresetPlayer(key, slotIndex)
     local size = SCB_CurrentPresetSize()
-    local groupIndex, otherKey, otherSlot, present
+    local groupIndex
     if not key or not slotIndex or slotIndex < 1 or slotIndex > size then return false end
 
     SCB.presetEditorPlayerSlots = SCB.presetEditorPlayerSlots or {}
     SCB.presetEditorPlayers = SCB.presetEditorPlayers or {}
-    present = SCB_GetPresentHumanMap and SCB_GetPresentHumanMap() or {}
 
-    -- A visible/current human still owns their slot until the user moves or
-    -- removes them. An absent saved human is not rendered anywhere in the
-    -- editor, so an explicit drop onto that apparently-empty row replaces the
-    -- hidden reservation rather than leaving the row permanently undroppable.
-    for otherKey, otherSlot in pairs(SCB.presetEditorPlayerSlots) do
-        if otherKey ~= key and otherSlot == slotIndex then
-            if present[otherKey] then return false end
-            SCB.presetEditorPlayerSlots[otherKey] = nil
-            SCB.presetEditorPlayers[otherKey] = nil
-        end
-    end
-
+    -- Multiple saved human identities may intentionally share one logical
+    -- preset slot (for example, alts that are rarely online together). The
+    -- live layout owner already allows only one present human to claim a row;
+    -- any additional present candidates remain visible in Unassigned until
+    -- the user places them elsewhere. Moving one identity changes only that
+    -- identity and never deletes another saved alt assignment.
     groupIndex = SCB_PlayerSlotGroup(slotIndex)
     SCB.presetEditorPlayerSlots[key] = slotIndex
     SCB.presetEditorPlayers[key] = groupIndex
