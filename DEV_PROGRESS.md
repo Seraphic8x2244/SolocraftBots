@@ -17,7 +17,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: `0.9.27-dev` presentation/Kick Dead retest is **USER TESTED PASS**. Continue the still-pending ZG matrix with Test 2, then Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: `0.9.27-dev` presentation/Kick Dead retest is **USER TESTED PASS**, and final-bot matrix Test 2 is now **USER TESTED PASS**. Only Test 5 (Loot Safe ON with 2+ real humans) and corrected Test 6 (solo full-teardown T3 maintenance bootstrap) remain. Do not begin the visualiser until those are accepted.
 
 ## 0.9.27-dev maintenance-row / loaded-preset chat presentation correction
 - Runtime screenshot during the pending Kick Dead smoke exposed a layout defect inherited from `0.9.22-dev`: Replace Dead was 96px wide while Kick Dead and Kick All were 70px, making the row read off-centre and visually overhang the main window.
@@ -122,6 +122,7 @@
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable in this executable environment**. The canonical VanillaTemplate checker exists and GCC is available, but the checker/vendor files are not mounted here and direct shell access to GitHub fails DNS. GitHub has no workflow/check run configured for the implementation commits. Do not record a compiler pass.
 - Runtime state: **IN PROGRESS** on `0.9.18-dev` / implementation `ebf547e4a39af361a5f7b6a6519b1e0ee288be50`.
   - Test 1 **USER TESTED PASS**: fresh Zul'Gurub with no saved Raid ID, solo human, Loot Safe OFF -> Kick All preserved one Group-1 safety bot, preventing the player from being stranded.
+  - Test 2 **USER TESTED PASS on `0.9.27-dev`**: valid saved raid ID, solo human, Loot Safe OFF -> Kick All removed every bot after the action-driven saved-instance refresh; no final safety bot was retained.
   - Test 3 **USER TESTED PASS**: after obtaining a valid ZG saved Raid ID, solo human, Loot Safe ON, no targeted dead boss and no open loot window -> Kick All triggered Loot Safe and preserved one bot.
   - Test 4 on `0.9.18-dev` **USER TESTED FAIL**: with the same valid ZG saved Raid ID, Loot Safe ON, dead boss targeted and loot window open, Kick All still triggered the Loot Safe warning and preserved the final bot instead of allowing removal.
   - Test 4 retest on `0.9.19-dev` **USER TESTED PASS**: with Loot Safe ON, valid ZG ID, dead boss targeted and loot window open, Kick All removed every bot and the loot window remained open/usable.
@@ -130,7 +131,7 @@
   - `0.9.20-dev` Test 6 retest **USER TESTED PARTIAL / overall FAIL**: the prior subgroup-move timeout is fixed and Replace Missing completed the roster, but runtime inspection showed 18 T3 preset bots plus 1 non-T3 preset Paladin. The first real missing preset assignment had been sent while still a party and was incorrectly used to create raid topology; SoloCraft applies T3 only when a real preset bot is summoned into an already-existing raid in a valid raid zone. Therefore completion alone was not a valid PASS.
 - Required focused runtime matrix:
   1. **PASS** — In ZG before a saved ID exists, Loot Safe **OFF**, solo-human, Kick All preserved one Group-1 safety bot.
-  2. After obtaining a valid ZG saved ID, keep Loot Safe **OFF**, press Kick All while solo-human, and confirm all bots are removed after the action-driven refresh.
+  2. **PASS on `0.9.27-dev`** — With a valid saved raid ID, Loot Safe OFF and only one real human present, Kick All removed every bot after the action-driven saved-instance refresh; no final safety bot was retained.
   3. **PASS** — With Loot Safe enabled, solo-human and valid ZG ID, Kick All without both a targeted dead boss and open loot window triggered Loot Safe and preserved one bot.
   4. **PASS on `0.9.19-dev`** — With Loot Safe enabled + valid ZG ID, dead boss targeted and loot window open, Kick All removed every bot and the loot window remained open. (`0.9.18-dev` failed this because pfUI did not expose Blizzard `LootFrame`.)
   5. With Loot Safe enabled and 2+ real humans present, press Kick All and confirm all bots can be removed without requiring the boss-corpse/loot-window gate.
