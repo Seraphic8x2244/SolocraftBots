@@ -4,11 +4,11 @@
 
 ## Current
 - Branch: `dev`
-- TOC version: `0.9.28-dev`
-- Current implementation head: `cd17e2fe0c589e6df1d0e741d6723eba309ea509`
+- TOC version: `0.9.29-dev`
+- Current implementation head: `6837dda886ba490f4190e1fdd24a541099d38ce1`
 - Accepted design handoff before the ZG/final-bot slice: `7b32dfa3cd2a2399106efa9bd567f2d96904cdf2`
 - Request protocol 8 runtime validation is now completed on `0.8.111-dev` at handoff `dd1b21b9b23013a5f20bcc3f93d4c6b2bacb3b3b`: receiver-local capacity refusal PASS; leader-owned party→raid conversion PASS; receiving summoner requires neither leadership nor assistant PASS; Request-owned loot behavior absent PASS. A separate addon-level Auto Loot trigger gap was exposed: when a non-leader receiver performs the requested summon, the leader's SCB may never re-apply its own Auto Loot preference.
-- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.28-dev`: it inherits the accepted `0.9.23` raid-convert delegation matrix and the still-pending `0.9.21-dev` T3 maintenance-bootstrap / final-bot runtime debt. `0.9.27-dev` presentation/Kick Dead smoke is USER TESTED PASS. `0.9.28-dev` narrowly corrects invisible absent-human slot reservations blocking explicit Preset Manager drag/drop.
+- Stable `main`: `0.9.16` at `03ea60a90b79a29d726c627f7b833ec673251cb6`. The released `0.9.16` baseline contains the accepted Appearance/Wisdom state. Current `dev` is `0.9.29-dev`: it inherits the accepted `0.9.23` raid-convert delegation matrix and the still-pending `0.9.21-dev` T3 maintenance-bootstrap / final-bot runtime debt. `0.9.27-dev` presentation/Kick Dead smoke is USER TESTED PASS. `0.9.29-dev` supersedes the untested `0.9.28-dev` overwrite behavior and allows multiple saved human/alt identities to intentionally target the same logical preset slot.
 - Receiver-owned location-capacity guardrail remains explicitly accepted as correctness/state-integrity protection.
 - Request protocol 8 carries no loot-setting behavior; Auto Loot remains addon-level state owned by the current group leader's SCB.
 - `0.8.108-dev` side-drawer justification layout is runtime-confirmed working.
@@ -17,7 +17,25 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Immediate goal / exact next step: runtime-retest the `0.9.28-dev` Preset Manager drag/drop correction using the demonstrated G1/S5 case. Confirm an explicitly dropped current human can replace an invisible absent-human reservation, while a slot visibly occupied by another current human still cannot be silently displaced. Then resume final-bot Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+- Immediate goal / exact next step: runtime-test the `0.9.29-dev` shared human-slot model using the demonstrated G1/S5 case and two alt identities. Confirm multiple saved characters can target G1/S5, one present character occupies it, and any additional simultaneously present candidate remains in Unassigned until manually placed elsewhere. Then resume final-bot Test 5 and corrected Test 6. Do not begin the visualiser until those are accepted.
+
+## 0.9.29-dev Preset Manager shared human-slot / alt identity model
+- User clarified the intended model after the untested `0.9.28-dev` fix: multiple saved human character identities may intentionally target the same logical preset slot because they can be alts that are rarely online together. Example: both `Gaiamania -> G1/S5` and `Gaiia -> G1/S5` should persist in the same preset.
+- Existing data model already supports this without a SavedVariable schema change: `presetEditorPlayerSlots` / persisted `playerSlots` are keyed by character identity, so multiple keys can hold the same numeric slot value.
+- Existing live-layout arbitration also already supplies the desired runtime rule: `SCB_GetPresetHumanLayout()` tracks `used[slotIndex]`, so only one currently present candidate can claim a logical row; any additional present character saved to the same row remains in the visible Unassigned pool. If only one of the saved alts is present, that character claims the row normally.
+- Existing execution validation remains authoritative: a simultaneously present candidate left in Unassigned must be placed into another slot before Summon can proceed. This avoids silently overfilling a raid group and makes the conflict explicit to the user.
+- Implementation: `5822c990320cb77dc78a61053b5dfbb35de6fc2b`. `SCB_AssignPresetPlayer()` no longer rejects or deletes other identities that already map to the target slot. Moving one character updates only that character's slot mapping. Right-click removal continues to remove only the selected visible identity.
+- TOC bump: `6837dda886ba490f4190e1fdd24a541099d38ce1` -> `0.9.29-dev`.
+- Static diff review: **PASS**. Relative to the superseded `0.9.28-dev` product implementation, behavior changes are limited to `Roster.lua` plus the required TOC bump. No preset bot-slot data, role/blessing logic, spawn/maintenance logic, communication protocol, final-bot safety, ZG/bootstrap, SavedVariable schema, or visualiser work changed.
+- Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the documented executable-environment limitation; do not claim a compiler pass.
+- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Focused retest:
+  1. Load the preset that previously had an invisible G1/S5 reservation and confirm a current human can now be dragged into G1/S5.
+  2. Save two different human character identities to G1/S5 across sessions/alts; confirm assigning the second does not erase the first.
+  3. With only one of those saved characters present, confirm that character occupies G1/S5 normally.
+  4. If both saved characters are present together, confirm exactly one occupies G1/S5 and the other appears in Unassigned; place the unassigned player elsewhere before summoning.
+  5. Move one of the two identities to another slot and save; confirm the other identity remains saved to G1/S5.
+- After this focused retest, resume final-bot Test 5 and corrected Test 6. Visualiser remains deferred.
 
 ## 0.9.28-dev Preset Manager hidden human-slot reservation correction
 - Runtime defect demonstrated on the current dev build: G1/S5 rejected every human drag/drop while all other slots worked. Changing the underlying bot from Paladin/Auto Blessing to Rogue did not change the failure; moving the Preset window did not change it; both an unassigned human and the local player could be dropped into other slots but not G1/S5.
@@ -26,12 +44,12 @@
 - TOC bump: `cd17e2fe0c589e6df1d0e741d6723eba309ea509` -> `0.9.28-dev`.
 - Static diff review: **PASS**. Product delta from `0f6d4d40e4e12ce19b26a7644e3f79a2f632ff53` to implementation head is limited to `Roster.lua` plus the required TOC bump. No preset bot assignments, role/blessing logic, spawn/maintenance logic, communication protocol, final-bot safety, ZG/bootstrap, SavedVariable schema, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the documented executable-environment limitation; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Runtime state: **SUPERSEDED BEFORE USER TESTING**. The overwrite-on-drop behavior was rejected after the user clarified the desired alt model: multiple saved character identities should be allowed to share one logical slot rather than deleting an absent alt assignment.
 - Focused retest:
   1. Reload `0.9.28-dev`, load the same preset and drag the same current human into the previously blocked G1/S5; it should now assign normally.
   2. Move the local player from G1/S1 into that same G1/S5; it should also assign normally.
   3. Verify another slot that is visibly occupied by a currently present human still refuses a direct overwrite, preserving the existing no-silent-displacement rule.
-- After this focused retest, resume final-bot Test 5 and corrected Test 6. Visualiser remains deferred.
+- Superseded by the `0.9.29-dev` shared human-slot model below; do not runtime-test `0.9.28-dev` as an accepted design.
 
 ## 0.9.27-dev maintenance-row / loaded-preset chat presentation correction
 - Runtime screenshot during the pending Kick Dead smoke exposed a layout defect inherited from `0.9.22-dev`: Replace Dead was 96px wide while Kick Dead and Kick All were 70px, making the row read off-centre and visually overhang the main window.
