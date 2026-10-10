@@ -2881,12 +2881,14 @@ function SCB_CanRemoveFinalBot(decision)
         return false, "zone-changed"
     end
 
+    -- Open-world removal does not need raid-instance or loot-window protection.
+    -- Preset bootstrap retention above remains authoritative when applicable.
+    if not context.inInstance then return true, "world" end
+
     -- Instance safety remains conservative unless this explicit removal action
     -- received a fresh valid saved Raid ID.
-    if context.inInstance then
-        if not decision or not decision.fresh or not decision.matched then
-            return false, "instance"
-        end
+    if not decision or not decision.fresh or not decision.matched then
+        return false, "instance"
     end
 
     SCB_EnsureOptionsDB()
