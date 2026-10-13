@@ -15,7 +15,7 @@
 - **Chunk 4 / chat 4 — standard BWL definitions:** Razorgore, Vael, Broodlord, Firemaw, Ebonroc, Flamegor and Nefarian using the templates and Vanilla chat-event patterns; keep scope to requested abilities.
 - **Chunk 5 / chat 5 — Chromaggus + dormant validation:** optional 0/1/2-breath logic and missed/delayed event cases; synthetic event/lifecycle checks, static review, available canonical Lua 5.0.3 compiler check. Clearly mark compiler/runtime tests not run where unavailable.
 - **Chunk 6 / separate activation and runtime chat:** only after deliberate approval, integrate TOC, version bump, the minimum SCB-owned lifecycle/UI/options hooks and runtime smoke tests; verify each boss as lockouts permit. Do not equate dormant static validation with in-game validation.
-- Execution order: dormant Boss Mods work was intentionally started on 2026-10-13; keep it completely independent from existing pending final-bot/alt-slot runtime testing. Each chunk starts by rereading rulebook and this file, verifying remote HEAD, and ends with a scoped commit and an updated `DEV_PROGRESS.md` handoff.
+- Execution order: dormant Boss Mods work was intentionally started on 2026-10-13; keep it completely independent from existing runtime testing. Shared alt-slot runtime validation is now accepted; corrected final-bot Test 6 remains outstanding. Each chunk starts by rereading rulebook and this file, verifying remote HEAD, and ends with a scoped commit and an updated `DEV_PROGRESS.md` handoff.
 
 ## Dormant Boss Mods — Chunk 1 COMPLETE (2026-10-13)
 - Implementation commit: `38497845bfe2bfa61ab97194c89fbf98e2b945ed` (adds only root `mechanics.lua`; 229 lines, blob `d7894fd3dd04b8d44e862ff4b9eb726046d8cadf`). This is a **dormant implementation, not runtime tested**.
@@ -25,14 +25,14 @@
 - No UI templates, BWL/boss definitions, direct bot commands, roster copies, SavedVariables, TOC/loader entry, event frames, or live pipeline changes. **TOC stays `0.9.30-dev`**: the added file is not loaded and does not change the running addon; preserve all existing `0.9.30-dev` test provenance. The required product-version increment is deferred to activation when the addon actually loads new code.
 - Checks **PASSED**: remote diff from `12b4008e89743c8ed65749dac9c0fa2b4785c6e2` includes only `mechanics.lua`; remote blob hash matches locally smoke-tested source; TOC unchanged and has no mechanics reference; source inspection found no Lua-5.1+ vararg/length syntax, event registrations or commands. Synthetic lifecycle/timer/event smoke tests ran **PASS** under the available newer `texlua` runtime (encounter registration and replacement, filters/plain matching, timer ordering/replacement/cancel, resets, stale generation rejection and callback-triggered teardown). These are **not** WoW/in-game tests.
 - Canonical vendored Lua **5.0.3 compiler: NOT RUN**. VanillaTemplate `tools/lua50` was located through the repository connector and a C compiler exists locally, but the vendored source/checker was not accessible as executable container files. Do **not** label the newer-Lua smoke test a Lua 5.0.3 compiler pass. Run the canonical checker when locally available, in addition to future activation runtime tests.
-- **Chunk 2 is now implemented** (details below); Chunk 3 integration contracts and Chunks 4–5 definitions remain deferred. The pending shared alt-slot and final-bot T3 runtime tests are independent, still outstanding and must not be marked passed by this work.
+- **Chunk 2 is now implemented** (details below); Chunk 3 integration contracts and Chunks 4–5 definitions remain deferred. Shared alt-slot runtime validation is now accepted independently; corrected final-bot Test 6 remains outstanding and must not be marked passed by dormant Boss Mods work.
 
 ## Dormant Boss Mods — Chunk 2 COMPLETE (2026-10-13)
 - Implementation: `e1fcf3e1d5df2a8080f6a6cb5cc685b4d7a87cf0` modifies only dormant `mechanics.lua`. Three reusable lazy native-frame templates: `ShowTimer`, `ShowTrackedAura`, `ShowBotAction`. UI is keyed and encounter-generation guarded, recycles hidden frames, supports separate configurable anchors via `SetTemplatePosition`/`GetTemplatePosition`, and clears on encounter start/stop/reset. `HidePresentation`, `ClearPresentation`, and `UpdatePresentation` are available for the future SCB lifecycle owner.
 - Timer template reads the existing named scheduler and displays fixed/predicted/observed provenance; missing timers remove bars. Tracked Aura renders explicitly supplied target/expiry observations without independent aura scanning. Bot Action accepts only a future integration callback; no roster, transport, kick or mutation is performed by the UI template.
 - Dormant boundary verified by static source inspection: no TOC entry, native event registration, independent OnUpdate, boss definitions, bot commands, options/SavedVariables, or changes to loaded addon code. TOC remains `0.9.30-dev`; inherited runtime evidence is not changed.
 - Static checks: source API/lifecycle and dormant-boundary assertions **PASS**. Canonical Lua 5.0.3 compiler and WoW runtime **NOT RUN**; compiler compatibility and in-game widget behaviour remain unverified until an executable checker/runtime is available. The previously checked Chunk 1 smoke results are not asserted as a Chunk 2 test.
-- **Next Boss Mods slice: Chunk 3**, define the narrow integration contracts through existing SCB roster/bot identity, targeted-command and filtered `SCB_KickBots` owners for eggbreaker follow/usegobject and Vael kick. Keep file dormant, do not activate or add boss definitions. All outstanding shared-alt-slot and T3/final-bot runtime tests remain outstanding independently.
+- **Next Boss Mods slice: Chunk 3**, define the narrow integration contracts through existing SCB roster/bot identity, targeted-command and filtered `SCB_KickBots` owners for eggbreaker follow/usegobject and Vael kick. Keep file dormant, do not activate or add boss definitions. Shared alt-slot runtime validation is accepted independently; corrected T3/final-bot Test 6 remains outstanding.
 
 ## Current
 - Branch: `dev`
@@ -49,7 +49,7 @@
 - New runtime issue found in `0.8.110-dev`: the Preset content chain shifted left by the same amount as the centered title. Root cause confirmed: `presetSelector` was anchored to `presetHeader:BOTTOMRIGHT`, so the centered title remained a layout owner.
 - `0.8.111-dev` detaches Preset content geometry from the title. The selector is now right-aligned directly to the Preset panel and vertically positioned using the existing measured header height; Group selector and downstream controls remain chained from that panel-owned selector.
 - `0.8.111-dev` Preset content anchor fix is **USER TESTED PASS**: user confirmed the layout is sorted.
-- Independent active runtime-test next step (unchanged by dormant Boss Mods work): `0.9.30-dev` open-world Loot Safe correction is **USER TESTED PASS**, and final-bot Test 5 is now **USER TESTED PASS**: with Loot Safe ON and 2 real humans present, Kick All removed every bot. Validate the pending `0.9.29-dev` shared G1/S5 alt-slot behavior, then complete corrected Test 6 (solo full-teardown T3 maintenance bootstrap). Do not begin the visualiser until those are accepted.
+- Independent active runtime-test next step (unchanged by dormant Boss Mods work): `0.9.30-dev` open-world Loot Safe correction is **USER TESTED PASS**, final-bot Test 5 is **USER TESTED PASS**, and `0.9.29-dev` shared G1/S5 alt-slot persistence is **USER TESTED PASS**. Only corrected Test 6 (solo full-teardown T3 maintenance bootstrap) remains. Do not begin the visualiser until that is accepted.
 
 ## 0.9.30-dev open-world Loot Safe scope correction
 - User runtime observation: with Loot Safe enabled while outside an instance, Kick All still preserved one final bot.
@@ -73,14 +73,14 @@
 - TOC bump: `6837dda886ba490f4190e1fdd24a541099d38ce1` -> `0.9.29-dev`.
 - Static diff review: **PASS**. Relative to the superseded `0.9.28-dev` product implementation, behavior changes are limited to `Roster.lua` plus the required TOC bump. No preset bot-slot data, role/blessing logic, spawn/maintenance logic, communication protocol, final-bot safety, ZG/bootstrap, SavedVariable schema, or visualiser work changed.
 - Canonical Lua 5.0.3 compiler check: **NOT RUN / unavailable** under the documented executable-environment limitation; do not claim a compiler pass.
-- Runtime state: **IMPLEMENTED + STATIC-REVIEWED; NOT USER TESTED**.
+- Runtime state: **USER TESTED PASS for shared-slot persistence on `0.9.30-dev`**. The user saved two different alt identities to G1/S5 and verified each identity independently loads into that same slot when present, proving the second assignment does not erase the first. Simultaneous co-presence arbitration (one in-slot, one Unassigned) was not explicitly runtime-tested, but is not required for this accepted persistence check.
 - Focused retest:
   1. Load the preset that previously had an invisible G1/S5 reservation and confirm a current human can now be dragged into G1/S5.
   2. Save two different human character identities to G1/S5 across sessions/alts; confirm assigning the second does not erase the first.
   3. With only one of those saved characters present, confirm that character occupies G1/S5 normally.
   4. If both saved characters are present together, confirm exactly one occupies G1/S5 and the other appears in Unassigned; place the unassigned player elsewhere before summoning.
   5. Move one of the two identities to another slot and save; confirm the other identity remains saved to G1/S5.
-- After this focused retest, resume final-bot Test 5 and corrected Test 6. Visualiser remains deferred.
+- Shared-slot persistence retest complete. Final-bot Test 5 is also accepted; only corrected Test 6 remains. Visualiser remains deferred.
 
 ## 0.9.28-dev Preset Manager hidden human-slot reservation correction
 - Runtime defect demonstrated on the current dev build: G1/S5 rejected every human drag/drop while all other slots worked. Changing the underlying bot from Paladin/Auto Blessing to Rogue did not change the failure; moving the Preset window did not change it; both an unassigned human and the local player could be dropped into other slots but not G1/S5.
