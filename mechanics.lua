@@ -82,6 +82,7 @@ function mechanics.StopEncounter(reason, expectedGeneration)
     active = nil
     generation = generation + 1
     ClearTimers()
+    mechanics.ClearPresentation()
     if old.definition.onStop then
         old.definition.onStop(reason or "stopped", old.generation)
     end
@@ -92,6 +93,7 @@ function mechanics.Reset(reason)
     if active then return mechanics.StopEncounter(reason or "reset") end
     generation = generation + 1
     ClearTimers()
+    mechanics.ClearPresentation()
     return true
 end
 
@@ -106,6 +108,7 @@ function mechanics.StartEncounter(id)
     end
     generation = generation + 1
     ClearTimers()
+    mechanics.ClearPresentation()
     active = { id = id, generation = generation, definition = definition }
     if definition.onStart then definition.onStart(generation) end
     if not active or active.generation ~= generation then
@@ -226,4 +229,257 @@ function mechanics.UpdateTimers(now)
         end
     end
     return fired
+end
+
+
+-- Dormant presentation templates. The SCB lifecycle owner will invoke
+-- UpdatePresentation() along with UpdateTimers() after activation. Nothing in
+-- this section registers events, installs an OnUpdate or alters bot state.
+-- Anchors are session-local; persistence/options belong to activation.
+local presentation = {
+    timer = { pool = {}, position = { "TOP", "TOP", 0, -150 }, width = 220, height = 23 },
+    aura = { pool = {}, position = { "TOPLEFT", "TOPLEFT", 30, -180 }, width = 190, height = 25 },
+    action = { pool = {}, position = { "TOPRIGHT", "TOPRIGHT", -30, -180 }, width = 190, height = 28 },
+}
+local presentationOrder = 0
+
+local function PresentationGroup(kind)
+    if type(kind) ~= "string" then return nil end
+    return presentation[kind]
+end
+
+local function LayoutPresentation(kind)
+    local group = PresentationGroup(kind)
+    local index, slot, frame, p
+    if not group then return end
+    p = group.position
+    index = 0
+    for _, slot in ipairs(group.pool) do
+        if slot.used then
+            index = index + 1
+            frame = slot.frame
+            frame:ClearAllPoints()
+            frame:SetPoint(p[1], UIParent, p[2], p[3], p[4] - (index - 1) * (group.height + 4))
+        end
+    end
+end
+
+local function CreatePresentationFrame(kind, group)
+    local frame = CreateFrame(kind == "action" and "Button" or "Frame", nil, UIParent)
+    frame:SetWidth(group.width)
+    frame:SetHeight(group.height)
+    frame:SetFrameStrata("MEDIUM")
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(frame)
+    background:SetTexture(0, 0, 0, 0.7)
+    frame.background = background
+    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", frame, "LEFT", 6, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWidth(group.width - 58)
+    frame.label = label
+    local detail = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+    detail:SetJustifyH("RIGHT")
+    detail:SetWidth(49)
+    frame.detail = detail
+    if kind == "timer" then
+        local bar = CreateFrame("StatusBar", nil, frame)
+        bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
+        bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+        bar:SetHeight(4)
+        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        bar:SetStatusBarColor(0.3, 0.65, 0.9)
+        bar:SetMinMaxValues(0, 1)
+        frame.bar = bar
+    elseif kind == "action" then
+        frame:SetScript("OnClick", function()
+            local slot = frame.scbSlot
+            if not slot or not slot.used or not active
+                or slot.generation ~= active.generation then return end
+            -- Chunk 3 will supply callbacks that delegate to the existing
+            -- identity/command/kick owners. No command runs in this template.
+            if slot.callback then slot.callback(slot.key, active.generation) end
+        end)
+    end
+    frame:Hide()
+    return frame
+end
+
+local function AcquirePresentation(kind, key)
+    local group = PresentationGroup(kind)
+    local slot, free
+    if not active then return nil, "no active encounter" end
+    if not group or type(key) ~= "string" or key == "" then
+        return nil, "invalid presentation"
+    end
+    for _, slot in ipairs(group.pool) do
+        if slot.used and slot.key == key and slot.generation == active.generation then
+            return slot
+        end
+        if not slot.used and not free then free = slot end
+    end
+    slot = free
+    if not slot then
+        slot = { frame = CreatePresentationFrame(kind, group) }
+        table.insert(group.pool, slot)
+        slot.frame.scbSlot = slot
+    end
+    presentationOrder = presentationOrder + 1
+    slot.used = true
+    slot.key = key
+    slot.generation = active.generation
+    slot.callback = nil
+    slot.frame:Show()
+    LayoutPresentation(kind)
+    return slot
+end
+
+local function ReleasePresentation(kind, key)
+    local group = PresentationGroup(kind)
+    if not group then return false end
+    for _, slot in ipairs(group.pool) do
+        if slot.used and slot.key == key then
+            slot.used = false
+            slot.key = nil
+            slot.callback = nil
+            slot.generation = nil
+            slot.frame:Hide()
+            slot.frame.label:SetText("")
+            slot.frame.detail:SetText("")
+            LayoutPresentation(kind)
+            return true
+        end
+    end
+    return false
+end
+
+-- point and relativePoint are ordinary WoW anchor strings. No SavedVariables
+-- or global positioning preferences are modified here.
+function mechanics.SetTemplatePosition(kind, point, relativePoint, x, y)
+    local group = PresentationGroup(kind)
+    if not group or type(point) ~= "string" or type(relativePoint) ~= "string"
+        or type(x) ~= "number" or type(y) ~= "number"
+        or x ~= x or y ~= y or math.abs(x) == math.huge
+        or math.abs(y) == math.huge then
+        return false, "invalid template position"
+    end
+    group.position = { point, relativePoint, x, y }
+    LayoutPresentation(kind)
+    return true
+end
+
+function mechanics.GetTemplatePosition(kind)
+    local group = PresentationGroup(kind)
+    if not group then return nil end
+    local p = group.position
+    return p[1], p[2], p[3], p[4]
+end
+
+-- Timer presentation reads the named encounter timer owned by Chunk 1.
+-- A missing/expired timer removes its bar; kind labels are explicit so an
+-- estimated cooldown is never implicitly displayed as an observed cast.
+function mechanics.ShowTimer(key, timerName, label)
+    local timer = mechanics.GetTimer(timerName)
+    local slot, err
+    if not timer then return false, "timer not scheduled" end
+    slot, err = AcquirePresentation("timer", key)
+    if not slot then return false, err end
+    slot.timerName = timerName
+    slot.startedAt = Now()
+    slot.label = label or timerName
+    mechanics.UpdatePresentation()
+    return true
+end
+
+-- Aura rows display caller-observed state, never infer target identity or
+-- independently scan/track party members. expiresAt is optional.
+function mechanics.ShowTrackedAura(key, label, target, expiresAt)
+    local slot, err
+    if type(label) ~= "string" or type(target) ~= "string"
+        or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt)) then
+        return false, "invalid aura"
+    end
+    slot, err = AcquirePresentation("aura", key)
+    if not slot then return false, err end
+    slot.label = label
+    slot.target = target
+    slot.expiresAt = expiresAt
+    mechanics.UpdatePresentation()
+    return true
+end
+
+-- Action callbacks are supplied only by the future SCB-owned integration
+-- contracts (Chunk 3); this builder never resolves or manipulates a bot.
+function mechanics.ShowBotAction(key, label, detail, callback)
+    local slot, err
+    if type(label) ~= "string" or (detail ~= nil and type(detail) ~= "string")
+        or (callback ~= nil and type(callback) ~= "function") then
+        return false, "invalid action"
+    end
+    slot, err = AcquirePresentation("action", key)
+    if not slot then return false, err end
+    slot.label = label
+    slot.callback = callback
+    slot.frame.label:SetText(label)
+    slot.frame.detail:SetText(detail or "")
+    return true
+end
+
+function mechanics.HidePresentation(kind, key)
+    return ReleasePresentation(kind, key)
+end
+
+-- Clears active slots, not allocations: a new encounter reuses hidden frames.
+-- This is also invoked on Start/Stop/Reset, before stop callbacks.
+function mechanics.ClearPresentation()
+    for kind, group in pairs(presentation) do
+        for _, slot in ipairs(group.pool) do
+            slot.used = false
+            slot.key = nil
+            slot.callback = nil
+            slot.generation = nil
+            slot.timerName = nil
+            slot.label = nil
+            slot.target = nil
+            slot.expiresAt = nil
+            slot.frame:Hide()
+        end
+    end
+end
+
+-- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
+function mechanics.UpdatePresentation(now)
+    local session = active
+    local group, slot, timer, remaining
+    if not session then return end
+    if type(now) ~= "number" then now = Now() end
+    group = presentation.timer
+    for _, slot in ipairs(group.pool) do
+        if slot.used and slot.generation == session.generation then
+            timer = mechanics.GetTimer(slot.timerName)
+            if not timer then
+                ReleasePresentation("timer", slot.key)
+            else
+                remaining = math.max(0, timer.deadline - now)
+                slot.frame.label:SetText(slot.label)
+                slot.frame.detail:SetText(string.format("%.0fs", remaining))
+                slot.frame.bar:SetValue(remaining / math.max(1, timer.deadline - (slot.startedAt or now)))
+                slot.frame.bar:SetStatusBarColor(
+                    timer.kind == "predicted" and 0.9 or 0.3,
+                    timer.kind == "observed" and 0.8 or 0.65, 0.3)
+                slot.frame:Show()
+            end
+        end
+    end
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and slot.generation == session.generation then
+            slot.frame.label:SetText(slot.target .. ": " .. slot.label)
+            if slot.expiresAt then
+                slot.frame.detail:SetText(string.format("%.0fs", math.max(0, slot.expiresAt - now)))
+            else
+                slot.frame.detail:SetText("")
+            end
+        end
+    end
 end
