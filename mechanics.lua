@@ -586,17 +586,20 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
         return false, "assigned bot target selection failed"
     end
     capturedGeneration = active.generation
+    local originalBinding = bindings[bindingKey]
     sequenceSerial = sequenceSerial + 1
     timerName = "delayed-bot-sequence:" .. capturedGeneration .. ":" .. sequenceSerial
     -- Unique timer names preserve repeated clicks (including rapid Come spam).
     -- Reset/death/encounter change clears the encounter timer and bindings.
     return mechanics.ScheduleTimer(timerName, action.targetDelay, function()
         local currentName, currentMember, commandStep, n
-        if not active or active.generation ~= capturedGeneration then return end
+        if not active or active.generation ~= capturedGeneration
+            or bindings[bindingKey] ~= originalBinding then return end
         for n = 1, table.getn(action.steps) do
             currentName, currentMember =
                 mechanics.GetBoundMember(bindingKey, capturedGeneration, true)
-            if currentName ~= name or not currentMember or not currentMember.isBot
+            if bindings[bindingKey] ~= originalBinding
+                or currentName ~= name or not currentMember or not currentMember.isBot
                 or not SCB_IsBotName or not SCB_IsBotName(name)
                 or not AssignedBotStillTargeted(name) then
                 return
