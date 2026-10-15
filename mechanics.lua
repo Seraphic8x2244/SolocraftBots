@@ -154,6 +154,9 @@ function mechanics.DispatchEvent(eventName, message, details, expectedGeneration
             end
         end
     end
+    if active == session and session.definition.declarative then
+        delivered = delivered + mechanics.DispatchDeclarativeEvent(session, eventName, message)
+    end
     return delivered
 end
 
@@ -723,7 +726,8 @@ function mechanics.UpdatePresentation(now)
                 ReleasePresentation("timer", slot.key)
             else
                 remaining = math.max(0, timer.deadline - now)
-                slot.frame.label:SetText(slot.label)
+                slot.frame.label:SetText(timer.kind == "predicted"
+                    and "~" .. slot.label or slot.label)
                 slot.frame.detail:SetText(string.format("%.0fs", remaining))
                 slot.frame.bar:SetValue(remaining / math.max(1, timer.deadline - (slot.startedAt or now)))
                 slot.frame.bar:SetStatusBarColor(
