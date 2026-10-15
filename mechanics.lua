@@ -789,6 +789,7 @@ local function CheckEffect(e, hasPattern)
         return type(e.label) == "string" and e.label ~= ""
             and (e.duration == nil or IsDuration(e.duration))
             and (e.action == nil or e.action == "kick")
+            and (e.kickLabel == nil or (type(e.kickLabel) == "string" and e.kickLabel ~= ""))
     end
     return false
 end
@@ -823,12 +824,24 @@ local function CheckDeclaration(d)
     end
     for i = 1, table.getn(d.triggers) do
         rule = d.triggers[i]
-        if type(rule) ~= "table" or type(rule.event) ~= "string"
-            or rule.event == "" or type(rule.effects) ~= "table"
+        if type(rule) ~= "table" or type(rule.effects) ~= "table"
             or table.getn(rule.effects) == 0
             or (type(rule.contains) ~= "string" and type(rule.pattern) ~= "string")
-            or (rule.contains ~= nil and rule.pattern ~= nil) then
+            or (rule.contains ~= nil and rule.pattern ~= nil)
+            or (rule.event ~= nil and rule.events ~= nil) then
             return false, "invalid trigger"
+        end
+        if rule.events then
+            if type(rule.events) ~= "table" or table.getn(rule.events) == 0 then
+                return false, "invalid event list"
+            end
+            for j = 1, table.getn(rule.events) do
+                if type(rule.events[j]) ~= "string" or rule.events[j] == "" then
+                    return false, "invalid event name"
+                end
+            end
+        elseif type(rule.event) ~= "string" or rule.event == "" then
+            return false, "missing event"
         end
         if rule.pattern and not pcall(string.find, "", rule.pattern) then
             return false, "invalid Lua pattern"
@@ -970,7 +983,7 @@ local function RunDeclaredEffect(effect, captured)
             mechanics.ShowTrackedAura(key, effect.label, name, deadline)
             if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
                 mechanics.ShowBoundBotAction("kick:" .. key, {
-                    binding = binding, label = "Kick " .. name,
+                    binding = binding, label = (effect.kickLabel or "Kick") .. " " .. name,
                     action = { type = "kick" },
                 })
             end
@@ -998,7 +1011,14 @@ function mechanics.DispatchDeclarativeEvent(session, eventName, message)
     for i = 1, table.getn(d.triggers) do
         if active ~= session then break end
         rule = d.triggers[i]
-        if rule.event == eventName then
+        local eventMatches = rule.event == eventName
+        if rule.events then
+            eventMatches = false
+            for j = 1, table.getn(rule.events) do
+                if rule.events[j] == eventName then eventMatches = true; break end
+            end
+        end
+        if eventMatches then
             captured = nil
             if rule.contains then
                 matched = string.find(message, rule.contains, 1, true) ~= nil
