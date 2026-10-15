@@ -757,3 +757,263 @@ function mechanics.UpdatePresentation(now)
         end
     end
 end
+
+
+-- Dormant declarative encounter system. The SCB lifecycle owner must explicitly
+-- register the catalogue and forward zone-scoped boss observations and events.
+-- No automatic loading, polling, independent frame, or command transport.
+local function IsId(v)
+    return type(v) == "string" and v ~= ""
+        and string.find(v, "^[%w_]+$") ~= nil
+end
+
+local function IsDuration(v)
+    return type(v) == "number" and v > 0 and v == v and v < math.huge
+end
+
+local function CheckEffect(e, hasPattern)
+    if type(e) ~= "table" or not IsId(e.id) then return false end
+    if e.type == "timer" then
+        return type(e.label) == "string" and e.label ~= ""
+            and IsDuration(e.duration)
+            and (e.provenance == "predicted" or e.provenance == "fixed"
+                or e.provenance == "observed")
+    elseif e.type == "notice" then
+        return type(e.label) == "string" and e.label ~= ""
+            and IsDuration(e.lifespan)
+    elseif e.type == "aura_apply" or e.type == "aura_remove" then
+        if e.target ~= "player" and (e.target ~= "capture" or not hasPattern) then
+            return false
+        end
+        if e.type == "aura_remove" then return true end
+        return type(e.label) == "string" and e.label ~= ""
+            and (e.duration == nil or IsDuration(e.duration))
+            and (e.action == nil or e.action == "kick")
+    end
+    return false
+end
+
+local function CheckDeclaration(d)
+    local i, j, w, rule, step, seen = 0, 0, nil, nil, nil, {}
+    if type(d) ~= "table" or type(d.detect) ~= "table"
+        or type(d.detect.zone) ~= "string" or d.detect.zone == ""
+        or type(d.detect.boss) ~= "string" or d.detect.boss == ""
+        or type(d.mechanics) ~= "table" or type(d.triggers) ~= "table" then
+        return false, "missing detect, mechanics or triggers"
+    end
+    for i = 1, table.getn(d.mechanics) do
+        w = d.mechanics[i]
+        if type(w) ~= "table" or not IsId(w.id) or seen[w.id]
+            or w.when ~= "present" or w.type ~= "assignable_bot_action"
+            or not IsId(w.binding) or type(w.label) ~= "string"
+            or w.label == "" or w.assignable ~= true
+            or type(w.action) ~= "table" or w.action.type ~= "sequence"
+            or type(w.action.steps) ~= "table"
+            or table.getn(w.action.steps) == 0 then
+            return false, "invalid presence widget"
+        end
+        seen[w.id] = true
+        for j = 1, table.getn(w.action.steps) do
+            step = w.action.steps[j]
+            if type(step) ~= "table" or not IsId(step.command)
+                or not IsId(step.scope) then
+                return false, "invalid command step"
+            end
+        end
+    end
+    for i = 1, table.getn(d.triggers) do
+        rule = d.triggers[i]
+        if type(rule) ~= "table" or type(rule.event) ~= "string"
+            or rule.event == "" or type(rule.effects) ~= "table"
+            or table.getn(rule.effects) == 0
+            or (type(rule.contains) ~= "string" and type(rule.pattern) ~= "string")
+            or (rule.contains ~= nil and rule.pattern ~= nil) then
+            return false, "invalid trigger"
+        end
+        if rule.pattern and not pcall(string.find, "", rule.pattern) then
+            return false, "invalid Lua pattern"
+        end
+        for j = 1, table.getn(rule.effects) do
+            if not CheckEffect(rule.effects[j], rule.pattern ~= nil) then
+                return false, "invalid effect"
+            end
+        end
+    end
+    return true
+end
+
+-- Pure Lua-table catalogue, e.g. { bwl = { razorgore = { ... } } }.
+-- Registration is all-or-nothing; the caller owns loading encounters.lua.
+function mechanics.RegisterDeclarativeEncounters(catalogue)
+    local pending, raid, bosses, name, def, id, ok, why, count
+    if type(catalogue) ~= "table" then return false, "invalid catalogue" end
+    pending, count = {}, 0
+    for raid, bosses in pairs(catalogue) do
+        if not IsId(raid) or type(bosses) ~= "table" then
+            return false, "invalid raid group"
+        end
+        for name, def in pairs(bosses) do
+            if not IsId(name) then return false, "invalid encounter name" end
+            id = raid .. "." .. name
+            if pending[id] or encounters[id] then return false, "duplicate " .. id end
+            ok, why = CheckDeclaration(def)
+            if not ok then return false, id .. ": " .. why end
+            pending[id] = { events = {}, declarative = def }
+            count = count + 1
+        end
+    end
+    if count == 0 then return false, "empty catalogue" end
+    for id, def in pairs(pending) do encounters[id] = def end
+    return true, count
+end
+
+-- Only the SCB-owned, zone-gated observation pipeline may call this API.
+-- "absent" hides the pre-pull action without deleting its binding; missing
+-- visibility is NOT treated as death. "dead" must be a confirmed dead boss.
+function mechanics.ObserveBoss(zone, boss, state)
+    local id, entry, d, w, i, ok, why
+    if type(zone) ~= "string" or type(boss) ~= "string"
+        or (state ~= "alive" and state ~= "absent" and state ~= "dead") then
+        return false, "invalid observation"
+    end
+    if active and active.definition.declarative
+        and active.definition.declarative.detect.zone ~= zone then
+        mechanics.StopEncounter("zone change")
+    end
+    if active and active.definition.declarative then
+        d = active.definition.declarative
+        if d.detect.zone == zone and d.detect.boss == boss then
+            if state == "dead" then
+                mechanics.StopEncounter("confirmed boss death")
+                return true
+            elseif state == "absent" then
+                for i = 1, table.getn(d.mechanics) do
+                    mechanics.HidePresentation("action", "presence:" .. d.mechanics[i].id)
+                end
+                active.bossVisible = false
+                return true
+            end
+            if active.bossVisible then return true end
+            active.bossVisible = true
+        elseif state ~= "alive" then
+            return false, "other boss observed"
+        else
+            mechanics.StopEncounter("different boss")
+        end
+    elseif state ~= "alive" then
+        return false, "boss not active"
+    end
+    if not active then
+        for id, entry in pairs(encounters) do
+            d = entry.declarative
+            if d and d.detect.zone == zone and d.detect.boss == boss then
+                ok, why = mechanics.StartEncounter(id)
+                if not ok then return false, why end
+                active.bossVisible = true
+                break
+            end
+        end
+    end
+    if not active or not active.definition.declarative then
+        return false, "no matching boss definition"
+    end
+    d = active.definition.declarative
+    if d.detect.zone ~= zone or d.detect.boss ~= boss then
+        return false, "boss mismatch"
+    end
+    for i = 1, table.getn(d.mechanics) do
+        w = d.mechanics[i]
+        if w.when == "present" then
+            mechanics.ShowBoundBotAction("presence:" .. w.id, w)
+        end
+    end
+    return true
+end
+
+local function Recipient(effect, captured)
+    if effect.target == "player" or captured == "you" or captured == "You" then
+        return UnitName and UnitName("player") or nil
+    end
+    if type(captured) ~= "string" or captured == "" then return nil end
+    return captured
+end
+
+local function RunDeclaredEffect(effect, captured)
+    local key, name, binding, deadline, token
+    if not active then return end
+    key = "decl:" .. effect.id
+    if effect.type == "timer" then
+        if mechanics.ScheduleTimer(key, effect.duration, nil, effect.provenance) then
+            mechanics.ShowTimer(key, key, effect.label)
+        end
+    elseif effect.type == "notice" then
+        if mechanics.ShowBotAction(key, effect.label, nil, nil) then
+            for _, slot in ipairs(presentation.action.pool) do
+                if slot.used and slot.key == key and slot.generation == active.generation then
+                    slot.expiresAt = Now() + effect.lifespan
+                    break
+                end
+            end
+        end
+    elseif effect.type == "aura_apply" or effect.type == "aura_remove" then
+        name = Recipient(effect, captured)
+        if not name then return end
+        key = key .. ":" .. name
+        binding = "aura:" .. effect.id .. ":" .. name
+        if effect.type == "aura_remove" then
+            mechanics.CancelTimer("expiration:" .. key)
+            mechanics.HidePresentation("aura", key)
+            mechanics.HidePresentation("action", "kick:" .. key)
+            mechanics.ClearBinding(binding)
+        else
+            deadline = effect.duration and Now() + effect.duration or nil
+            mechanics.ShowTrackedAura(key, effect.label, name, deadline)
+            if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
+                mechanics.ShowBoundBotAction("kick:" .. key, {
+                    binding = binding, label = "Kick " .. name,
+                    action = { type = "kick" },
+                })
+            end
+            if effect.duration then
+                token = active.generation
+                mechanics.ScheduleTimer("expiration:" .. key, effect.duration, function()
+                    if not active or active.generation ~= token then return end
+                    mechanics.HidePresentation("aura", key)
+                    mechanics.HidePresentation("action", "kick:" .. key)
+                    mechanics.ClearBinding(binding, token)
+                end, "observed")
+            end
+        end
+    end
+end
+
+-- Called ONLY through DispatchEvent on the currently active declaration.
+-- The first Lua-pattern capture supplies a recipient for multi-aura tracking.
+function mechanics.DispatchDeclarativeEvent(session, eventName, message)
+    local d, rule, matched, captured, a, b, i, j, count
+    if not session or active ~= session or type(message) ~= "string" then return 0 end
+    d = session.definition.declarative
+    if not d then return 0 end
+    count = 0
+    for i = 1, table.getn(d.triggers) do
+        if active ~= session then break end
+        rule = d.triggers[i]
+        if rule.event == eventName then
+            captured = nil
+            if rule.contains then
+                matched = string.find(message, rule.contains, 1, true) ~= nil
+            else
+                a, b, captured = string.find(message, rule.pattern)
+                matched = a ~= nil
+            end
+            if matched then
+                for j = 1, table.getn(rule.effects) do
+                    if active ~= session then break end
+                    RunDeclaredEffect(rule.effects[j], captured)
+                end
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
