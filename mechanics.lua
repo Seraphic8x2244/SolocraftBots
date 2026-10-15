@@ -441,6 +441,236 @@ function mechanics.ShowBotAction(key, label, detail, callback)
     return true
 end
 
+
+-- Chunk 3: encounter-local bindings. Save only a name and generation; never
+-- maintain a second bot roster or retain a unit token across observations.
+local function ResolveBoundLive(name, botOnly, refresh)
+    local member
+    if type(name) ~= "string" or name == "" or not SCB_GetLiveMember then return nil end
+    member = SCB_GetLiveMember(name, refresh and true or false)
+    if not member or member.name ~= name or not member.unit
+        or not UnitName or UnitName(member.unit) ~= name
+        or (UnitExists and not UnitExists(member.unit)) then return nil end
+    if botOnly and (not member.isBot or not SCB_IsBotName
+        or not SCB_IsBotName(name)) then return nil end
+    return member
+end
+
+function mechanics.BindObservedMember(key, name, expectedGeneration)
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if type(key) ~= "string" or key == "" or not ResolveBoundLive(name, false, true) then
+        return false, "member not in live roster"
+    end
+    bindings[key] = { name = name, generation = active.generation }
+    return true
+end
+
+function mechanics.BindSelectedBot(key, expectedGeneration)
+    local name
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if not SCB_IsFriendlyBotTarget or not SCB_IsFriendlyBotTarget() then
+        return false, "select a friendly bot"
+    end
+    name = UnitName and UnitName("target") or nil
+    if not ResolveBoundLive(name, true, true) then return false, "bot not in live roster" end
+    bindings[key] = { name = name, generation = active.generation }
+    return true, name
+end
+
+function mechanics.ClearBinding(key, expectedGeneration)
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation)
+        or not bindings[key] then return false end
+    bindings[key] = nil
+    return true
+end
+
+function mechanics.GetBoundMember(key, expectedGeneration, refresh)
+    local binding = bindings[key]
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation)
+        or not binding or binding.generation ~= active.generation then return nil end
+    return binding.name, ResolveBoundLive(binding.name, false, refresh)
+end
+
+-- Authoritative integration seam, intentionally NOT implemented here:
+--   SCB_RequestVerifiedBotSequence(name, steps, stillValid)
+-- The SCB targeted-command owner must select the exact live bot; prove that
+-- server-side target identity has updated (a client target event, UnitName or
+-- fixed settle delay is NOT proof); then issue each step through its own
+-- SCB_RequestCommand owner in order. The owner must reject lost identity,
+-- timeout, overlapping commands or stale generation without leaking an
+-- object command to "all". No verified target-selection owner currently exists.
+-- Thus this dormant adapter fails CLOSED rather than faking acknowledgement.
+function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
+    local name, member, i, step, info, route, capturedGeneration
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if type(action) ~= "table" then return false, "invalid action" end
+    name, member = mechanics.GetBoundMember(bindingKey, expectedGeneration, true)
+    if not name or not member or not member.isBot or not SCB_IsBotName
+        or not SCB_IsBotName(name) then return false, "not a confirmed live bot" end
+    if action.type == "kick" then
+        if not SCB_KickBots then return false, "kick owner unavailable" end
+        -- Existing queue, final-bot and Loot Safe decisions remain authoritative.
+        return SCB_KickBots("all", { name = name })
+    end
+    if action.type ~= "sequence" or type(action.steps) ~= "table"
+        or table.getn(action.steps) == 0 then return false, "invalid sequence" end
+    for i = 1, table.getn(action.steps) do
+        step = action.steps[i]
+        info = type(step) == "table" and SCB.commands and SCB.commands[step.command] or nil
+        route = info and info.routes and info.routes[step.scope] or nil
+        if not route then return false, "unsupported command route" end
+    end
+    if not SCB_RequestVerifiedBotSequence then
+        return false, "server target-confirmation owner unavailable"
+    end
+    capturedGeneration = active.generation
+    return SCB_RequestVerifiedBotSequence(name, action.steps, function()
+        local liveName, liveMember = mechanics.GetBoundMember(bindingKey, capturedGeneration, true)
+        return liveName == name and liveMember and liveMember.isBot
+            and SCB_IsBotName and SCB_IsBotName(name) or false
+    end)
+end
+
+local function RefreshBoundAction(slot)
+    local config = slot.boundDefinition
+    local name, member, isBot, label
+    if not config then return end
+    name, member = mechanics.GetBoundMember(config.binding, slot.generation, false)
+    isBot = member and member.isBot and SCB_IsBotName and SCB_IsBotName(name)
+    -- A human aura victim may have an observed binding, but must never see a
+    -- kick action. Also hide an unavailable victim rather than guessing.
+    if config.action and config.action.type == "kick" and not config.assignable
+        and not isBot then slot.frame:Hide(); return end
+    if name then
+        if config.assignedLabel == "name" then label = name
+        else label = (config.assignedLabel or config.label) .. ": " .. name end
+    else
+        label = config.label
+    end
+    slot.frame.label:SetText(label)
+    slot.frame.detail:SetText(name and not isBot and "Unavailable" or (config.detail or ""))
+    slot.frame:Show()
+end
+
+-- Generic action frame: assignable bot icon (left assign, left act, right clear)
+-- or observed-member action (e.g. an individual Burning Adrenaline kick).
+-- "icon" and "position" are optional presentation data, not encounter logic.
+-- icon = { texture=path, size=30, point="CENTER",
+--          relativePoint="LEFT", x=0, y=0 }
+-- position = { "TOP", "TOP", x, y }; expiresAt = absolute GetTime.
+function mechanics.ShowBoundBotAction(key, config)
+    local slot, err, icon, pos, step, i, overlay
+    if type(config) ~= "table" or type(config.binding) ~= "string"
+        or config.binding == "" or type(config.label) ~= "string"
+        or config.label == "" or (config.assignedLabel ~= nil
+        and type(config.assignedLabel) ~= "string")
+        or (config.detail ~= nil and type(config.detail) ~= "string")
+        or (config.assignable ~= nil and type(config.assignable) ~= "boolean") then
+        return false, "invalid bound action"
+    end
+    if config.action ~= nil then
+        if type(config.action) ~= "table" then return false, "invalid bound action" end
+        if config.action.type == "sequence" then
+            if type(config.action.steps) ~= "table"
+                or table.getn(config.action.steps) == 0 then return false, "invalid sequence" end
+            for i = 1, table.getn(config.action.steps) do
+                step = config.action.steps[i]
+                if type(step) ~= "table" or type(step.command) ~= "string"
+                    or type(step.scope) ~= "string" then return false, "invalid step" end
+            end
+        elseif config.action.type ~= "kick" then return false, "invalid action type" end
+    end
+    icon = config.icon
+    if icon ~= nil and (type(icon) ~= "table" or type(icon.texture) ~= "string"
+        or icon.texture == "" or (icon.size ~= nil
+        and (type(icon.size) ~= "number" or icon.size <= 0
+        or icon.size ~= icon.size or icon.size == math.huge))) then
+        return false, "invalid overlay"
+    end
+    pos = config.position
+    if pos ~= nil and (type(pos) ~= "table" or type(pos[1]) ~= "string"
+        or type(pos[2]) ~= "string" or type(pos[3]) ~= "number"
+        or type(pos[4]) ~= "number" or pos[3] ~= pos[3] or pos[4] ~= pos[4]
+        or math.abs(pos[3]) == math.huge or math.abs(pos[4]) == math.huge) then
+        return false, "invalid position"
+    end
+    if config.expiresAt ~= nil and (type(config.expiresAt) ~= "number"
+        or config.expiresAt ~= config.expiresAt or config.expiresAt == math.huge) then
+        return false, "invalid lifespan"
+    end
+    slot, err = AcquirePresentation("action", key)
+    if not slot then return false, err end
+    slot.boundDefinition = config
+    slot.position = pos
+    slot.expiresAt = config.expiresAt
+    overlay = slot.frame.scbOverlay
+    if icon then
+        overlay:ClearAllPoints()
+        overlay:SetPoint(icon.point or "CENTER", slot.frame,
+            icon.relativePoint or "LEFT", icon.x or 0, icon.y or 0)
+        overlay:SetWidth(icon.size or 30)
+        overlay:SetHeight(icon.size or 30)
+        overlay:SetTexture(icon.texture)
+        overlay:Show()
+        slot.frame.label:ClearAllPoints()
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 22, 0)
+        slot.frame.label:SetWidth(presentation.action.width - 74)
+    else
+        slot.frame.label:ClearAllPoints()
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 6, 0)
+        slot.frame.label:SetWidth(presentation.action.width - 58)
+    end
+    LayoutPresentation("action")
+    RefreshBoundAction(slot)
+    return true
+end
+
+-- Synthetic and UI clicks share this guard; no callbacks outlive a generation.
+function mechanics.HandleActionClick(key, mouseButton)
+    local slot, cfg, name, member, ok, err
+    if not active then return false, "no active encounter" end
+    for _, slot in ipairs(presentation.action.pool) do
+        if slot.used and slot.key == key and slot.generation == active.generation then
+            if slot.expiresAt and Now() >= slot.expiresAt then
+                ReleasePresentation("action", key)
+                return false, "action expired"
+            end
+            cfg = slot.boundDefinition
+            if not cfg then
+                if mouseButton ~= "RightButton" and slot.callback then
+                    slot.callback(key, active.generation)
+                    return true
+                end
+                return false, "no action"
+            end
+            if mouseButton == "RightButton" then
+                if not cfg.assignable then return false, "not assignable" end
+                ok = mechanics.ClearBinding(cfg.binding, active.generation)
+                RefreshBoundAction(slot)
+                return ok
+            end
+            if mouseButton ~= "LeftButton" then return false, "invalid click" end
+            name, member = mechanics.GetBoundMember(cfg.binding, active.generation, false)
+            if not name and cfg.assignable then
+                ok, err = mechanics.BindSelectedBot(cfg.binding, active.generation)
+                RefreshBoundAction(slot)
+                return ok, err
+            end
+            if not cfg.action then return false, "no action configured" end
+            ok, err = mechanics.RunBoundBotAction(cfg.binding, cfg.action, active.generation)
+            RefreshBoundAction(slot)
+            return ok, err
+        end
+    end
+    return false, "action not shown"
+end
+
 function mechanics.HidePresentation(kind, key)
     return ReleasePresentation(kind, key)
 end
@@ -488,6 +718,15 @@ function mechanics.UpdatePresentation(now)
                     timer.kind == "predicted" and 0.9 or 0.3,
                     timer.kind == "observed" and 0.8 or 0.65, 0.3)
                 slot.frame:Show()
+            end
+        end
+    end
+    for _, slot in ipairs(presentation.action.pool) do
+        if slot.used and slot.generation == session.generation then
+            if slot.expiresAt and now >= slot.expiresAt then
+                ReleasePresentation("action", slot.key)
+            elseif slot.boundDefinition then
+                RefreshBoundAction(slot)
             end
         end
     end
