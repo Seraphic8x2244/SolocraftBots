@@ -21,6 +21,7 @@ local active = nil
 local generation = 0
 local timers = {}
 local timerOrder = 0
+local bindings = {} -- encounter-local names only; never cache roster objects
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -82,6 +83,7 @@ function mechanics.StopEncounter(reason, expectedGeneration)
     active = nil
     generation = generation + 1
     ClearTimers()
+    bindings = {}
     mechanics.ClearPresentation()
     if old.definition.onStop then
         old.definition.onStop(reason or "stopped", old.generation)
@@ -93,6 +95,7 @@ function mechanics.Reset(reason)
     if active then return mechanics.StopEncounter(reason or "reset") end
     generation = generation + 1
     ClearTimers()
+    bindings = {}
     mechanics.ClearPresentation()
     return true
 end
@@ -108,6 +111,7 @@ function mechanics.StartEncounter(id)
     end
     generation = generation + 1
     ClearTimers()
+    bindings = {}
     mechanics.ClearPresentation()
     active = { id = id, generation = generation, definition = definition }
     if definition.onStart then definition.onStart(generation) end
@@ -252,14 +256,14 @@ local function LayoutPresentation(kind)
     local group = PresentationGroup(kind)
     local index, slot, frame, p
     if not group then return end
-    p = group.position
     index = 0
     for _, slot in ipairs(group.pool) do
         if slot.used then
             index = index + 1
             frame = slot.frame
+            p = slot.position or group.position
             frame:ClearAllPoints()
-            frame:SetPoint(p[1], UIParent, p[2], p[3], p[4] - (index - 1) * (group.height + 4))
+            frame:SetPoint(p[1], UIParent, p[2], p[3], p[4] - (slot.position and 0 or (index - 1) * (group.height + 4)))
         end
     end
 end
@@ -293,13 +297,15 @@ local function CreatePresentationFrame(kind, group)
         bar:SetMinMaxValues(0, 1)
         frame.bar = bar
     elseif kind == "action" then
+        local overlay = frame:CreateTexture(nil, "OVERLAY")
+        overlay:Hide()
+        frame.scbOverlay = overlay
+        frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         frame:SetScript("OnClick", function()
             local slot = frame.scbSlot
             if not slot or not slot.used or not active
                 or slot.generation ~= active.generation then return end
-            -- Chunk 3 will supply callbacks that delegate to the existing
-            -- identity/command/kick owners. No command runs in this template.
-            if slot.callback then slot.callback(slot.key, active.generation) end
+            mechanics.HandleActionClick(slot.key, arg1 or "LeftButton")
         end)
     end
     frame:Hide()
@@ -330,6 +336,10 @@ local function AcquirePresentation(kind, key)
     slot.key = key
     slot.generation = active.generation
     slot.callback = nil
+    slot.boundDefinition = nil
+    slot.position = nil
+    slot.expiresAt = nil
+    if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
     slot.frame:Show()
     LayoutPresentation(kind)
     return slot
@@ -343,7 +353,11 @@ local function ReleasePresentation(kind, key)
             slot.used = false
             slot.key = nil
             slot.callback = nil
+            slot.boundDefinition = nil
+            slot.position = nil
+            slot.expiresAt = nil
             slot.generation = nil
+            if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             slot.frame:Hide()
             slot.frame.label:SetText("")
             slot.frame.detail:SetText("")
@@ -421,6 +435,7 @@ function mechanics.ShowBotAction(key, label, detail, callback)
     if not slot then return false, err end
     slot.label = label
     slot.callback = callback
+    slot.boundDefinition = nil
     slot.frame.label:SetText(label)
     slot.frame.detail:SetText(detail or "")
     return true
@@ -438,6 +453,10 @@ function mechanics.ClearPresentation()
             slot.used = false
             slot.key = nil
             slot.callback = nil
+            slot.boundDefinition = nil
+            slot.position = nil
+            slot.expiresAt = nil
+            if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             slot.generation = nil
             slot.timerName = nil
             slot.label = nil
