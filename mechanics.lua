@@ -73,6 +73,22 @@ function mechanics.GetGeneration()
     return generation
 end
 
+-- Boss presence is independent of confirmed engagement. The eventual SCB
+-- lifecycle owner decides when a valid server combat observation occurs.
+function mechanics.MarkEncounterEngaged(expectedGeneration)
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    active.engaged = true
+    return true
+end
+
+function mechanics.GetEncounterState()
+    if not active then return nil end
+    return { id = active.id, generation = active.generation,
+        bossVisible = active.bossVisible == true, engaged = active.engaged == true }
+end
+
 function mechanics.StopEncounter(reason, expectedGeneration)
     local old = active
     if not old or (expectedGeneration and old.generation ~= expectedGeneration) then
@@ -794,6 +810,36 @@ local function CheckEffect(e, hasPattern)
     return false
 end
 
+local function IsFiniteNumber(value)
+    return type(value) == "number" and value == value
+        and math.abs(value) < math.huge
+end
+
+local function CheckWidgetAppearance(w)
+    local art, pos
+    if w.assignedLabel ~= nil and type(w.assignedLabel) ~= "string" then
+        return false
+    end
+    art = w.icon
+    if art ~= nil then
+        if type(art) ~= "table" or type(art.texture) ~= "string" or art.texture == ""
+            or (art.size ~= nil and (not IsFiniteNumber(art.size) or art.size <= 0))
+            or (art.point ~= nil and type(art.point) ~= "string")
+            or (art.relativePoint ~= nil and type(art.relativePoint) ~= "string")
+            or (art.x ~= nil and not IsFiniteNumber(art.x))
+            or (art.y ~= nil and not IsFiniteNumber(art.y)) then
+            return false
+        end
+    end
+    pos = w.position
+    if pos ~= nil then
+        if type(pos) ~= "table" or type(pos[1]) ~= "string"
+            or type(pos[2]) ~= "string" or not IsFiniteNumber(pos[3])
+            or not IsFiniteNumber(pos[4]) then return false end
+    end
+    return w.expiresAt == nil or IsFiniteNumber(w.expiresAt)
+end
+
 local function CheckDeclaration(d)
     local i, j, w, rule, step, seen = 0, 0, nil, nil, nil, {}
     if type(d) ~= "table" or type(d.detect) ~= "table"
@@ -812,6 +858,9 @@ local function CheckDeclaration(d)
             or type(w.action.steps) ~= "table"
             or table.getn(w.action.steps) == 0 then
             return false, "invalid presence widget"
+        end
+        if not CheckWidgetAppearance(w) then
+            return false, "invalid widget appearance"
         end
         seen[w.id] = true
         for j = 1, table.getn(w.action.steps) do
