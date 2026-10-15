@@ -1,17 +1,26 @@
--- SoloCraftBots Boss Mods — EDITABLE, DECLARATIVE ENCOUNTER DATA (Lua 5.0.3).
--- Dormant: NOT listed in SoloCraftBots.toc; contains NO custom Lua handlers.
--- Add encounters here using the same detect/mechanics/triggers/effects grammar.
--- Timings below are REFERENCES from pinned ElesionWoW BigWigs source, NOT
--- confirmed on the SoloCraft server. A predicted timer displays with "~".
--- Source: ElesionWoW/BigWigs @ 47b538024cf127346d624ba7b21a8aff56cb4587
--- Activation is separately approved in Chunk 6 after server event validation.
+-- SoloCraftBots: EDIT-ONLY ENCOUNTER DEFINITIONS (Lua 5.0.3).
+-- NO boss functions, custom parsers or runtime hooks belong in this file.
+-- Dormant until the separately approved Chunk 6 TOC/lifecycle integration.
+-- Timings are ElesionWoW BigWigs REFERENCE estimates, not proven on SoloCraft:
+-- https://github.com/ElesionWoW/BigWigs/tree/47b538024cf127346d624ba7b21a8aff56cb4587/Raids/BWL
+-- An estimated countdown displays with "~". The notice lifespan is only UI.
 --
--- Detection: SCB owner must supply zone-gated alive/absent/dead observations.
--- The presence widget requires actually OBSERVED living Razorgore even pre-pull.
--- Aura patterns capture an exact raid member name, including human recipients;
--- only a freshly validated bot is allowed to expose an actionable kick.
--- Server target-update acknowledgement for eggbreaker sequence is NOT YET
--- available: the engine refuses to execute it instead of risking Object All.
+-- Grammar:
+--   bwl.<boss>.detect  = { zone="Blackwing Lair", boss="Exact NPC name" }
+--   bwl.<boss>.mechanics = { { id, type="assignable_bot_action",
+--       when="present", binding, label, assignable=true, icon={...}, action={...} } }
+--   bwl.<boss>.triggers = { { event="..." OR events={"...","..."},
+--       contains="literal" OR pattern="Lua (capture) pattern", effects={...} } }
+--   effects: timer {id,label,duration,provenance="predicted"/"fixed"/"observed"},
+--            notice {id,label,lifespan},
+--            aura_apply {id,target="player"/"capture",label,duration?,action="kick"?},
+--            aura_remove {id,target="player"/"capture"}.
+--   Shared aura id + captured name distinguishes multiple simultaneous victims.
+--   Any kick is allowed only for a fresh, positively identified live bot.
+--   Razorgore presence means the boss has been actually observed ALIVE in BWL.
+--   Absent/hidden => no egg icon; binding persists until confirmed death/reset.
+--   Egg action sequence is structurally declared but FAILS CLOSED until the SCB
+--   target owner implements genuine server target-update confirmation (Chunk 6).
 
 SoloCraftBots = SoloCraftBots or {}
 SoloCraftBots.bossModDefinitions = {
@@ -41,14 +50,8 @@ SoloCraftBots.bossModDefinitions = {
                     action = {
                         type = "sequence",
                         steps = {
-                            {
-                                command = "come",
-                                scope = "target",
-                            },
-                            {
-                                command = "object",
-                                scope = "all",
-                            },
+                            { command = "come", scope = "target" },
+                            { command = "object", scope = "all" },
                         },
                     },
                 },
@@ -112,11 +115,12 @@ SoloCraftBots.bossModDefinitions = {
                             label = "Burning Adrenaline",
                             duration = 20,
                             action = "kick",
+                            kickLabel = "Kick",
                         },
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE", "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE" },
                     pattern = "^(.+) is afflicted by Burning Adrenaline%.$",
                     effects = {
                         {
@@ -126,47 +130,12 @@ SoloCraftBots.bossModDefinitions = {
                             label = "Burning Adrenaline",
                             duration = 20,
                             action = "kick",
+                            kickLabel = "Kick",
                         },
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE",
-                    pattern = "^(.+) is afflicted by Burning Adrenaline%.$",
-                    effects = {
-                        {
-                            type = "aura_apply",
-                            id = "burning",
-                            target = "capture",
-                            label = "Burning Adrenaline",
-                            duration = 20,
-                            action = "kick",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_AURA_GONE_SELF",
-                    pattern = "^Burning Adrenaline fades from (.+)%.$",
-                    effects = {
-                        {
-                            type = "aura_remove",
-                            id = "burning",
-                            target = "capture",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_AURA_GONE_PARTY",
-                    pattern = "^Burning Adrenaline fades from (.+)%.$",
-                    effects = {
-                        {
-                            type = "aura_remove",
-                            id = "burning",
-                            target = "capture",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_AURA_GONE_OTHER",
+                    events = { "CHAT_MSG_SPELL_AURA_GONE_SELF", "CHAT_MSG_SPELL_AURA_GONE_PARTY", "CHAT_MSG_SPELL_AURA_GONE_OTHER" },
                     pattern = "^Burning Adrenaline fades from (.+)%.$",
                     effects = {
                         {
@@ -186,45 +155,7 @@ SoloCraftBots.bossModDefinitions = {
             mechanics = {},
             triggers = {
                 {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
-                    contains = "Broodlord Lashlayer's Blast Wave",
-                    effects = {
-                        {
-                            type = "notice",
-                            id = "blast_warn",
-                            label = "Blast Wave!",
-                            lifespan = 3,
-                        },
-                        {
-                            type = "timer",
-                            id = "blast_cooldown",
-                            label = "Blast Wave earliest (estimate)",
-                            duration = 20,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
-                    contains = "Broodlord Lashlayer's Blast Wave",
-                    effects = {
-                        {
-                            type = "notice",
-                            id = "blast_warn",
-                            label = "Blast Wave!",
-                            lifespan = 3,
-                        },
-                        {
-                            type = "timer",
-                            id = "blast_cooldown",
-                            label = "Blast Wave earliest (estimate)",
-                            duration = 20,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
                     contains = "Broodlord Lashlayer's Blast Wave",
                     effects = {
                         {
@@ -264,33 +195,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
-                    contains = "Firemaw's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
-                    contains = "Firemaw's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
                     contains = "Firemaw's Shadow Flame hits",
                     effects = {
                         {
@@ -324,33 +229,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
-                    contains = "Ebonroc's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
-                    contains = "Ebonroc's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
                     contains = "Ebonroc's Shadow Flame hits",
                     effects = {
                         {
@@ -384,33 +263,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
-                    contains = "Flamegor's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
-                    contains = "Flamegor's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame next (estimate)",
-                            duration = 14,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
                     contains = "Flamegor's Shadow Flame hits",
                     effects = {
                         {
@@ -438,7 +291,7 @@ SoloCraftBots.bossModDefinitions = {
                         {
                             type = "notice",
                             id = "fear_warn",
-                            label = "Bellowing Roar — fear!",
+                            label = "Bellowing Roar - fear!",
                             lifespan = 3,
                         },
                         {
@@ -463,33 +316,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
-                    contains = "Nefarian's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame earliest (estimate)",
-                            duration = 16.5,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
-                    contains = "Nefarian's Shadow Flame hits",
-                    effects = {
-                        {
-                            type = "timer",
-                            id = "shadowflame_cooldown",
-                            label = "Shadow Flame earliest (estimate)",
-                            duration = 16.5,
-                            provenance = "predicted",
-                        },
-                    },
-                },
-                {
-                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE", "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
                     contains = "Nefarian's Shadow Flame hits",
                     effects = {
                         {
