@@ -339,7 +339,13 @@ local function AcquirePresentation(kind, key)
     slot.boundDefinition = nil
     slot.position = nil
     slot.expiresAt = nil
-    if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
+    if slot.frame.scbOverlay then
+        slot.frame.scbOverlay:Hide()
+        -- Recycled action frames may previously have contained an art overlay.
+        slot.frame.label:ClearAllPoints()
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 6, 0)
+        slot.frame.label:SetWidth(group.width - 58)
+    end
     slot.frame:Show()
     LayoutPresentation(kind)
     return slot
