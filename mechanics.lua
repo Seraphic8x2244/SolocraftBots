@@ -802,6 +802,7 @@ local function IsDuration(v)
 end
 
 local function CheckEffect(e, hasPattern)
+    local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
     if e.type == "timer" then
         return type(e.label) == "string" and e.label ~= ""
@@ -812,8 +813,27 @@ local function CheckEffect(e, hasPattern)
         return type(e.label) == "string" and e.label ~= ""
             and IsDuration(e.lifespan)
     elseif e.type == "ability_observed" then
-        return type(e.label) == "string" and e.label ~= ""
-            and type(e.ability) == "string" and e.ability ~= ""
+        if type(e.label) ~= "string" or e.label == ""
+            or (e.noticeLifespan ~= nil and not IsDuration(e.noticeLifespan)) then
+            return false
+        end
+        if e.ability ~= nil then
+            return type(e.ability) == "string" and e.ability ~= ""
+                and e.target == nil and e.allowed == nil
+        end
+        -- Captured ability names must come from an explicit allowlist. This
+        -- blocks unrelated casts matching an intentionally generic pattern.
+        if e.target ~= "capture" or not hasPattern
+            or type(e.allowed) ~= "table" or table.getn(e.allowed) == 0 then
+            return false
+        end
+        names = {}
+        for i = 1, table.getn(e.allowed) do
+            if type(e.allowed[i]) ~= "string" or e.allowed[i] == ""
+                or names[e.allowed[i]] then return false end
+            names[e.allowed[i]] = true
+        end
+        return true
     elseif e.type == "aura_apply" or e.type == "aura_remove" then
         if e.target ~= "player" and (e.target ~= "capture" or not hasPattern) then
             return false
@@ -1026,19 +1046,40 @@ local function RunDeclaredEffect(effect, captured)
             mechanics.ShowTimer(key, key, effect.label)
         end
     elseif effect.type == "ability_observed" then
-        -- A missed cast cannot introduce an invented ability. Each distinct
-        -- type is shown independently and only AFTER the exact cast event.
+        -- No cast => no ability. No observed second breath => no second slot.
+        -- No inferred alternation or speculative cooldown is created.
+        name = effect.target == "capture" and captured or effect.ability
+        if type(name) ~= "string" or name == "" then return end
+        if effect.allowed then
+            local permitted = false
+            for _, candidate in ipairs(effect.allowed) do
+                if candidate == name then permitted = true; break end
+            end
+            if not permitted then return end
+        end
         active.observedAbilities = active.observedAbilities or {}
         seen = active.observedAbilities[effect.id]
         if not seen then
             seen = { order = {}, names = {} }
             active.observedAbilities[effect.id] = seen
         end
-        if not seen.names[effect.ability] then
-            seen.names[effect.ability] = true
-            table.insert(seen.order, effect.ability)
-            mechanics.ShowTrackedAura("seen:" .. effect.id .. ":" .. effect.ability,
-                effect.label, effect.ability, nil)
+        if not seen.names[name] then
+            seen.names[name] = true
+            table.insert(seen.order, name)
+            mechanics.ShowTrackedAura("seen:" .. effect.id .. ":" .. name,
+                effect.label, name, nil)
+        end
+        -- Transient alert per actual cast; repeated casts refresh the notice
+        -- but do not add fake new abilities or next-cast predictions.
+        if effect.noticeLifespan and mechanics.ShowBotAction(
+            "cast:" .. effect.id, "Casting " .. name, nil, nil) then
+            for _, slot in ipairs(presentation.action.pool) do
+                if slot.used and slot.key == "cast:" .. effect.id
+                    and slot.generation == active.generation then
+                    slot.expiresAt = Now() + effect.noticeLifespan
+                    break
+                end
+            end
         end
     elseif effect.type == "notice" then
         if mechanics.ShowBotAction(key, effect.label, nil, nil) then
