@@ -89,6 +89,20 @@ function mechanics.GetEncounterState()
         bossVisible = active.bossVisible == true, engaged = active.engaged == true }
 end
 
+-- Return an immutable-by-copy view of genuinely observed abilities in a named
+-- group, in first-seen order. Empty means none observed, NOT none configured.
+function mechanics.GetObservedAbilities(group, expectedGeneration)
+    local result, data, i
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation)
+        or type(group) ~= "string" then return nil end
+    result = {}
+    data = active.observedAbilities and active.observedAbilities[group]
+    if data then
+        for i = 1, table.getn(data.order) do result[i] = data.order[i] end
+    end
+    return result
+end
+
 function mechanics.StopEncounter(reason, expectedGeneration)
     local old = active
     if not old or (expectedGeneration and old.generation ~= expectedGeneration) then
@@ -797,6 +811,9 @@ local function CheckEffect(e, hasPattern)
     elseif e.type == "notice" then
         return type(e.label) == "string" and e.label ~= ""
             and IsDuration(e.lifespan)
+    elseif e.type == "ability_observed" then
+        return type(e.label) == "string" and e.label ~= ""
+            and type(e.ability) == "string" and e.ability ~= ""
     elseif e.type == "aura_apply" or e.type == "aura_remove" then
         if e.target ~= "player" and (e.target ~= "capture" or not hasPattern) then
             return false
@@ -1001,12 +1018,27 @@ local function Recipient(effect, captured)
 end
 
 local function RunDeclaredEffect(effect, captured)
-    local key, name, binding, deadline, token
+    local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
     if effect.type == "timer" then
         if mechanics.ScheduleTimer(key, effect.duration, nil, effect.provenance) then
             mechanics.ShowTimer(key, key, effect.label)
+        end
+    elseif effect.type == "ability_observed" then
+        -- A missed cast cannot introduce an invented ability. Each distinct
+        -- type is shown independently and only AFTER the exact cast event.
+        active.observedAbilities = active.observedAbilities or {}
+        seen = active.observedAbilities[effect.id]
+        if not seen then
+            seen = { order = {}, names = {} }
+            active.observedAbilities[effect.id] = seen
+        end
+        if not seen.names[effect.ability] then
+            seen.names[effect.ability] = true
+            table.insert(seen.order, effect.ability)
+            mechanics.ShowTrackedAura("seen:" .. effect.id .. ":" .. effect.ability,
+                effect.label, effect.ability, nil)
         end
     elseif effect.type == "notice" then
         if mechanics.ShowBotAction(key, effect.label, nil, nil) then
