@@ -596,7 +596,13 @@ function mechanics.ShowBoundBotAction(key, config)
     if icon ~= nil and (type(icon) ~= "table" or type(icon.texture) ~= "string"
         or icon.texture == "" or (icon.size ~= nil
         and (type(icon.size) ~= "number" or icon.size <= 0
-        or icon.size ~= icon.size or icon.size == math.huge))) then
+        or icon.size ~= icon.size or icon.size == math.huge))
+        or (icon.point ~= nil and type(icon.point) ~= "string")
+        or (icon.relativePoint ~= nil and type(icon.relativePoint) ~= "string")
+        or (icon.x ~= nil and (type(icon.x) ~= "number" or icon.x ~= icon.x
+        or math.abs(icon.x) == math.huge))
+        or (icon.y ~= nil and (type(icon.y) ~= "number" or icon.y ~= icon.y
+        or math.abs(icon.y) == math.huge))) then
         return false, "invalid overlay"
     end
     pos = config.position
