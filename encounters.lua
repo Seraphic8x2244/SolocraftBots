@@ -14,7 +14,9 @@
 --   effects: timer {id,label,duration,provenance="predicted"/"fixed"/"observed"},
 --            notice {id,label,lifespan},
 --            aura_apply {id,target="player"/"capture",label,duration?,action="kick"?},
---            aura_remove {id,target="player"/"capture"}.
+--            aura_remove {id,target="player"/"capture"},
+--            ability_observed {id,label,target="capture",allowed={spell names},
+--                noticeLifespan=seconds?}; records real casts, no future-cast guess.
 --   Shared aura id + captured name distinguishes multiple simultaneous victims.
 --   Any kick is allowed only for a fresh, positively identified live bot.
 --   Razorgore presence means the boss has been actually observed ALIVE in BWL.
@@ -272,6 +274,39 @@ SoloCraftBots.bossModDefinitions = {
                             label = "Shadow Flame next (estimate)",
                             duration = 14,
                             provenance = "predicted",
+                        },
+                    },
+                },
+            },
+        },
+        -- SoloCraft can expose 0, 1 or 2 breath types in a given week.
+        -- This one generic observed-ability row learns ONLY an actual cast.
+        -- Five entries are POTENTIAL source spell names, NOT expected slots.
+        -- No forced first cast, breath rotation, cooldown or assumed second.
+        chromaggus = {
+            detect = {
+                zone = "Blackwing Lair",
+                boss = "Chromaggus",
+            },
+            mechanics = {},
+            triggers = {
+                {
+                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    pattern = "^Chromaggus begins to cast (.+)%.$",
+                    effects = {
+                        {
+                            type = "ability_observed",
+                            id = "breaths",
+                            label = "Breath observed",
+                            target = "capture",
+                            allowed = {
+                                "Corrosive Acid",
+                                "Frost Burn",
+                                "Ignite Flesh",
+                                "Incinerate",
+                                "Time Lapse",
+                            },
+                            noticeLifespan = 3,
                         },
                     },
                 },
