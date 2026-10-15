@@ -534,17 +534,24 @@ function mechanics.GetBoundMember(key, expectedGeneration, refresh)
     return binding.name, ResolveBoundLive(binding.name, false, refresh)
 end
 
--- Authoritative integration seam, intentionally NOT implemented here:
---   SCB_RequestVerifiedBotSequence(name, steps, stillValid)
--- The SCB targeted-command owner must select the exact live bot; prove that
--- server-side target identity has updated (a client target event, UnitName or
--- fixed settle delay is NOT proof); then issue each step through its own
--- SCB_RequestCommand owner in order. The owner must reject lost identity,
--- timeout, overlapping commands or stale generation without leaking an
--- object command to "all". No verified target-selection owner currently exists.
--- Thus this dormant adapter fails CLOSED rather than faking acknowledgement.
+-- Generic delayed, targeted action sequence. A click targets the assigned
+-- roster bot, then uses the EXISTING encounter-owned named timer scheduler
+-- for the data-defined delay. When due, every command goes through
+-- SCB_RequestCommand; mechanics owns neither command transport nor a ticker.
+-- This is deliberately a target-propagation delay, NOT a server ACK.
+local sequenceSerial = 0
+local function ValidSequenceTargetDelay(value)
+    return type(value) == "number" and value > 0
+        and value == value and value < math.huge
+end
+
+local function AssignedBotStillTargeted(name)
+    return UnitName and UnitName("target") == name
+        and SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget()
+end
+
 function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
-    local name, member, i, step, info, route, capturedGeneration
+    local name, member, i, step, info, route, capturedGeneration, timerName
     if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "stale encounter"
     end
@@ -558,22 +565,49 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
         return SCB_KickBots("all", { name = name })
     end
     if action.type ~= "sequence" or type(action.steps) ~= "table"
-        or table.getn(action.steps) == 0 then return false, "invalid sequence" end
+        or table.getn(action.steps) == 0
+        or not ValidSequenceTargetDelay(action.targetDelay) then
+        return false, "invalid delayed sequence"
+    end
     for i = 1, table.getn(action.steps) do
         step = action.steps[i]
         info = type(step) == "table" and SCB.commands and SCB.commands[step.command] or nil
         route = info and info.routes and info.routes[step.scope] or nil
         if not route then return false, "unsupported command route" end
     end
-    if not SCB_RequestVerifiedBotSequence then
-        return false, "server target-confirmation owner unavailable"
+    if not TargetUnit or not SCB_RequestCommand then
+        return false, "target or command owner unavailable"
+    end
+
+    -- Target selection is the only immediate operation. Commands must not be
+    -- sent on this click/frame, even if UnitName("target") updates instantly.
+    TargetUnit(member.unit)
+    if not AssignedBotStillTargeted(name) then
+        return false, "assigned bot target selection failed"
     end
     capturedGeneration = active.generation
-    return SCB_RequestVerifiedBotSequence(name, action.steps, function()
-        local liveName, liveMember = mechanics.GetBoundMember(bindingKey, capturedGeneration, true)
-        return liveName == name and liveMember and liveMember.isBot
-            and SCB_IsBotName and SCB_IsBotName(name) or false
-    end)
+    sequenceSerial = sequenceSerial + 1
+    timerName = "delayed-bot-sequence:" .. capturedGeneration .. ":" .. sequenceSerial
+    -- Unique timer names preserve repeated clicks (including rapid Come spam).
+    -- Reset/death/encounter change clears the encounter timer and bindings.
+    return mechanics.ScheduleTimer(timerName, action.targetDelay, function()
+        local currentName, currentMember, commandStep, n
+        if not active or active.generation ~= capturedGeneration then return end
+        for n = 1, table.getn(action.steps) do
+            currentName, currentMember =
+                mechanics.GetBoundMember(bindingKey, capturedGeneration, true)
+            if currentName ~= name or not currentMember or not currentMember.isBot
+                or not SCB_IsBotName or not SCB_IsBotName(name)
+                or not AssignedBotStillTargeted(name) then
+                return
+            end
+            commandStep = action.steps[n]
+            if not SCB_RequestCommand
+                or not SCB_RequestCommand(commandStep.command, commandStep.scope) then
+                return
+            end
+        end
+    end, "fixed")
 end
 
 local function RefreshBoundAction(slot)
@@ -617,7 +651,10 @@ function mechanics.ShowBoundBotAction(key, config)
         if type(config.action) ~= "table" then return false, "invalid bound action" end
         if config.action.type == "sequence" then
             if type(config.action.steps) ~= "table"
-                or table.getn(config.action.steps) == 0 then return false, "invalid sequence" end
+                or table.getn(config.action.steps) == 0
+                or not ValidSequenceTargetDelay(config.action.targetDelay) then
+                return false, "invalid delayed sequence"
+            end
             for i = 1, table.getn(config.action.steps) do
                 step = config.action.steps[i]
                 if type(step) ~= "table" or type(step.command) ~= "string"
@@ -893,7 +930,8 @@ local function CheckDeclaration(d)
             or w.label == "" or w.assignable ~= true
             or type(w.action) ~= "table" or w.action.type ~= "sequence"
             or type(w.action.steps) ~= "table"
-            or table.getn(w.action.steps) == 0 then
+            or table.getn(w.action.steps) == 0
+            or not ValidSequenceTargetDelay(w.action.targetDelay) then
             return false, "invalid presence widget"
         end
         if not CheckWidgetAppearance(w) then
