@@ -88,6 +88,7 @@ end
 function mechanics.GetEncounterState()
     if not active then return nil end
     return { id = active.id, generation = active.generation,
+        boss = active.definition.declarative and active.definition.declarative.detect.boss,
         bossVisible = active.bossVisible == true, engaged = active.engaged == true }
 end
 

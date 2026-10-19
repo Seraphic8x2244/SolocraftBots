@@ -2148,6 +2148,146 @@ function SCB_UpdateDebugEventRegistration(enabled)
     end
 end
 
+
+-- Boss Mods is an optional consumer of THIS SCB lifecycle/event owner.
+-- No companion event frame, chat filter, command sender, roster or scheduler.
+local SCB_BOSSMODS_ZONE = "Blackwing Lair"
+local bossModsZoneActive = false
+local bossModsElapsed = 0
+local bossModsPollElapsed = 0
+local bossModsEvents = {}
+
+local function SCB_BossModsInitialize()
+    local engine = SCB.mechanics
+    local ok, why, eventNames, i
+    if not engine or not SCB.bossModDefinitions or SCB.bossModsInitialised then return end
+    ok, why = engine.RegisterDeclarativeEncounters(SCB.bossModDefinitions)
+    if not ok then
+        -- Registration is all-or-nothing. Fail closed; never enable partial
+        -- encounters or interfere with unrelated SCB features.
+        SCB.bossModsRegistrationError = why
+        return
+    end
+    SCB.bossModsInitialised = true
+    eventNames = engine.GetRequiredEvents(SCB_BOSSMODS_ZONE)
+    for i = 1, table.getn(eventNames) do
+        bossModsEvents[eventNames[i]] = true
+    end
+end
+
+local function SCB_BossModsRefreshZone()
+    local engine, zone, enabled, eventName
+    engine = SCB.mechanics
+    if not SCB.bossModsInitialised or not engine then return end
+    zone = GetRealZoneText and GetRealZoneText() or ""
+    enabled = zone == SCB_BOSSMODS_ZONE
+    if enabled == bossModsZoneActive then return end
+    bossModsZoneActive = enabled
+    if enabled then
+        for eventName in pairs(bossModsEvents) do eventFrame:RegisterEvent(eventName) end
+    else
+        for eventName in pairs(bossModsEvents) do eventFrame:UnregisterEvent(eventName) end
+        engine.Reset("zone exit")
+    end
+    bossModsPollElapsed = 0
+end
+
+-- Vanilla has no world NPC enumeration. Only positively observed target units
+-- count as boss presence. Missing target data cannot prove boss death.
+local function SCB_BossModsObserveTargets()
+    local engine, names, lookup, state, selected, observed, dead
+    local tokens, name, token, i
+    if not bossModsZoneActive or not SCB.mechanics then return end
+    engine = SCB.mechanics
+    names = engine.GetDetectableBosses(SCB_BOSSMODS_ZONE)
+    lookup = {}
+    for i = 1, table.getn(names) do lookup[names[i]] = true end
+    tokens = { "target" }
+    for i = 1, 40 do table.insert(tokens, "raid" .. i .. "target") end
+    for i = 1, 4 do table.insert(tokens, "party" .. i .. "target") end
+    observed = {}
+    for i = 1, table.getn(tokens) do
+        token = tokens[i]
+        if UnitExists and UnitExists(token) and UnitName then
+            name = UnitName(token)
+            if lookup[name] and not observed[name] then
+                dead = (UnitIsDeadOrGhost and UnitIsDeadOrGhost(token))
+                    or (UnitIsDead and UnitIsDead(token))
+                observed[name] = { dead = dead and true or false,
+                    combat = UnitAffectingCombat and UnitAffectingCombat(token) and true or false }
+            end
+        end
+    end
+    state = engine.GetEncounterState()
+    if state and state.boss then
+        -- Preserve the current boss if still observed. A completely different
+        -- living boss can supersede a hidden previous session through the
+        -- engine's existing generation-invalidating ObserveBoss path.
+        selected = observed[state.boss]
+        if selected then
+            if selected.dead then
+                engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "dead")
+            else
+                engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "alive")
+                if selected.combat then engine.MarkEncounterEngaged(state.generation) end
+                return
+            end
+        else
+            engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "absent")
+        end
+    end
+    for i = 1, table.getn(names) do
+        name = names[i]
+        selected = observed[name]
+        if selected and not selected.dead then
+            engine.ObserveBoss(SCB_BOSSMODS_ZONE, name, "alive")
+            state = engine.GetEncounterState()
+            if selected.combat and state then
+                engine.MarkEncounterEngaged(state.generation)
+            end
+            return
+        end
+    end
+end
+
+local function SCB_BossModsOnCombatEvent(eventName, message)
+    local engine, state
+    if not bossModsZoneActive or not bossModsEvents[eventName] then return end
+    engine = SCB.mechanics
+    if not engine then return end
+    state = engine.GetEncounterState()
+    if not state then return end
+    -- An actual boss-origin spell report is independent evidence of engage
+    -- even when the Vanilla NPC combat flag is unavailable/inaccurate.
+    if not state.engaged and state.boss and type(message) == "string"
+        and string.find(eventName, "CHAT_MSG_SPELL_", 1, true) == 1
+        and string.find(message, state.boss, 1, true) then
+        engine.MarkEncounterEngaged(state.generation)
+    end
+    engine.DispatchEvent(eventName, message, nil, state.generation)
+end
+
+local function SCB_BossModsOnUpdate(elapsed)
+    local engine = SCB.mechanics
+    if not SCB.bossModsInitialised or not engine then return end
+    bossModsPollElapsed = bossModsPollElapsed + elapsed
+    if bossModsPollElapsed >= 0.4 then
+        bossModsPollElapsed = 0
+        SCB_BossModsRefreshZone()
+        if bossModsZoneActive then SCB_BossModsObserveTargets() end
+    end
+    if not bossModsZoneActive then return end
+    bossModsElapsed = bossModsElapsed + elapsed
+    if bossModsElapsed < 0.10 then return end
+    bossModsElapsed = 0
+    local state = engine.GetEncounterState()
+    if state then
+        local now = GetTime and GetTime() or 0
+        engine.UpdateTimers(now)
+        engine.UpdatePresentation(now)
+    end
+end
+
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -2176,6 +2316,9 @@ eventFrame:SetScript("OnEvent", function()
         SCB.lootWindowOpen = nil
         return
     end
+    if bossModsZoneActive and bossModsEvents[event] then
+        SCB_BossModsOnCombatEvent(event, arg1)
+    end
     if event == "PLAYER_TARGET_CHANGED" then
         if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
             SCB_RefreshTargetCommandRow()
@@ -2190,6 +2333,7 @@ eventFrame:SetScript("OnEvent", function()
     end
     if event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         if SCB_QueueLocationRefresh then SCB_QueueLocationRefresh(0.20) end
+        SCB_BossModsRefreshZone()
         return
     end
     if event == "UPDATE_INSTANCE_INFO" then
@@ -2214,11 +2358,14 @@ eventFrame:SetScript("OnEvent", function()
         SCB_EnsurePresetDB()
         SCB_EnsureSectionDB()
         SCB_EnsureOptionsDB()
+        SCB_BossModsInitialize()
+        SCB_BossModsRefreshZone()
         if not SCB.frame then
             SCB_CreateUI()
         end
         SCB.initialSessionValidationPending = true
     elseif event == "PLAYER_ENTERING_WORLD" then
+        SCB_BossModsRefreshZone()
         -- Loot UI replacements still emit the native LOOT_OPENED/LOOT_CLOSED
         -- events, so reset stale state at the loading-screen boundary and let
         -- those events own the live open-loot truth independently of UI frames.
@@ -2363,4 +2510,8 @@ eventFrame:SetScript("OnEvent", function()
     elseif event == "PLAYER_LOGOUT" then
         SCB_SavePosition()
     end
+end)
+-- Reuse the existing SCB event frame for encounter-time forwarding.
+eventFrame:SetScript("OnUpdate", function()
+    SCB_BossModsOnUpdate(arg1 or 0)
 end)
