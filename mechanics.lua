@@ -23,6 +23,8 @@ local timers = {}
 local timerOrder = 0
 local bindings = {} -- encounter-local names only; never cache roster objects
 local prepSuppressed = {} -- boss death within this BWL zone session
+local BeginPostBossCleanup
+local FinishPostBossCleanup
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -80,6 +82,7 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "stale encounter"
     end
+    if active.postBossCleanup then return false, "boss already dead" end
     if active.engaged then return true end
     active.engaged = true
     if not active.definition.declarative then return true end
@@ -91,7 +94,8 @@ function mechanics.GetEncounterState()
     return { id = active.id, generation = active.generation,
         boss = active.definition.declarative and active.definition.declarative.detect.boss,
         bossVisible = active.bossVisible == true, engaged = active.engaged == true,
-        prepared = active.prepared == true }
+        prepared = active.prepared == true,
+        postBossCleanup = active.postBossCleanup == true }
 end
 
 -- Return an immutable-by-copy view of genuinely observed abilities in a named
@@ -168,6 +172,9 @@ function mechanics.DispatchEvent(eventName, message, details, expectedGeneration
         return 0
     end
     if type(eventName) ~= "string" then return 0 end
+    if session.postBossCleanup then
+        return mechanics.DispatchAbilityEvent(session, eventName, message, details)
+    end
     rules = session.definition.events or {}
     delivered = 0
     for i = 1, table.getn(rules) do
@@ -200,7 +207,7 @@ end
 -- A name is unique within the current encounter. Re-scheduling replaces it.
 -- kind preserves fixed / predicted / observed provenance for later templates.
 function mechanics.ScheduleTimer(name, delay, callback, kind)
-    if not active then return false, "no active encounter" end
+    if not active or active.postBossCleanup then return false, "no active encounter" end
     if type(name) ~= "string" or name == "" or type(delay) ~= "number"
         or delay < 0 or delay ~= delay or delay == math.huge then
         return false, "invalid timer"
@@ -906,7 +913,7 @@ end
 local function AcquirePresentation(kind, key)
     local group = PresentationGroup(kind)
     local slot, free
-    if not active then return nil, "no active encounter" end
+    if not active or active.postBossCleanup then return nil, "no active encounter" end
     if not group or type(key) ~= "string" or key == "" then
         return nil, "invalid presentation"
     end
@@ -931,6 +938,7 @@ local function AcquirePresentation(kind, key)
     slot.position = nil
     slot.expiresAt = nil
     slot.memberBinding = nil
+    slot.retainAfterBossDeath = nil
     slot.abilityRecord, slot.abilityHint = nil, nil
     slot.timerName = nil
     slot.startedAt = nil
@@ -964,6 +972,7 @@ local function ReleasePresentation(kind, key)
             slot.position = nil
             slot.expiresAt = nil
             slot.memberBinding = nil
+            slot.retainAfterBossDeath = nil
             slot.abilityRecord, slot.abilityHint = nil, nil
             slot.timerName = nil
             slot.generation = nil
@@ -1020,7 +1029,7 @@ end
 -- Aura rows display caller-observed state. Only recipient/member auras have
 -- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
 -- Member auras are retired when the target is dead or leaves the live roster.
-function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding)
+function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding, retainAfterBossDeath)
     local slot, err
     if type(label) ~= "string" or type(target) ~= "string"
         or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt))
@@ -1035,6 +1044,7 @@ function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding)
     slot.startedAt = Now()
     slot.expiresAt = expiresAt
     slot.memberBinding = memberBinding
+    slot.retainAfterBossDeath = retainAfterBossDeath == true
     mechanics.UpdatePresentation()
     return true
 end
@@ -1137,6 +1147,19 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
         return false, "stale encounter"
     end
     if type(action) ~= "table" then return false, "invalid action" end
+    if active.postBossCleanup then
+        if action.type ~= "kick" then return false, "boss already dead" end
+        local valid = false
+        for _, auraSlot in ipairs(presentation.aura.pool) do
+            if auraSlot.used and auraSlot.retainAfterBossDeath
+                and auraSlot.generation == active.generation
+                and auraSlot.memberBinding == bindingKey then
+                valid = true
+                break
+            end
+        end
+        if not valid then return false, "recipient no longer tracked" end
+    end
     name, member = mechanics.GetBoundMember(bindingKey, expectedGeneration, true)
     if not name or not member or not member.isBot or not SCB_IsBotName
         or not SCB_IsBotName(name) then return false, "not a confirmed live bot" end
@@ -1311,6 +1334,11 @@ function mechanics.HandleActionClick(key, mouseButton)
                 return false, "action expired"
             end
             cfg = slot.boundDefinition
+            if active.postBossCleanup and (not cfg or not cfg.action
+                or cfg.action.type ~= "kick"
+                or string.sub(slot.key, 1, 5) ~= "kick:") then
+                return false, "post-boss action unavailable"
+            end
             if not cfg then
                 if mouseButton ~= "RightButton" and slot.callback then
                     slot.callback(key, active.generation)
@@ -1363,6 +1391,7 @@ function mechanics.ClearPresentation()
             slot.target = nil
             slot.expiresAt = nil
             slot.memberBinding = nil
+            slot.retainAfterBossDeath = nil
             slot.frame:Hide()
         end
     end
@@ -1392,6 +1421,64 @@ local function RetireTrackedMemberAura(slot)
     ReleasePresentation("aura", key)
 end
 
+-- After a confirmed boss death, keep only previously observed recipient
+-- auras explicitly declared as retained. The existing SCB event/tick owner
+-- continues to process their fades and safe individual filtered Kick actions.
+BeginPostBossCleanup = function()
+    local session, now = active, Now()
+    local retained, survivingBindings, key = {}, {}, nil
+    if not session or session.postBossCleanup then return false end
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and slot.generation == session.generation
+            and slot.retainAfterBossDeath and slot.expiresAt
+            and slot.expiresAt > now and not TrackedMemberGone(slot.target) then
+            retained[slot.key] = true
+            if slot.memberBinding and bindings[slot.memberBinding] then
+                survivingBindings[slot.memberBinding] = bindings[slot.memberBinding]
+            end
+        end
+    end
+    if not next(retained) then return false end
+    session.postBossCleanup = true
+    session.bossVisible = false
+    -- All cooldowns and delayed command sequences stop immediately.
+    -- Retained aura expiry now runs on the existing 10 Hz owner.
+    ClearTimers()
+    for _, slot in ipairs(presentation.timer.pool) do
+        if slot.used then ReleasePresentation("timer", slot.key) end
+    end
+    for _, slot in ipairs(presentation.action.pool) do
+        if slot.used then
+            key = slot.key
+            if string.sub(key, 1, 5) ~= "kick:"
+                or not retained[string.sub(key, 6)]
+                or not slot.boundDefinition
+                or not slot.boundDefinition.action
+                or slot.boundDefinition.action.type ~= "kick" then
+                ReleasePresentation("action", key)
+            end
+        end
+    end
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and not retained[slot.key] then
+            ReleasePresentation("aura", slot.key)
+        end
+    end
+    bindings = survivingBindings
+    LayoutPresentation("timer")
+    LayoutPresentation("tracker")
+    return true
+end
+
+FinishPostBossCleanup = function()
+    if not active or not active.postBossCleanup then return end
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and slot.generation == active.generation
+            and slot.retainAfterBossDeath then return end
+    end
+    mechanics.StopEncounter("post-boss auras resolved", active.generation)
+end
+
 -- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
 local RenderAbilityBar
 -- The SCB 10 Hz owner handles ability transitions, roster checks and cleanup.
@@ -1400,7 +1487,7 @@ function mechanics.UpdatePresentationState(now)
     local session = active
     if not session then return end
     if type(now) ~= "number" then now = Now() end
-    mechanics.UpdateAbilityStates(now)
+    if not session.postBossCleanup then mechanics.UpdateAbilityStates(now) end
     local actionVisibilityChanged = false
     for _, slot in ipairs(presentation.action.pool) do
         if slot.used and slot.generation == session.generation then
@@ -1417,12 +1504,16 @@ function mechanics.UpdatePresentationState(now)
     end
     for _, slot in ipairs(presentation.aura.pool) do
         if slot.used and slot.generation == session.generation
-            and slot.memberBinding and TrackedMemberGone(slot.target) then
+            and slot.memberBinding
+            and (TrackedMemberGone(slot.target)
+                or (session.postBossCleanup and slot.expiresAt
+                    and now >= slot.expiresAt)) then
             RetireTrackedMemberAura(slot)
         end
     end
     mechanics.PruneAbilityAuras(now)
     if actionVisibilityChanged then LayoutPresentation("tracker") end
+    FinishPostBossCleanup()
 end
 
 function mechanics.UpdatePresentation(now)
@@ -1997,6 +2088,9 @@ local function CheckAbility(a, seen, isGroup)
             or (aura.duration ~= nil and not IsDuration(aura.duration))
             or (aura.action ~= nil and aura.action ~= "kick")
             or (aura.kickLabel ~= nil and type(aura.kickLabel) ~= "string")
+            or (aura.retainAfterBossDeath ~= nil
+                and type(aura.retainAfterBossDeath) ~= "boolean")
+            or (aura.retainAfterBossDeath and not IsDuration(aura.duration))
             or not CheckObservation(aura.gain) or not CheckObservation(aura.fade)
             or (aura.gain == nil and aura.fade == nil) then
             return false
@@ -2268,7 +2362,13 @@ function mechanics.ObserveBoss(zone, boss, state)
     if active and active.definition.declarative then
         d = active.definition.declarative
         if d.detect.zone == zone and d.detect.boss == boss then
+            if active.postBossCleanup then
+                -- Repeated corpse sightings cannot restart a dead encounter.
+                if state == "alive" then return false, "boss already dead" end
+                return true
+            end
             if state == "dead" then
+                if BeginPostBossCleanup and BeginPostBossCleanup() then return true end
                 mechanics.StopEncounter("confirmed boss death")
                 return true
             elseif state == "absent" then
@@ -2388,7 +2488,8 @@ local function RunDeclaredEffect(effect, captured)
             mechanics.ClearBinding(binding)
         else
             deadline = effect.duration and Now() + effect.duration or nil
-            mechanics.ShowTrackedAura(key, effect.label, name, deadline, binding)
+            mechanics.ShowTrackedAura(key, effect.label, name, deadline, binding,
+                effect.retainAfterBossDeath)
             if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
                 mechanics.ShowBoundBotAction("kick:" .. key, {
                     binding = binding, label = (effect.kickLabel or "Kick") .. " " .. name,
@@ -2435,38 +2536,44 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
     local spec, aura, rule, name, matched, captured, state, count, i, j
     local key, effect, recipient, now, token
     if not session or active ~= session or not session.engaged then return 0 end
-    if not session.abilities then mechanics.InitializeAbilities(session.generation) end
+    if not session.abilities and not session.postBossCleanup then
+        mechanics.InitializeAbilities(session.generation)
+    end
+    if not session.abilities then return 0 end
     count = 0
     local function Deliver(spec, isGroup)
         local observation, observedName
-        matched, captured = MatchAbilityObservation(spec.startRule, eventName, message, details)
-        if matched then
-            observedName = isGroup and captured or nil
-            if mechanics.ObserveAbilityStart(spec.id, observedName, session.generation) then
+        if not session.postBossCleanup then
+            matched, captured = MatchAbilityObservation(spec.startRule, eventName, message, details)
+            if matched then
+                observedName = isGroup and captured or nil
+                if mechanics.ObserveAbilityStart(spec.id, observedName, session.generation) then
+                    count = count + 1
+                end
+            end
+            matched, captured = MatchAbilityObservation(spec.finishRule, eventName, message, details)
+            if matched and mechanics.ObserveAbilityFinish(spec.id,
+                isGroup and captured or nil, session.generation) then
                 count = count + 1
             end
-        end
-        matched, captured = MatchAbilityObservation(spec.finishRule, eventName, message, details)
-        if matched and mechanics.ObserveAbilityFinish(spec.id,
-            isGroup and captured or nil, session.generation) then
-            count = count + 1
-        end
-        matched, captured = MatchAbilityObservation(spec.interruptRule, eventName, message, details)
-        if matched and mechanics.ObserveAbilityInterrupt(spec.id,
-            isGroup and captured or nil, session.generation) then
-            count = count + 1
+            matched, captured = MatchAbilityObservation(spec.interruptRule, eventName, message, details)
+            if matched and mechanics.ObserveAbilityInterrupt(spec.id,
+                isGroup and captured or nil, session.generation) then
+                count = count + 1
+            end
         end
         -- Per-recipient auras can arrive without any start event. An aura
         -- never implicitly resets the parent cooldown or asserts a cast.
         state = session.abilities[spec.id]
         for j, aura in ipairs(spec.auras or {}) do
             matched, captured = MatchAbilityObservation(aura.gain, eventName, message, details)
-            if matched then
+            if matched and not session.postBossCleanup then
                 recipient = Recipient(aura, captured)
                 if recipient then
                     effect = { type = "aura_apply", id = spec.id .. "_" .. aura.id,
                         target = aura.target, label = aura.label, duration = aura.duration,
-                        action = aura.action, kickLabel = aura.kickLabel }
+                        action = aura.action, kickLabel = aura.kickLabel,
+                        retainAfterBossDeath = aura.retainAfterBossDeath }
                     RunDeclaredEffect(effect, captured)
                     if state then
                         now = Now()
@@ -2478,7 +2585,7 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                 end
             end
             matched, captured = MatchAbilityObservation(aura.fade, eventName, message, details)
-            if matched then
+            if matched and (not session.postBossCleanup or aura.retainAfterBossDeath) then
                 recipient = Recipient(aura, captured)
                 if recipient then
                     effect = { type = "aura_remove", id = spec.id .. "_" .. aura.id,
@@ -2498,6 +2605,7 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
         if active ~= session then break end
         Deliver(spec, true)
     end
+    if session.postBossCleanup and active == session then FinishPostBossCleanup() end
     return count
 end
 
