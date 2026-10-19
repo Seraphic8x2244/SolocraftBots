@@ -463,6 +463,8 @@ local function CreatePreviewHandle(kind)
     for i = 1, 2 do
         local sample = CreatePresentationFrame(kind, group)
         sample:SetParent(handle)
+        sample:SetFrameStrata("DIALOG")
+        sample:SetFrameLevel(handle:GetFrameLevel() + 1)
         sample:ClearAllPoints()
         sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 0,
             -SCB_BOSSMOD_PREVIEW_HEADER - (i - 1) * (group.height + 4))
