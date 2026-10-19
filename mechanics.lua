@@ -1750,8 +1750,10 @@ function mechanics.GetRequiredEvents(zone)
 end
 
 -- Only the SCB-owned, zone-gated observation pipeline may call this API.
--- "absent" hides the pre-pull action without deleting its binding; missing
--- visibility is NOT treated as death. "dead" must be a confirmed dead boss.
+-- A positively observed living boss unlocks its pre-pull action. Losing
+-- target visibility does NOT prove absence or death and must not hide the
+-- action while the player selects a bot. Confirmed death, a different boss,
+-- or the SCB-owned zone reset ends the encounter and clears its actions.
 function mechanics.ObserveBoss(zone, boss, state)
     local id, entry, d, w, i, ok, why
     if type(zone) ~= "string" or type(boss) ~= "string"
@@ -1769,9 +1771,9 @@ function mechanics.ObserveBoss(zone, boss, state)
                 mechanics.StopEncounter("confirmed boss death")
                 return true
             elseif state == "absent" then
-                for i = 1, table.getn(d.mechanics) do
-                    mechanics.HidePresentation("action", "presence:" .. d.mechanics[i].id)
-                end
+                -- Keep observed pre-pull actions clickable during temporary
+                -- target loss (notably when selecting an eggbreaker bot).
+                -- Only positive encounter termination clears the frame.
                 active.bossVisible = false
                 return true
             end
