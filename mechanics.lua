@@ -186,7 +186,7 @@ function mechanics.DispatchEvent(eventName, message, details, expectedGeneration
         end
     end
     if active == session and session.definition.declarative then
-        delivered = delivered + mechanics.DispatchDeclarativeEvent(session, eventName, message)
+        delivered = delivered + mechanics.DispatchDeclarativeEvent(session, eventName, message, details)
     end
     return delivered
 end
@@ -996,6 +996,7 @@ local function RetireTrackedMemberAura(slot)
 end
 
 -- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
+local RenderAbilityBar
 function mechanics.UpdatePresentation(now)
     local session = active
     local group, slot, timer, remaining
@@ -1048,6 +1049,7 @@ function mechanics.UpdatePresentation(now)
             end
         end
     end
+    mechanics.PruneAbilityAuras(now)
 end
 
 
@@ -1142,6 +1144,15 @@ local function ResolveAbility(id, spellName)
             -- Continue recognising later observations without a third UI bar.
             if count >= (group.maxVisible or 2) then return nil end
             state = AddAbilityState(session, group, spellName, true)
+            -- Reuse a speculative visual slot without assigning its guessed
+            -- first-cast time to this real observed breath's identity.
+            for _, hint in ipairs(session.firstSlotHints[id] or {}) do
+                if not hint.expired then
+                    hint.expired = true
+                    mechanics.HidePresentation("timer", "ability:" .. hint.id)
+                    break
+                end
+            end
             session.observedAbilities = session.observedAbilities or {}
             if not session.observedAbilities[id] then
                 session.observedAbilities[id] = { order = {}, names = {} }
@@ -1338,7 +1349,7 @@ function mechanics.ShowAbilityBars()
     return true
 end
 
-local function RenderAbilityBar(slot, now)
+RenderAbilityBar = function(slot, now)
     local state, hint, phase, start, deadline, remaining, progress, total
     local frame = slot.frame
     state, hint = slot.abilityRecord, slot.abilityHint
@@ -1478,6 +1489,88 @@ local function CheckWidgetAppearance(w)
     return w.expiresAt == nil or IsFiniteNumber(w.expiresAt)
 end
 
+-- Ability vocabulary is declarative: observations name native events and
+-- explicit patterns; no boss-specific handler functions or code in encounters.
+local function CheckObservation(o)
+    local i
+    if o == nil then return true end
+    if type(o) ~= "table" or (o.event ~= nil and o.events ~= nil)
+        or (o.contains ~= nil and o.pattern ~= nil)
+        or (type(o.contains) ~= "string" and type(o.pattern) ~= "string") then
+        return false
+    end
+    if o.event then
+        if type(o.event) ~= "string" or o.event == "" then return false end
+    else
+        if type(o.events) ~= "table" or table.getn(o.events) < 1 then return false end
+        for i = 1, table.getn(o.events) do
+            if type(o.events[i]) ~= "string" or o.events[i] == "" then return false end
+        end
+    end
+    if o.pattern and not pcall(string.find, "", o.pattern) then return false end
+    return true
+end
+
+local function CheckAbility(a, seen, isGroup)
+    local i, j, aura, found = 0, 0, nil, {}
+    if type(a) ~= "table" or not IsId(a.id) or seen[a.id]
+        or type(a.label) ~= "string" or a.label == ""
+        or type(a.caster) ~= "string" or a.caster == ""
+        or (a.mode ~= "fixed" and a.mode ~= "priority"
+            and a.mode ~= "opportunistic")
+        or (a.firstDelay ~= nil and not IsDuration(a.firstDelay))
+        or (a.repeatDelay ~= nil and not IsDuration(a.repeatDelay))
+        or (a.castTime ~= nil and not IsDuration(a.castTime))
+        or (a.startOffset ~= nil and (not IsFiniteNumber(a.startOffset) or a.startOffset < 0))
+        or (a.resetOn ~= nil and a.resetOn ~= "start" and a.resetOn ~= "finish")
+        or (a.repeatDelay ~= nil and a.resetOn == nil)
+        or (a.ordinary ~= nil and type(a.ordinary) ~= "boolean")
+        or not CheckObservation(a.startRule)
+        or not CheckObservation(a.finishRule)
+        or not CheckObservation(a.interruptRule)
+        or (a.auras ~= nil and type(a.auras) ~= "table") then
+        return false
+    end
+    if isGroup then
+        if type(a.names) ~= "table" or table.getn(a.names) == 0
+            or not CheckObservation(a.startRule)
+            or type(a.startRule) ~= "table" or not a.startRule.pattern
+            or type(a.firstSlots) ~= "table" or table.getn(a.firstSlots) == 0
+            or table.getn(a.firstSlots) > 2 or a.maxVisible ~= 2 then return false end
+        for i = 1, table.getn(a.names) do
+            if type(a.names[i]) ~= "string" or a.names[i] == ""
+                or found[a.names[i]] then return false end
+            found[a.names[i]] = true
+        end
+        for i = 1, table.getn(a.firstSlots) do
+            if not IsDuration(a.firstSlots[i]) then return false end
+        end
+    elseif a.names or a.firstSlots or a.maxVisible then
+        return false
+    end
+    found = {}
+    for i, aura in ipairs(a.auras or {}) do
+        if type(aura) ~= "table" or not IsId(aura.id)
+            or found[aura.id] or type(aura.label) ~= "string"
+            or aura.label == ""
+            or (aura.target ~= "capture" and aura.target ~= "player")
+            or (aura.duration ~= nil and not IsDuration(aura.duration))
+            or (aura.action ~= nil and aura.action ~= "kick")
+            or (aura.kickLabel ~= nil and type(aura.kickLabel) ~= "string")
+            or not CheckObservation(aura.gain) or not CheckObservation(aura.fade)
+            or (aura.gain == nil and aura.fade == nil) then
+            return false
+        end
+        found[aura.id] = true
+        if aura.target == "capture" then
+            if aura.gain and not aura.gain.pattern then return false end
+            if aura.fade and not aura.fade.pattern then return false end
+        end
+    end
+    seen[a.id] = true
+    return true
+end
+
 local function CheckDeclaration(d)
     local i, j, w, rule, step, seen = 0, 0, nil, nil, nil, {}
     if type(d) ~= "table" or type(d.detect) ~= "table"
@@ -1508,6 +1601,22 @@ local function CheckDeclaration(d)
                 or not IsId(step.scope) then
                 return false, "invalid command step"
             end
+        end
+    end
+    if d.abilities ~= nil and type(d.abilities) ~= "table" then
+        return false, "invalid abilities"
+    end
+    if d.abilityGroups ~= nil and type(d.abilityGroups) ~= "table" then
+        return false, "invalid ability groups"
+    end
+    for i = 1, table.getn(d.abilities or {}) do
+        if not CheckAbility(d.abilities[i], seen, false) then
+            return false, "invalid ability"
+        end
+    end
+    for i = 1, table.getn(d.abilityGroups or {}) do
+        if not CheckAbility(d.abilityGroups[i], seen, true) then
+            return false, "invalid ability group"
         end
     end
     for i = 1, table.getn(d.triggers) do
@@ -1724,9 +1833,119 @@ local function RunDeclaredEffect(effect, captured)
     end
 end
 
+-- Match only explicit source-scoped native messages. An optional verified
+-- spell ID in a future SCB event payload is additional evidence, not required.
+local function MatchAbilityObservation(rule, eventName, message, details)
+    local i, eventMatches, a, b, captured
+    if not rule then return false end
+    eventMatches = rule.event == eventName
+    if rule.events then
+        eventMatches = false
+        for i = 1, table.getn(rule.events) do
+            if rule.events[i] == eventName then eventMatches = true; break end
+        end
+    end
+    if not eventMatches or type(message) ~= "string" then return false end
+    if rule.spellId and (not details or details.spellId ~= rule.spellId) then
+        return false
+    end
+    if rule.contains then
+        return string.find(message, rule.contains, 1, true) ~= nil, nil
+    end
+    a, b, captured = string.find(message, rule.pattern)
+    return a ~= nil, captured
+end
+
+function mechanics.DispatchAbilityEvent(session, eventName, message, details)
+    local spec, aura, rule, name, matched, captured, state, count, i, j
+    local key, effect, recipient, now, token
+    if not session or active ~= session or not session.engaged then return 0 end
+    if not session.abilities then mechanics.InitializeAbilities(session.generation) end
+    count = 0
+    local function Deliver(spec, isGroup)
+        local observation, observedName
+        matched, captured = MatchAbilityObservation(spec.startRule, eventName, message, details)
+        if matched then
+            observedName = isGroup and captured or nil
+            if mechanics.ObserveAbilityStart(spec.id, observedName, session.generation) then
+                count = count + 1
+            end
+        end
+        matched, captured = MatchAbilityObservation(spec.finishRule, eventName, message, details)
+        if matched and mechanics.ObserveAbilityFinish(spec.id,
+            isGroup and captured or nil, session.generation) then
+            count = count + 1
+        end
+        matched, captured = MatchAbilityObservation(spec.interruptRule, eventName, message, details)
+        if matched and mechanics.ObserveAbilityInterrupt(spec.id,
+            isGroup and captured or nil, session.generation) then
+            count = count + 1
+        end
+        -- Per-recipient auras can arrive without any start event. An aura
+        -- never implicitly resets the parent cooldown or asserts a cast.
+        state = session.abilities[spec.id]
+        for j, aura in ipairs(spec.auras or {}) do
+            matched, captured = MatchAbilityObservation(aura.gain, eventName, message, details)
+            if matched then
+                recipient = Recipient(aura, captured)
+                if recipient then
+                    effect = { type = "aura_apply", id = spec.id .. "_" .. aura.id,
+                        target = aura.target, label = aura.label, duration = aura.duration,
+                        action = aura.action, kickLabel = aura.kickLabel }
+                    RunDeclaredEffect(effect, captured)
+                    if state then
+                        now = Now()
+                        state.auras[recipient] = { name = recipient, appliedAt = now,
+                            expiresAt = aura.duration and now + aura.duration or nil,
+                            occurrenceId = state.occurrence and state.occurrence.id }
+                    end
+                    count = count + 1
+                end
+            end
+            matched, captured = MatchAbilityObservation(aura.fade, eventName, message, details)
+            if matched then
+                recipient = Recipient(aura, captured)
+                if recipient then
+                    effect = { type = "aura_remove", id = spec.id .. "_" .. aura.id,
+                        target = aura.target }
+                    RunDeclaredEffect(effect, captured)
+                    if state then state.auras[recipient] = nil end
+                    count = count + 1
+                end
+            end
+        end
+    end
+    for i, spec in ipairs(session.definition.declarative.abilities or {}) do
+        if active ~= session then break end
+        Deliver(spec, false)
+    end
+    for i, spec in ipairs(session.definition.declarative.abilityGroups or {}) do
+        if active ~= session then break end
+        Deliver(spec, true)
+    end
+    return count
+end
+
+-- Aura housekeeping consumes the same roster owner as the existing aura UI.
+-- No side-channel health roster or second frame-driven scan is introduced.
+function mechanics.PruneAbilityAuras(now)
+    local session = GetAbilitySession()
+    local state, name, aura
+    if not session or not session.abilities then return end
+    if type(now) ~= "number" then now = Now() end
+    for _, state in pairs(session.abilities) do
+        for name, aura in pairs(state.auras) do
+            if (aura.expiresAt and now >= aura.expiresAt)
+                or TrackedMemberGone(name) then
+                state.auras[name] = nil
+            end
+        end
+    end
+end
+
 -- Called ONLY through DispatchEvent on the currently active declaration.
 -- The first Lua-pattern capture supplies a recipient for multi-aura tracking.
-function mechanics.DispatchDeclarativeEvent(session, eventName, message)
+function mechanics.DispatchDeclarativeEvent(session, eventName, message, details)
     local d, rule, matched, captured, a, b, i, j, count
     if not session or active ~= session or type(message) ~= "string" then return 0 end
     d = session.definition.declarative
@@ -1759,5 +1978,6 @@ function mechanics.DispatchDeclarativeEvent(session, eventName, message)
             end
         end
     end
+    count = count + mechanics.DispatchAbilityEvent(session, eventName, message, details)
     return count
 end
