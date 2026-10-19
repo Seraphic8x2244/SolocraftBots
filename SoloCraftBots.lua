@@ -553,6 +553,8 @@ function SCB_EnsureOptionsDB()
     if options.autoAcceptRaidConvertRequests == nil then options.autoAcceptRaidConvertRequests = false end
     if options.bossModsShowPlayerName == nil then options.bossModsShowPlayerName = true end
     if options.bossModsShowAuraName == nil then options.bossModsShowAuraName = true end
+    if options.bossModsTimersExpandUp == nil then options.bossModsTimersExpandUp = false end
+    if options.bossModsTrackerExpandUp == nil then options.bossModsTrackerExpandUp = false end
     if options.drawerJustification ~= "left" and options.drawerJustification ~= "right" then
         options.drawerJustification = "right"
     end

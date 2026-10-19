@@ -298,8 +298,24 @@ local LayoutPresentation
 -- are made with the actual presentation factory and cannot execute actions.
 -- The persistent positions belong to the existing SCB options DB; unlocking
 -- itself is temporary, so reloads never leave the edit handles open.
+-- Countdown width is independent of row height so "Casting!" fits.
+local SCB_BOSSMOD_COUNTER_WIDTH = 62
 local SCB_BOSSMOD_PREVIEW_HEADER = 22
 local bossModsPreview = { unlocked = false, handles = {} }
+
+-- Two independent global layout preferences owned by the existing SCB DB.
+-- Nil/false preserve the historical top-anchored, downward-growing panels.
+local function PanelExpandsUp(kind)
+    local opts = SoloCraftBotsDB and SoloCraftBotsDB.options
+    if not opts then return false end
+    if kind == "timer" then return opts.bossModsTimersExpandUp == true end
+    if kind == "tracker" then return opts.bossModsTrackerExpandUp == true end
+    return false
+end
+
+local function PanelFrameAnchor(kind)
+    return PanelExpandsUp(kind) and "BOTTOMLEFT" or "TOPLEFT"
+end
 
 -- Labels are presentation-only, never a roster/binding filter.
 -- Missing preferences default ON to preserve information in existing profiles.
@@ -355,7 +371,8 @@ local function ApplyPreviewPosition(kind)
     local handle = bossModsPreview.handles[kind]
     if handle then
         handle:ClearAllPoints()
-        handle:SetPoint("TOPLEFT", UIParent, pos.anchor, pos.x, pos.y)
+        handle:SetPoint(PanelFrameAnchor(kind), UIParent,
+            pos.anchor, pos.x, pos.y)
     end
 end
 
@@ -432,8 +449,8 @@ LayoutPresentation = function(kind)
     if table.getn(rows) == 0 then root:Hide(); return end
     rowHeight, rowWidth = panel.height, panel.width - 8
     root:ClearAllPoints()
-    root:SetPoint("TOPLEFT", UIParent, panel.position[1],
-        panel.position[2], panel.position[3])
+    root:SetPoint(PanelFrameAnchor(panelKind), UIParent,
+        panel.position[1], panel.position[2], panel.position[3])
     root:SetWidth(panel.width)
     root:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4
         + table.getn(rows) * rowHeight + (table.getn(rows) - 1) * 3 + 4)
@@ -460,23 +477,27 @@ LayoutPresentation = function(kind)
         frame.icon:Show()
         frame.label:ClearAllPoints()
         frame.label:SetPoint("LEFT", frame, "LEFT", rowHeight + 6, 0)
-        frame.label:SetWidth(rowWidth - rowHeight - 64)
         frame.label:Show()
         frame.detail:ClearAllPoints()
         if panelKind == "tracker" then
-            -- Reserve the right action slot even if no action is available.
-            -- A Kick appearing must never alter the middle bar's geometry.
+            -- The Kick/Use square is always reserved, even when empty.
             frame.detail:SetPoint("RIGHT", frame, "RIGHT", -rowHeight - 4, 0)
+            frame.detail:SetWidth(50)
             frame.label:SetWidth(math.max(8, rowWidth - 2 * rowHeight - 68))
         else
-            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+            -- The separate countdown panel is never covered by coloured fill.
+            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
+            frame.detail:SetWidth(SCB_BOSSMOD_COUNTER_WIDTH - 4)
+            frame.label:SetWidth(math.max(8, rowWidth - rowHeight
+                - SCB_BOSSMOD_COUNTER_WIDTH - 12))
         end
         frame.detail:Show()
         if frame.bar then
             frame.bar:ClearAllPoints()
             frame.bar:SetPoint("TOPLEFT", frame, "TOPLEFT", rowHeight + 2, 0)
             frame.bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT",
-                panelKind == "tracker" and -rowHeight - 2 or 0, 0)
+                -(panelKind == "tracker" and rowHeight
+                    or SCB_BOSSMOD_COUNTER_WIDTH) - 2, 0)
             frame.bar:Show()
         end
         if frame.scbRightSlot then
@@ -563,16 +584,26 @@ local function ApplyPanelSize(kind, width, height)
             sample.icon:SetHeight(height)
             sample.label:ClearAllPoints()
             sample.label:SetPoint("LEFT", sample, "LEFT", height + 6, 0)
-            sample.label:SetWidth(math.max(8, width
-                - (kind == "tracker" and 2 or 1) * height - 68))
+            if kind == "tracker" then
+                sample.label:SetWidth(math.max(8, width - 2 * height - 68))
+            else
+                sample.label:SetWidth(math.max(8, width - height
+                    - SCB_BOSSMOD_COUNTER_WIDTH - 20))
+            end
             sample.detail:ClearAllPoints()
-            sample.detail:SetPoint("RIGHT", sample, "RIGHT",
-                kind == "tracker" and -height - 4 or -6, 0)
+            if kind == "tracker" then
+                sample.detail:SetPoint("RIGHT", sample, "RIGHT", -height - 4, 0)
+                sample.detail:SetWidth(50)
+            else
+                sample.detail:SetPoint("RIGHT", sample, "RIGHT", -2, 0)
+                sample.detail:SetWidth(SCB_BOSSMOD_COUNTER_WIDTH - 4)
+            end
             if sample.bar then
                 sample.bar:ClearAllPoints()
                 sample.bar:SetPoint("TOPLEFT", sample, "TOPLEFT", height + 2, 0)
                 sample.bar:SetPoint("BOTTOMRIGHT", sample, "BOTTOMRIGHT",
-                    kind == "tracker" and -height - 2 or 0, 0)
+                    -(kind == "tracker" and height
+                        or SCB_BOSSMOD_COUNTER_WIDTH) - 2, 0)
             end
             if sample.scbRightSlot then
                 sample.scbRightSlot:SetWidth(height)
@@ -652,13 +683,15 @@ local function CreatePresentationFrame(kind, group)
         bar:SetFrameLevel(frame:GetFrameLevel())
         frame.bar = bar
     end
-    if kind == "aura" or kind == "action" then
+    if kind == "aura" or kind == "action" or kind == "timer" then
         local slotBackground = frame:CreateTexture(nil, "ARTWORK")
-        slotBackground:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-        slotBackground:SetWidth(group.height)
-        slotBackground:SetHeight(group.height)
+        slotBackground:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        slotBackground:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        slotBackground:SetWidth(kind == "timer"
+            and SCB_BOSSMOD_COUNTER_WIDTH or group.height)
         slotBackground:SetTexture(0.10, 0.13, 0.17, 0.80)
-        frame.scbRightSlot = slotBackground
+        if kind == "timer" then frame.scbCounterBackground = slotBackground
+        else frame.scbRightSlot = slotBackground end
     end
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", frame, "LEFT", group.height + 6, 0)
@@ -668,7 +701,9 @@ local function CreatePresentationFrame(kind, group)
     local detail = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
     detail:SetJustifyH("RIGHT")
-    detail:SetWidth(50)
+    detail:SetWidth(kind == "timer"
+        and SCB_BOSSMOD_COUNTER_WIDTH - 4 or 50)
+    if kind == "timer" then detail:SetJustifyH("CENTER") end
     frame.detail = detail
     if kind == "action" then
         local overlay = frame:CreateTexture(nil, "OVERLAY")
@@ -728,12 +763,13 @@ local function SavePreviewDrag(kind, handle)
     if not left or not right or not top or not bottom
         or not pl or not pr or not pt or not pb then return end
     local horizontal = (left - pl <= pr - right) and "LEFT" or "RIGHT"
-    local vertical = (pt - top <= bottom - pb) and "TOP" or "BOTTOM"
-    local anchor = vertical .. horizontal
+    local up = PanelExpandsUp(kind)
+    local anchor = (up and "BOTTOM" or "TOP") .. horizontal
     local originX = horizontal == "LEFT" and pl or pr
-    local originY = vertical == "TOP" and pt or pb
+    local originY = up and pb or pt
     opts.bossModsPositions[kind] = {
-        anchor = anchor, x = left - originX, y = top - originY,
+        anchor = anchor, x = left - originX,
+        y = (up and bottom or top) - originY,
     }
     mechanics.LoadPreviewPositions()
 end
@@ -818,6 +854,56 @@ local function CreatePreviewHandle(kind)
     ApplyPanelSize(kind, panel.width, panel.height)
     ApplyPreviewPosition(kind)
     return handle
+end
+
+-- Rebase the stored preview position when changing growth direction.
+-- Keep the preview in its current screen rectangle instead of teleporting
+-- between top/bottom corners. Only orientation and position are persisted;
+-- the encounter, action and SCB update owners are untouched.
+function mechanics.SetPanelExpansion(kind, enabled)
+    local panel = panelSpecs[kind]
+    local opts = SoloCraftBotsDB and SoloCraftBotsDB.options
+    if not panel or not opts then return false end
+    local optionKey = kind == "timer" and "bossModsTimersExpandUp"
+        or "bossModsTrackerExpandUp"
+    local wasUp = PanelExpandsUp(kind)
+    local up = enabled and true or false
+    if wasUp == up then return true end
+
+    local pos = PreviewPosition(kind)
+    local pl, pr = UIParent:GetLeft(), UIParent:GetRight()
+    local pt, pb = UIParent:GetTop(), UIParent:GetBottom()
+    if not pl or not pr or not pt or not pb then return false end
+    local referenceX
+    if string.find(pos.anchor, "LEFT", 1, true) then
+        referenceX = pl
+    elseif string.find(pos.anchor, "RIGHT", 1, true) then
+        referenceX = pr
+    else
+        referenceX = (pl + pr) / 2
+    end
+    local referenceY = string.sub(pos.anchor, 1, 6) == "BOTTOM" and pb or pt
+    local left = referenceX + pos.x
+    local oldY = referenceY + pos.y
+    local height = SCB_BOSSMOD_PREVIEW_HEADER + 8
+        + (kind == "timer" and 2 or 3) * panel.height
+        + (kind == "timer" and 1 or 2) * 3
+    local newY
+    if up then newY = wasUp and oldY or oldY - height
+    else newY = wasUp and oldY + height or oldY end
+    local horizontal = (left - pl <= pr - (left + panel.width))
+        and "LEFT" or "RIGHT"
+    local newAnchor = (up and "BOTTOM" or "TOP") .. horizontal
+    local originX = horizontal == "LEFT" and pl or pr
+
+    opts[optionKey] = up
+    opts.bossModsPositions = opts.bossModsPositions or {}
+    opts.bossModsPositions[kind] = {
+        anchor = newAnchor, x = left - originX,
+        y = newY - (up and pb or pt),
+    }
+    mechanics.LoadPreviewPositions()
+    return true
 end
 
 function mechanics.SetPreviewUnlocked(enabled)

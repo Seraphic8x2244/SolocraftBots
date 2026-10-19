@@ -99,6 +99,15 @@ function SCB_OptionCheckOnClick()
     local key = this and this.scbOptionKey or nil
     if not key then return end
     SCB_EnsureOptionsDB()
+    if key == "bossModsTimersExpandUp" or key == "bossModsTrackerExpandUp" then
+        local kind = key == "bossModsTimersExpandUp" and "timer" or "tracker"
+        if not SCB.mechanics or not SCB.mechanics.SetPanelExpansion
+            or not SCB.mechanics.SetPanelExpansion(kind,
+                this:GetChecked() and true or false) then
+            this:SetChecked(not this:GetChecked())
+        end
+        return
+    end
     SoloCraftBotsDB.options[this.scbOptionKey] = this:GetChecked() and true or false
     if this.scbOptionKey == "hideSCBScreenWarnings" and SoloCraftBotsDB.options.hideSCBScreenWarnings
         and SCB.safetyMessageFrame then SCB.safetyMessageFrame:Hide() end
@@ -283,6 +292,22 @@ function SCB_AdjustBossModsSize()
     if SCB.mechanics.SetPanelSize(kind, width, height) then
         SCB_RefreshOptionsUI()
     end
+end
+
+-- Compact per-panel growth controls share one line in the existing Layout
+-- subsection, avoiding a second UI owner or an oversized Options window.
+function SCB_CreateBossModsGrowthControl(parent, optionKey, labelKey, x, y)
+    local check = SCB_CreateMiniCheckButton(parent, 20)
+    check:SetWidth(20)
+    check:SetHeight(20)
+    check:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    check.scbOptionKey = optionKey
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", check, "RIGHT", 3, 0)
+    label:SetText(SCB_L(labelKey))
+    SCB_SetFontColor(label, "text")
+    check:SetScript("OnClick", SCB_OptionCheckOnClick)
+    return check
 end
 
 function SCB_CreateBossModsSizeControl(parent, kind, dimension, labelKey, y)
@@ -487,6 +512,12 @@ function SCB_RefreshOptionsUI()
     if SCB.optionBossModsShowAuraNameCheck then
         SCB.optionBossModsShowAuraNameCheck:SetChecked(options.bossModsShowAuraName and 1 or nil)
     end
+    if SCB.optionBossModsTimersExpandUpCheck then
+        SCB.optionBossModsTimersExpandUpCheck:SetChecked(options.bossModsTimersExpandUp and 1 or nil)
+    end
+    if SCB.optionBossModsTrackerExpandUpCheck then
+        SCB.optionBossModsTrackerExpandUpCheck:SetChecked(options.bossModsTrackerExpandUp and 1 or nil)
+    end
     if SCB.optionBossModsUnlockCheck then
         SCB.optionBossModsUnlockCheck:SetChecked(
             SCB.mechanics and SCB.mechanics.IsPreviewUnlocked
@@ -678,7 +709,7 @@ function SCB_CreateOptionsUI(frame)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionBossModsSection = SCB_CreateOptionsSubsection(
-        layoutContent, nil, "OPTION_BOSSMODS", 260)
+        layoutContent, nil, "OPTION_BOSSMODS", 290)
     SCB.optionBossModsSection.scbExpanded = false
     bossContent = SCB.optionBossModsSection.scbContent
     check = SCB_CreateMiniCheckButton(bossContent, 24)
@@ -704,6 +735,10 @@ function SCB_CreateOptionsUI(frame)
         bossContent, "bossModsShowPlayerName", "OPTION_BOSSMODS_SHOW_PLAYER", -168)
     SCB.optionBossModsShowAuraNameCheck = SCB_CreateOptionCheck(
         bossContent, "bossModsShowAuraName", "OPTION_BOSSMODS_SHOW_AURA", -194)
+    SCB.optionBossModsTimersExpandUpCheck = SCB_CreateBossModsGrowthControl(
+        bossContent, "bossModsTimersExpandUp", "OPTION_BOSSMODS_TIMERS_UP", 12, -220)
+    SCB.optionBossModsTrackerExpandUpCheck = SCB_CreateBossModsGrowthControl(
+        bossContent, "bossModsTrackerExpandUp", "OPTION_BOSSMODS_TRACKER_UP", 148, -220)
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
