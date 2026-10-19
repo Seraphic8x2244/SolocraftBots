@@ -11,7 +11,8 @@
 --       when="present", binding, label, assignable=true, icon={...}, action={...} } }
 --   bwl.<boss>.triggers = { { event="..." OR events={"...","..."},
 --       contains="literal" OR pattern="Lua (capture) pattern", effects={...} } }
---   sequence action: {type="sequence",targetDelay=0.15,steps={{command,scope},...}}
+--   sequence action: {type="sequence",steps={{command,scope},...}}
+--       Target settle defaults to 0.10s in mechanics.lua; optional targetDelay overrides.
 --   effects: timer {id,label,duration,provenance="predicted"/"fixed"/"observed"},
 --            notice {id,label,lifespan},
 --            aura_apply {id,target="player"/"capture",label,duration?,action="kick"?},
@@ -23,7 +24,7 @@
 --   Razorgore presence means the boss has been actually observed ALIVE in BWL.
 --   Absent/hidden => no egg icon; binding persists until confirmed death/reset.
 --   Egg click targets the bound live bot first; then Boss Mods waits the
---   configurable targetDelay (0.15 sec) before calling SCB_RequestCommand for
+--   0.10s Boss Mods target settle (from mechanics.lua) before SCB_RequestCommand for
 --   come/target and object/all. The delay is NOT a server acknowledgement.
 --   This still requires separate Chunk 6 loading and real-game testing.
 
@@ -54,7 +55,6 @@ SoloCraftBots.bossModDefinitions = {
                     },
                     action = {
                         type = "sequence",
-                        targetDelay = 0.15, -- allow the server to register our selected bot
                         steps = {
                             { command = "come", scope = "target" },
                             { command = "object", scope = "all" },
