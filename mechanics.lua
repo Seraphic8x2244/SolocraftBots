@@ -431,6 +431,30 @@ LayoutPresentation = function(kind)
             -SCB_BOSSMOD_PREVIEW_HEADER - 4 - (i - 1) * (rowHeight + 3))
         frame:SetWidth(rowWidth)
         frame:SetHeight(rowHeight)
+        frame.icon:SetWidth(rowHeight)
+        frame.icon:SetHeight(rowHeight)
+        frame.icon:Show()
+        frame.label:ClearAllPoints()
+        frame.label:SetPoint("LEFT", frame, "LEFT", rowHeight + 6, 0)
+        frame.label:SetWidth(rowWidth - rowHeight - 64)
+        frame.label:Show()
+        frame.detail:Show()
+        if frame.bar then
+            frame.bar:ClearAllPoints()
+            frame.bar:SetPoint("TOPLEFT", frame, "TOPLEFT", rowHeight + 2, 0)
+            frame.bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        end
+        if slot.boundDefinition and slot.boundDefinition.icon then
+            frame.icon:SetTexture(slot.boundDefinition.icon.texture)
+        end
+        if slot.boundDefinition and frame.scbOverlay then
+            frame.scbOverlay:ClearAllPoints()
+            frame.scbOverlay:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+            frame.scbOverlay:SetWidth(rowHeight)
+            frame.scbOverlay:SetHeight(rowHeight)
+            frame.scbOverlay:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            frame.scbOverlay:Show()
+        end
         frame:Show()
         if panelKind == "tracker" then
             attachedSlot = attached[slot.key]
@@ -444,6 +468,11 @@ LayoutPresentation = function(kind)
                 button:SetHeight(rowHeight)
                 button.label:Hide()
                 button.detail:Hide()
+                button.icon:Hide()
+                button.scbOverlay:ClearAllPoints()
+                button.scbOverlay:SetAllPoints(button)
+                button.scbOverlay:SetTexture("Interface\\Icons\\Ability_Kick")
+                button.scbOverlay:Show()
                 button:Show()
             end
         end
@@ -453,35 +482,48 @@ end
 
 local function CreatePresentationFrame(kind, group)
     local frame = CreateFrame(kind == "action" and "Button" or "Frame", nil, UIParent)
+    frame.scbKind = kind
     frame:SetWidth(group.width)
     frame:SetHeight(group.height)
     frame:SetFrameStrata("MEDIUM")
+    -- The group owns the shared dark background, so rows remain transparent.
     local background = frame:CreateTexture(nil, "BACKGROUND")
     background:SetAllPoints(frame)
-    -- One black background belongs to the group, never to a row.
     background:SetTexture(0, 0, 0, 0)
     frame.background = background
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("LEFT", frame, "LEFT", 0, 0)
+    icon:SetWidth(group.height)
+    icon:SetHeight(group.height)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    frame.icon = icon
+    if kind == "timer" or kind == "aura" then
+        local bar = CreateFrame("StatusBar", nil, frame)
+        bar:SetPoint("TOPLEFT", frame, "TOPLEFT", group.height + 2, 0)
+        bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        bar:SetStatusBarColor(0.22, 0.55, 0.94)
+        bar:SetMinMaxValues(0, 1)
+        bar:SetValue(1)
+        bar:SetFrameLevel(frame:GetFrameLevel())
+        frame.bar = bar
+    end
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", frame, "LEFT", 6, 0)
+    label:SetPoint("LEFT", frame, "LEFT", group.height + 6, 0)
     label:SetJustifyH("LEFT")
-    label:SetWidth(group.width - 58)
+    label:SetWidth(group.width - group.height - 64)
     frame.label = label
     local detail = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
     detail:SetJustifyH("RIGHT")
-    detail:SetWidth(49)
+    detail:SetWidth(50)
     frame.detail = detail
-    if kind == "timer" then
-        local bar = CreateFrame("StatusBar", nil, frame)
-        bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
-        bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
-        bar:SetHeight(8)
-        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        bar:SetStatusBarColor(0.3, 0.65, 0.9)
-        bar:SetMinMaxValues(0, 1)
-        frame.bar = bar
-    elseif kind == "action" then
+    if kind == "action" then
         local overlay = frame:CreateTexture(nil, "OVERLAY")
+        overlay:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        overlay:SetWidth(group.height)
+        overlay:SetHeight(group.height)
+        overlay:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         overlay:Hide()
         frame.scbOverlay = overlay
         frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -623,12 +665,17 @@ local function AcquirePresentation(kind, key)
     slot.memberBinding = nil
     slot.abilityRecord, slot.abilityHint = nil, nil
     slot.timerName = nil
+    slot.startedAt = nil
+    slot.frame.label:Show()
+    slot.frame.detail:Show()
+    slot.frame.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    slot.frame.icon:Show()
     if slot.frame.scbOverlay then
         slot.frame.scbOverlay:Hide()
         -- Recycled action frames may previously have contained an art overlay.
         slot.frame.label:ClearAllPoints()
-        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 6, 0)
-        slot.frame.label:SetWidth(group.width - 58)
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", group.height + 6, 0)
+        slot.frame.label:SetWidth(group.width - group.height - 64)
     end
     slot.frame:Show()
     LayoutPresentation(kind)
@@ -714,6 +761,7 @@ function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding)
     if not slot then return false, err end
     slot.label = label
     slot.target = target
+    slot.startedAt = Now()
     slot.expiresAt = expiresAt
     slot.memberBinding = memberBinding
     mechanics.UpdatePresentation()
@@ -735,6 +783,7 @@ function mechanics.ShowBotAction(key, label, detail, callback)
     slot.boundDefinition = nil
     slot.frame.label:SetText(label)
     slot.frame.detail:SetText(detail or "")
+    LayoutPresentation("action")
     return true
 end
 
@@ -966,12 +1015,13 @@ function mechanics.ShowBoundBotAction(key, config)
         overlay:SetTexture(icon.texture)
         overlay:Show()
         slot.frame.label:ClearAllPoints()
-        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 22, 0)
-        slot.frame.label:SetWidth(presentation.action.width - 74)
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", presentation.action.height + 6, 0)
+        slot.frame.label:SetWidth(presentation.action.width - presentation.action.height - 64)
+        slot.frame.icon:SetTexture(icon.texture)
     else
         slot.frame.label:ClearAllPoints()
-        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 6, 0)
-        slot.frame.label:SetWidth(presentation.action.width - 58)
+        slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", presentation.action.height + 6, 0)
+        slot.frame.label:SetWidth(presentation.action.width - presentation.action.height - 64)
     end
     RefreshBoundAction(slot)
     LayoutPresentation("action")
@@ -1114,11 +1164,17 @@ function mechanics.UpdatePresentation(now)
             if slot.memberBinding and TrackedMemberGone(slot.target) then
                 RetireTrackedMemberAura(slot)
             else
-                slot.frame.label:SetText(slot.target .. ": " .. slot.label)
+                slot.frame.label:SetText(slot.target)
                 if slot.expiresAt then
-                    slot.frame.detail:SetText(string.format("%.0fs", math.max(0, slot.expiresAt - now)))
+                    local remain = math.max(0, slot.expiresAt - now)
+                    local duration = math.max(0.001, slot.expiresAt - (slot.startedAt or now))
+                    slot.frame.detail:SetText(string.format("%.0fs", remain))
+                    slot.frame.bar:SetValue(math.max(0, math.min(1, remain / duration)))
+                    slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
                 else
                     slot.frame.detail:SetText("")
+                    slot.frame.bar:SetValue(1)
+                    slot.frame.bar:SetStatusBarColor(0.12, 0.40, 0.18)
                 end
             end
         end
