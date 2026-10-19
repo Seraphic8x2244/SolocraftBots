@@ -298,8 +298,7 @@ local LayoutPresentation
 -- are made with the actual presentation factory and cannot execute actions.
 -- The persistent positions belong to the existing SCB options DB; unlocking
 -- itself is temporary, so reloads never leave the edit handles open.
--- Countdown width is independent of row height so "Casting!" fits.
-local SCB_BOSSMOD_COUNTER_WIDTH = 62
+-- Countdown text overlays the full-width timer bar.
 local SCB_BOSSMOD_PREVIEW_HEADER = 22
 local bossModsPreview = { unlocked = false, handles = {} }
 
@@ -485,19 +484,17 @@ LayoutPresentation = function(kind)
             frame.detail:SetWidth(50)
             frame.label:SetWidth(math.max(8, rowWidth - 2 * rowHeight - 68))
         else
-            -- The separate countdown panel is never covered by coloured fill.
-            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
-            frame.detail:SetWidth(SCB_BOSSMOD_COUNTER_WIDTH - 4)
-            frame.label:SetWidth(math.max(8, rowWidth - rowHeight
-                - SCB_BOSSMOD_COUNTER_WIDTH - 12))
+            -- Name and countdown share the coloured bar.
+            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+            frame.detail:SetWidth(50)
+            frame.label:SetWidth(math.max(8, rowWidth - rowHeight - 64))
         end
         frame.detail:Show()
         if frame.bar then
             frame.bar:ClearAllPoints()
             frame.bar:SetPoint("TOPLEFT", frame, "TOPLEFT", rowHeight + 2, 0)
             frame.bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT",
-                -(panelKind == "tracker" and rowHeight
-                    or SCB_BOSSMOD_COUNTER_WIDTH) - 2, 0)
+                -(panelKind == "tracker" and rowHeight or 0) - 2, 0)
             frame.bar:Show()
         end
         if frame.scbRightSlot then
@@ -510,18 +507,9 @@ LayoutPresentation = function(kind)
             frame.scbUseButton:SetFrameLevel(frame:GetFrameLevel() + 2)
         end
         if slot.boundDefinition and slot.boundDefinition.icon then
-            -- Egg art keeps its declarative overlap on the LEFT.
-            local art = slot.boundDefinition.icon
-            frame.icon:SetTexture(art.texture)
-            if frame.scbOverlay then
-                frame.scbOverlay:ClearAllPoints()
-                frame.scbOverlay:SetPoint(art.point or "CENTER", frame,
-                    art.relativePoint or "LEFT", art.x or 0, art.y or 0)
-                frame.scbOverlay:SetWidth(art.size or rowHeight)
-                frame.scbOverlay:SetHeight(art.size or rowHeight)
-                frame.scbOverlay:SetTexture(art.texture)
-                frame.scbOverlay:Show()
-            end
+            -- One row-sized egg icon; no legacy superimposed art.
+            frame.icon:SetTexture(slot.boundDefinition.icon.texture)
+            if frame.scbOverlay then frame.scbOverlay:Hide() end
         end
         frame:Show()
         if panelKind == "tracker" then
@@ -587,23 +575,21 @@ local function ApplyPanelSize(kind, width, height)
             if kind == "tracker" then
                 sample.label:SetWidth(math.max(8, width - 2 * height - 68))
             else
-                sample.label:SetWidth(math.max(8, width - height
-                    - SCB_BOSSMOD_COUNTER_WIDTH - 20))
+                sample.label:SetWidth(math.max(8, width - height - 72))
             end
             sample.detail:ClearAllPoints()
             if kind == "tracker" then
                 sample.detail:SetPoint("RIGHT", sample, "RIGHT", -height - 4, 0)
                 sample.detail:SetWidth(50)
             else
-                sample.detail:SetPoint("RIGHT", sample, "RIGHT", -2, 0)
-                sample.detail:SetWidth(SCB_BOSSMOD_COUNTER_WIDTH - 4)
+                sample.detail:SetPoint("RIGHT", sample, "RIGHT", -6, 0)
+                sample.detail:SetWidth(50)
             end
             if sample.bar then
                 sample.bar:ClearAllPoints()
                 sample.bar:SetPoint("TOPLEFT", sample, "TOPLEFT", height + 2, 0)
                 sample.bar:SetPoint("BOTTOMRIGHT", sample, "BOTTOMRIGHT",
-                    -(kind == "tracker" and height
-                        or SCB_BOSSMOD_COUNTER_WIDTH) - 2, 0)
+                    -(kind == "tracker" and height or 0) - 2, 0)
             end
             if sample.scbRightSlot then
                 sample.scbRightSlot:SetWidth(height)
@@ -683,15 +669,14 @@ local function CreatePresentationFrame(kind, group)
         bar:SetFrameLevel(frame:GetFrameLevel())
         frame.bar = bar
     end
-    if kind == "aura" or kind == "action" or kind == "timer" then
+    if kind == "aura" or kind == "action" then
+        -- Only tracker rows keep the fixed action-icon background.
         local slotBackground = frame:CreateTexture(nil, "ARTWORK")
         slotBackground:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         slotBackground:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        slotBackground:SetWidth(kind == "timer"
-            and SCB_BOSSMOD_COUNTER_WIDTH or group.height)
+        slotBackground:SetWidth(group.height)
         slotBackground:SetTexture(0.10, 0.13, 0.17, 0.80)
-        if kind == "timer" then frame.scbCounterBackground = slotBackground
-        else frame.scbRightSlot = slotBackground end
+        frame.scbRightSlot = slotBackground
     end
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", frame, "LEFT", group.height + 6, 0)
@@ -701,9 +686,7 @@ local function CreatePresentationFrame(kind, group)
     local detail = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
     detail:SetJustifyH("RIGHT")
-    detail:SetWidth(kind == "timer"
-        and SCB_BOSSMOD_COUNTER_WIDTH - 4 or 50)
-    if kind == "timer" then detail:SetJustifyH("CENTER") end
+    detail:SetWidth(50)
     frame.detail = detail
     if kind == "action" then
         local overlay = frame:CreateTexture(nil, "OVERLAY")
@@ -1247,7 +1230,7 @@ end
 --          relativePoint="LEFT", x=0, y=0 }
 -- position = { "TOP", "TOP", x, y }; expiresAt = absolute GetTime.
 function mechanics.ShowBoundBotAction(key, config)
-    local slot, err, icon, pos, step, i, overlay
+    local slot, err, icon, pos, step, i
     if type(config) ~= "table" or type(config.binding) ~= "string"
         or config.binding == "" or type(config.label) ~= "string"
         or config.label == "" or (config.assignedLabel ~= nil
@@ -1300,15 +1283,9 @@ function mechanics.ShowBoundBotAction(key, config)
     slot.boundDefinition = config
     slot.position = pos
     slot.expiresAt = config.expiresAt
-    overlay = slot.frame.scbOverlay
     if icon then
-        overlay:ClearAllPoints()
-        overlay:SetPoint(icon.point or "CENTER", slot.frame,
-            icon.relativePoint or "LEFT", icon.x or 0, icon.y or 0)
-        overlay:SetWidth(icon.size or 30)
-        overlay:SetHeight(icon.size or 30)
-        overlay:SetTexture(icon.texture)
-        overlay:Show()
+        -- The old overlay is never used for egg art; attached Kick still uses it.
+        slot.frame.scbOverlay:Hide()
         slot.frame.label:ClearAllPoints()
         slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", presentation.action.height + 6, 0)
         slot.frame.label:SetWidth(presentation.action.width - presentation.action.height - 64)
