@@ -359,7 +359,7 @@ local function EnsurePanel(kind)
     frame:SetWidth(panel.width)
     frame:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 8)
     frame:SetBackdrop({
-        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         tile = true, tileSize = 16,
         insets = { left = 0, right = 0, top = 0, bottom = 0 },
     })
@@ -533,7 +533,7 @@ local function CreatePreviewHandle(kind)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
     handle:SetBackdrop({
-        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\Tooltips\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 10,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
