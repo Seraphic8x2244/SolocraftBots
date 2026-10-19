@@ -395,7 +395,7 @@ local function CreatePresentationFrame(kind, group)
         local bar = CreateFrame("StatusBar", nil, frame)
         bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
         bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
-        bar:SetHeight(4)
+        bar:SetHeight(8)
         bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         bar:SetStatusBarColor(0.3, 0.65, 0.9)
         bar:SetMinMaxValues(0, 1)
@@ -550,6 +550,8 @@ local function AcquirePresentation(kind, key)
     slot.position = nil
     slot.expiresAt = nil
     slot.memberBinding = nil
+    slot.abilityRecord, slot.abilityHint = nil, nil
+    slot.timerName = nil
     if slot.frame.scbOverlay then
         slot.frame.scbOverlay:Hide()
         -- Recycled action frames may previously have contained an art overlay.
@@ -574,6 +576,8 @@ local function ReleasePresentation(kind, key)
             slot.position = nil
             slot.expiresAt = nil
             slot.memberBinding = nil
+            slot.abilityRecord, slot.abilityHint = nil, nil
+            slot.timerName = nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             slot.frame:Hide()
@@ -997,22 +1001,27 @@ function mechanics.UpdatePresentation(now)
     local group, slot, timer, remaining
     if not session then return end
     if type(now) ~= "number" then now = Now() end
+    mechanics.UpdateAbilityStates(now)
     group = presentation.timer
     for _, slot in ipairs(group.pool) do
         if slot.used and slot.generation == session.generation then
-            timer = mechanics.GetTimer(slot.timerName)
-            if not timer then
-                ReleasePresentation("timer", slot.key)
+            if slot.abilityRecord or slot.abilityHint then
+                RenderAbilityBar(slot, now)
             else
-                remaining = math.max(0, timer.deadline - now)
-                slot.frame.label:SetText(timer.kind == "predicted"
-                    and "~" .. slot.label or slot.label)
-                slot.frame.detail:SetText(string.format("%.0fs", remaining))
-                slot.frame.bar:SetValue(remaining / math.max(1, timer.deadline - (slot.startedAt or now)))
-                slot.frame.bar:SetStatusBarColor(
-                    timer.kind == "predicted" and 0.9 or 0.3,
-                    timer.kind == "observed" and 0.8 or 0.65, 0.3)
-                slot.frame:Show()
+                timer = mechanics.GetTimer(slot.timerName)
+                if not timer then
+                    ReleasePresentation("timer", slot.key)
+                else
+                    remaining = math.max(0, timer.deadline - now)
+                    slot.frame.label:SetText(timer.kind == "predicted"
+                        and "~" .. slot.label or slot.label)
+                    slot.frame.detail:SetText(string.format("%.0fs", remaining))
+                    slot.frame.bar:SetValue(math.max(0, math.min(1, (now -
+                        (slot.startedAt or now)) / math.max(0.001, timer.deadline -
+                        (slot.startedAt or now)))))
+                    slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                    slot.frame:Show()
+                end
             end
         end
     end
@@ -1104,6 +1113,7 @@ function mechanics.InitializeAbilities(expectedGeneration)
             }
         end
     end
+    if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
     return true
 end
 
@@ -1138,6 +1148,7 @@ local function ResolveAbility(id, spellName)
             end
             table.insert(session.observedAbilities[id].order, spellName)
             session.observedAbilities[id].names[spellName] = true
+            if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
             return state
         end
     end
@@ -1296,6 +1307,87 @@ function mechanics.GetAbilityState(id, spellName, expectedGeneration)
         observedFinish = state.occurrence and state.occurrence.observedFinish,
         generation = session.generation }
     return result
+end
+
+-- One presentation factory for prediction, ready and observed casting
+-- states. Timers are still owned by the encounter; no separate UI clock.
+function mechanics.ShowAbilityBars()
+    local session = GetAbilitySession()
+    local state, hint, group, key, slot, err, i, j
+    if not session or not session.engaged or not session.abilities then return false end
+    for i, key in ipairs(session.abilityOrder) do
+        state = session.abilities[key]
+        if state then
+            slot, err = AcquirePresentation("timer", "ability:" .. key)
+            if not slot then return false, err end
+            slot.abilityRecord, slot.abilityHint = state, nil
+            slot.label = state.name or state.spec.label
+        end
+    end
+    for _, group in ipairs(session.definition.declarative.abilityGroups or {}) do
+        for j, hint in ipairs(session.firstSlotHints[group.id] or {}) do
+            if not hint.expired then
+                slot, err = AcquirePresentation("timer", "ability:" .. hint.id)
+                if not slot then return false, err end
+                slot.abilityRecord, slot.abilityHint = nil, hint
+                slot.label = hint.label
+            end
+        end
+    end
+    mechanics.UpdatePresentation()
+    return true
+end
+
+local function RenderAbilityBar(slot, now)
+    local state, hint, phase, start, deadline, remaining, progress, total
+    local frame = slot.frame
+    state, hint = slot.abilityRecord, slot.abilityHint
+    if hint then
+        if now >= hint.readyAt then
+            hint.expired = true
+            ReleasePresentation("timer", slot.key)
+            return
+        end
+        phase = "cooldown"
+        start, deadline = hint.startedAt, hint.readyAt
+    elseif state then
+        phase = state.phase
+        start, deadline = state.startedAt, state.readyAt
+    else
+        ReleasePresentation("timer", slot.key)
+        return
+    end
+    frame.label:SetText((phase == "casting" and "" or "~") .. slot.label)
+    if phase == "casting" then
+        frame.bar:SetValue(1)
+        frame.detail:SetText("CAST")
+        -- Flash only the bar fill; frame/background border is unchanged.
+        if math.mod(math.floor(now * 4), 2) == 0 then
+            frame.bar:SetStatusBarColor(0.12, 0.96, 0.20)
+        else
+            frame.bar:SetStatusBarColor(0.04, 0.46, 0.12)
+        end
+    elseif phase == "unresolved" then
+        frame.bar:SetValue(1)
+        frame.bar:SetStatusBarColor(0.94, 0.56, 0.12)
+        frame.detail:SetText("?")
+    elseif phase == "ready" or not deadline or now >= deadline then
+        frame.bar:SetValue(1)
+        frame.bar:SetStatusBarColor(0.12, 0.90, 0.22)
+        frame.detail:SetText("READY")
+    else
+        total = math.max(0.001, deadline - (start or now))
+        remaining = math.max(0, deadline - now)
+        progress = math.max(0, math.min(1, (now - (start or now)) / total))
+        frame.bar:SetValue(progress)
+        frame.detail:SetText(string.format("~%.0fs", remaining))
+        if remaining / total < 0.25 then
+            frame.bar:SetStatusBarColor(0.96, 0.61, 0.10)
+        else
+            frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+        end
+    end
+    frame:Show()
 end
 
 -- Dormant declarative encounter system. The SCB lifecycle owner must explicitly
