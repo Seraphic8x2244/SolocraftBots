@@ -280,14 +280,19 @@ end
 -- UpdatePresentation() along with UpdateTimers() after activation. Nothing in
 -- this section registers events, installs an OnUpdate or alters bot state.
 -- Anchors are session-local; persistence/options belong to activation.
--- Three adjacent top-centred columns, left to right: Timer | Aura | Action.
--- Total width: 220 + 12 + 190 + 12 + 190 = 624, centred about UIParent.
+-- Three logical pools remain for encounter/binding ownership, but rows render
+-- inside just TWO shared backgrounds. Each panel auto-fits its visible rows.
 local presentation = {
-    timer = { pool = {}, position = { "TOPLEFT", "TOP", -312, -150 }, width = 220, height = 23 },
-    aura = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 190, height = 25 },
-    action = { pool = {}, position = { "TOPLEFT", "TOP", 122, -150 }, width = 190, height = 28 },
+    timer = { pool = {}, position = { "TOPLEFT", "TOP", -312, -150 }, width = 220, height = 20 },
+    aura = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 220, height = 20 },
+    action = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 220, height = 20 },
+}
+local panelSpecs = {
+    timer = { width = 220, height = 20, position = { "TOP", -312, -128 } },
+    tracker = { width = 220, height = 20, position = { "TOP", -80, -128 } },
 }
 local presentationOrder = 0
+local LayoutPresentation
 
 -- Position previews have no encounter/event/tick dependency. Their sample rows
 -- are made with the actual presentation factory and cannot execute actions.
@@ -297,13 +302,15 @@ local SCB_BOSSMOD_PREVIEW_HEADER = 22
 local bossModsPreview = { unlocked = false, handles = {} }
 local previewDefaults = {
     timer = { anchor = "TOP", x = -312, y = -128 },
-    aura = { anchor = "TOP", x = -80, y = -128 },
-    action = { anchor = "TOP", x = 122, y = -128 },
+    tracker = { anchor = "TOP", x = -80, y = -128 },
 }
 local function PreviewPosition(kind)
     local options = SoloCraftBotsDB and SoloCraftBotsDB.options
-    local saved = options and options.bossModsPositions
-        and options.bossModsPositions[kind]
+    local positions = options and options.bossModsPositions
+    -- Preserve old keys. The former aura anchor seeds Unit Tracker until
+    -- the user moves the new panel, then only tracker is written.
+    local saved = positions and (positions[kind]
+        or (kind == "tracker" and positions.aura))
     if type(saved) == "table"
         and (saved.anchor == "TOP" or saved.anchor == "TOPLEFT"
             or saved.anchor == "TOPRIGHT" or saved.anchor == "BOTTOMLEFT"
@@ -319,38 +326,19 @@ end
 
 local function ApplyPreviewPosition(kind)
     local pos = PreviewPosition(kind)
-    local group = presentation[kind]
-    if not group then return end
-    -- Saved coordinates anchor the preview header; live rows start beneath it.
-    group.position = { "TOPLEFT", pos.anchor, pos.x,
-        pos.y - SCB_BOSSMOD_PREVIEW_HEADER }
+    local panel = panelSpecs[kind]
+    if not panel then return end
+    panel.position = { pos.anchor, pos.x, pos.y }
     local handle = bossModsPreview.handles[kind]
     if handle then
         handle:ClearAllPoints()
         handle:SetPoint("TOPLEFT", UIParent, pos.anchor, pos.x, pos.y)
     end
-    -- Uses the existing real-row layout owner.
-    -- LayoutPresentation is declared below, and invoked by LoadPreviewPositions.
 end
 
 function mechanics.LoadPreviewPositions()
-    for kind in pairs(presentation) do
-        ApplyPreviewPosition(kind)
-    end
-    -- The live UI is still dormant at this stage; existing rows are normally
-    -- empty here. Reposition any previously allocated slots when requested.
-    for kind, group in pairs(presentation) do
-        local index = 0
-        for _, slot in ipairs(group.pool) do
-            if slot.used then
-                index = index + 1
-                local p = slot.position or group.position
-                slot.frame:ClearAllPoints()
-                slot.frame:SetPoint(p[1], UIParent, p[2], p[3],
-                    p[4] - (slot.position and 0 or (index - 1) * (group.height + 4)))
-            end
-        end
-    end
+    for kind in pairs(panelSpecs) do ApplyPreviewPosition(kind) end
+    if LayoutPresentation then LayoutPresentation("timer"); LayoutPresentation("tracker") end
 end
 
 function mechanics.IsPreviewUnlocked()
@@ -362,20 +350,105 @@ local function PresentationGroup(kind)
     return presentation[kind]
 end
 
-local function LayoutPresentation(kind)
-    local group = PresentationGroup(kind)
-    local index, slot, frame, p
-    if not group then return end
-    index = 0
-    for _, slot in ipairs(group.pool) do
-        if slot.used then
-            index = index + 1
-            frame = slot.frame
-            p = slot.position or group.position
-            frame:ClearAllPoints()
-            frame:SetPoint(p[1], UIParent, p[2], p[3], p[4] - (slot.position and 0 or (index - 1) * (group.height + 4)))
+local function EnsurePanel(kind)
+    local panel = panelSpecs[kind]
+    if not panel then return nil end
+    if panel.frame then return panel.frame end
+    local frame = CreateFrame("Frame", nil, UIParent)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetWidth(panel.width)
+    frame:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 8)
+    frame:SetBackdrop({
+        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        tile = true, tileSize = 16,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.78)
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -4)
+    title:SetJustifyH("LEFT")
+    panel.frame, panel.title = frame, title
+    frame:Hide()
+    return frame
+end
+
+local function PanelKind(kind)
+    return kind == "timer" and "timer" or "tracker"
+end
+
+LayoutPresentation = function(kind)
+    local panelKind = PanelKind(kind)
+    local panel = panelSpecs[panelKind]
+    local root = EnsurePanel(panelKind)
+    local rows, auras, attached = {}, {}, {}
+    local slot, parent, i, rowHeight, rowWidth, attachedSlot
+    if panelKind == "timer" then
+        for _, slot in ipairs(presentation.timer.pool) do
+            if slot.used then table.insert(rows, slot) end
+        end
+    else
+        for _, slot in ipairs(presentation.aura.pool) do
+            if slot.used then
+                table.insert(rows, slot)
+                auras[slot.key] = slot
+            end
+        end
+        for _, slot in ipairs(presentation.action.pool) do
+            if slot.used and slot.frame:IsShown() then
+                parent = string.sub(slot.key or "", 1, 5) == "kick:"
+                    and auras[string.sub(slot.key, 6)] or nil
+                if parent then
+                    attached[parent.key] = slot
+                else
+                    table.insert(rows, slot)
+                end
+            end
         end
     end
+    if table.getn(rows) == 0 then root:Hide(); return end
+    rowHeight, rowWidth = panel.height, panel.width - 8
+    root:ClearAllPoints()
+    root:SetPoint("TOPLEFT", UIParent, panel.position[1],
+        panel.position[2], panel.position[3])
+    root:SetWidth(panel.width)
+    root:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4
+        + table.getn(rows) * rowHeight + (table.getn(rows) - 1) * 3 + 4)
+    local state = mechanics.GetEncounterState()
+    local bossName = state and state.boss
+    if panelKind == "timer" then
+        panel.title:SetText((bossName and (bossName .. " - ") or "")
+            .. SCB_L("BOSSMODS_PANEL_TIMERS"))
+    else
+        panel.title:SetText((bossName and (bossName .. " - ") or "")
+            .. SCB_L("BOSSMODS_PANEL_TRACKER"))
+    end
+    for i, slot in ipairs(rows) do
+        local frame = slot.frame
+        if frame:GetParent() ~= root then frame:SetParent(root) end
+        frame:SetFrameLevel(root:GetFrameLevel() + 1)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", root, "TOPLEFT", 4,
+            -SCB_BOSSMOD_PREVIEW_HEADER - 4 - (i - 1) * (rowHeight + 3))
+        frame:SetWidth(rowWidth)
+        frame:SetHeight(rowHeight)
+        frame:Show()
+        if panelKind == "tracker" then
+            attachedSlot = attached[slot.key]
+            if attachedSlot then
+                local button = attachedSlot.frame
+                if button:GetParent() ~= frame then button:SetParent(frame) end
+                button:SetFrameLevel(frame:GetFrameLevel() + 1)
+                button:ClearAllPoints()
+                button:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+                button:SetWidth(rowHeight)
+                button:SetHeight(rowHeight)
+                button.label:Hide()
+                button.detail:Hide()
+                button:Show()
+            end
+        end
+    end
+    root:Show()
 end
 
 local function CreatePresentationFrame(kind, group)
@@ -385,7 +458,8 @@ local function CreatePresentationFrame(kind, group)
     frame:SetFrameStrata("MEDIUM")
     local background = frame:CreateTexture(nil, "BACKGROUND")
     background:SetAllPoints(frame)
-    background:SetTexture(0, 0, 0, 0.7)
+    -- One black background belongs to the group, never to a row.
+    background:SetTexture(0, 0, 0, 0)
     frame.background = background
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", frame, "LEFT", 6, 0)
@@ -447,53 +521,46 @@ local function SavePreviewDrag(kind, handle)
 end
 
 local function CreatePreviewHandle(kind)
-    local group = presentation[kind]
+    local panel = panelSpecs[kind]
+    local rowKind = kind == "timer" and "timer" or "aura"
+    local group = presentation[rowKind]
     local handle = CreateFrame("Frame", nil, UIParent)
-    handle:SetWidth(group.width)
-    handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 2 * (group.height + 4))
+    handle:SetWidth(panel.width)
+    handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4 + 2 * panel.height + 3 + 4)
     handle:SetFrameStrata("DIALOG")
     handle:SetMovable(true)
     handle:SetClampedToScreen(true)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
     handle:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        edgeFile = "Interface\Tooltips\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 10,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    handle:SetBackdropColor(0.04, 0.08, 0.12, 0.65)
+    handle:SetBackdropColor(0, 0, 0, 0.78)
     handle:SetBackdropBorderColor(0.4, 0.7, 0.95, 1)
     local title = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     title:SetPoint("TOPLEFT", handle, "TOPLEFT", 6, -4)
-    title:SetText(SCB_L("BOSSMODS_DRAG_" .. string.upper(kind)))
+    title:SetText(SCB_L(kind == "timer" and
+        "BOSSMODS_DRAG_TIMER" or "BOSSMODS_DRAG_TRACKER"))
     for i = 1, 2 do
-        local sample = CreatePresentationFrame(kind, group)
+        local sample = CreatePresentationFrame(rowKind, group)
         sample:SetParent(handle)
         sample:SetFrameStrata("DIALOG")
         sample:SetFrameLevel(handle:GetFrameLevel() + 1)
         sample:ClearAllPoints()
-        sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 0,
-            -SCB_BOSSMOD_PREVIEW_HEADER - (i - 1) * (group.height + 4))
-        -- Preview actions must never execute the real bound bot callback.
-        if kind == "action" then sample:EnableMouse(false) end
+        sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 4,
+            -SCB_BOSSMOD_PREVIEW_HEADER - 4 - (i - 1) * (panel.height + 3))
+        sample:SetWidth(panel.width - 8)
+        sample:SetHeight(panel.height)
         if kind == "timer" then
             sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_BLAST" or "BOSSMODS_SAMPLE_SHADOW"))
             sample.detail:SetText(i == 1 and "20s" or "12s")
             sample.bar:SetValue(i == 1 and 0.65 or 0.3)
-        elseif kind == "aura" then
+        else
             sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_AURA_BOT" or "BOSSMODS_SAMPLE_AURA_PLAYER"))
             sample.detail:SetText(i == 1 and "16s" or "10s")
-        else
-            sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_KICK" or "BOSSMODS_SAMPLE_EGGBREAKER"))
-            sample.detail:SetText("")
-            if i == 2 then
-                sample.scbOverlay:SetPoint("CENTER", sample, "LEFT", 0, 3)
-                sample.scbOverlay:SetWidth(24)
-                sample.scbOverlay:SetHeight(24)
-                sample.scbOverlay:SetTexture("Interface\\Icons\\INV_Egg_03")
-                sample.scbOverlay:Show()
-            end
         end
         sample:Show()
     end
@@ -505,9 +572,7 @@ local function CreatePreviewHandle(kind)
         if this.SetUserPlaced then this:SetUserPlaced(false) end
         SavePreviewDrag(kind, this)
     end)
-    handle:SetScript("OnHide", function()
-        this:StopMovingOrSizing()
-    end)
+    handle:SetScript("OnHide", function() this:StopMovingOrSizing() end)
     handle:Hide()
     bossModsPreview.handles[kind] = handle
     ApplyPreviewPosition(kind)
@@ -518,7 +583,7 @@ function mechanics.SetPreviewUnlocked(enabled)
     bossModsPreview.unlocked = enabled and true or false
     if bossModsPreview.unlocked then
         mechanics.LoadPreviewPositions()
-        for _, kind in ipairs({ "timer", "aura", "action" }) do
+        for _, kind in ipairs({ "timer", "tracker" }) do
             local handle = bossModsPreview.handles[kind] or CreatePreviewHandle(kind)
             handle:Show()
         end
@@ -908,8 +973,8 @@ function mechanics.ShowBoundBotAction(key, config)
         slot.frame.label:SetPoint("LEFT", slot.frame, "LEFT", 6, 0)
         slot.frame.label:SetWidth(presentation.action.width - 58)
     end
-    LayoutPresentation("action")
     RefreshBoundAction(slot)
+    LayoutPresentation("action")
     return true
 end
 
@@ -977,6 +1042,9 @@ function mechanics.ClearPresentation()
             slot.memberBinding = nil
             slot.frame:Hide()
         end
+    end
+    for _, panel in pairs(panelSpecs) do
+        if panel.frame then panel.frame:Hide() end
     end
 end
 
