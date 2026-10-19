@@ -127,11 +127,12 @@ function mechanics.StopEncounter(reason, expectedGeneration)
 end
 
 function mechanics.Reset(reason)
+    -- Zone-exit reset clears death suppression even if a fight is active.
+    prepSuppressed = {}
     if active then return mechanics.StopEncounter(reason or "reset") end
     generation = generation + 1
     ClearTimers()
     bindings = {}
-    prepSuppressed = {}
     mechanics.ClearPresentation()
     return true
 end
