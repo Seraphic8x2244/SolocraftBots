@@ -440,10 +440,11 @@ LayoutPresentation = function(kind)
         frame.label:SetWidth(rowWidth - rowHeight - 64)
         frame.label:Show()
         frame.detail:ClearAllPoints()
-        if panelKind == "tracker" and attached[slot.key] then
-            -- The aura countdown ends BEFORE the attached Kick button.
+        if panelKind == "tracker" then
+            -- Reserve the right action slot even if no action is available.
+            -- A Kick appearing must never alter the middle bar's geometry.
             frame.detail:SetPoint("RIGHT", frame, "RIGHT", -rowHeight - 4, 0)
-            frame.label:SetWidth(rowWidth - 2 * rowHeight - 68)
+            frame.label:SetWidth(math.max(8, rowWidth - 2 * rowHeight - 68))
         else
             frame.detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
         end
@@ -451,18 +452,32 @@ LayoutPresentation = function(kind)
         if frame.bar then
             frame.bar:ClearAllPoints()
             frame.bar:SetPoint("TOPLEFT", frame, "TOPLEFT", rowHeight + 2, 0)
-            frame.bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+            frame.bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT",
+                panelKind == "tracker" and -rowHeight - 2 or 0, 0)
+            frame.bar:Show()
+        end
+        if frame.scbRightSlot then
+            frame.scbRightSlot:SetWidth(rowHeight)
+            frame.scbRightSlot:SetHeight(rowHeight)
+        end
+        if frame.scbUseButton then
+            frame.scbUseButton:SetWidth(rowHeight)
+            frame.scbUseButton:SetHeight(rowHeight)
+            frame.scbUseButton:SetFrameLevel(frame:GetFrameLevel() + 2)
         end
         if slot.boundDefinition and slot.boundDefinition.icon then
-            frame.icon:SetTexture(slot.boundDefinition.icon.texture)
-        end
-        if slot.boundDefinition and frame.scbOverlay then
-            frame.scbOverlay:ClearAllPoints()
-            frame.scbOverlay:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-            frame.scbOverlay:SetWidth(rowHeight)
-            frame.scbOverlay:SetHeight(rowHeight)
-            frame.scbOverlay:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            frame.scbOverlay:Show()
+            -- Egg art keeps its declarative overlap on the LEFT.
+            local art = slot.boundDefinition.icon
+            frame.icon:SetTexture(art.texture)
+            if frame.scbOverlay then
+                frame.scbOverlay:ClearAllPoints()
+                frame.scbOverlay:SetPoint(art.point or "CENTER", frame,
+                    art.relativePoint or "LEFT", art.x or 0, art.y or 0)
+                frame.scbOverlay:SetWidth(art.size or rowHeight)
+                frame.scbOverlay:SetHeight(art.size or rowHeight)
+                frame.scbOverlay:SetTexture(art.texture)
+                frame.scbOverlay:Show()
+            end
         end
         frame:Show()
         if panelKind == "tracker" then
@@ -478,6 +493,8 @@ LayoutPresentation = function(kind)
                 button.label:Hide()
                 button.detail:Hide()
                 button.icon:Hide()
+                if button.bar then button.bar:Hide() end
+                if button.scbUseButton then button.scbUseButton:Hide() end
                 button.scbOverlay:ClearAllPoints()
                 button.scbOverlay:SetAllPoints(button)
                 button.scbOverlay:SetTexture("Interface\\Icons\\Ability_Kick")
@@ -510,7 +527,9 @@ local function ApplyPanelSize(kind, width, height)
     local handle = bossModsPreview.handles[kind]
     if handle then
         handle:SetWidth(width)
-        handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4 + 2 * height + 3 + 4)
+        local n = kind == "tracker" and 3 or 2
+        handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 8
+            + n * height + (n - 1) * 3)
         for i, sample in ipairs(handle.scbSamples or {}) do
             sample:ClearAllPoints()
             sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 4,
@@ -521,11 +540,28 @@ local function ApplyPanelSize(kind, width, height)
             sample.icon:SetHeight(height)
             sample.label:ClearAllPoints()
             sample.label:SetPoint("LEFT", sample, "LEFT", height + 6, 0)
-            sample.label:SetWidth(width - height - 72)
+            sample.label:SetWidth(math.max(8, width
+                - (kind == "tracker" and 2 or 1) * height - 68))
+            sample.detail:ClearAllPoints()
+            sample.detail:SetPoint("RIGHT", sample, "RIGHT",
+                kind == "tracker" and -height - 4 or -6, 0)
             if sample.bar then
                 sample.bar:ClearAllPoints()
                 sample.bar:SetPoint("TOPLEFT", sample, "TOPLEFT", height + 2, 0)
-                sample.bar:SetPoint("BOTTOMRIGHT", sample, "BOTTOMRIGHT", 0, 0)
+                sample.bar:SetPoint("BOTTOMRIGHT", sample, "BOTTOMRIGHT",
+                    kind == "tracker" and -height - 2 or 0, 0)
+            end
+            if sample.scbRightSlot then
+                sample.scbRightSlot:SetWidth(height)
+                sample.scbRightSlot:SetHeight(height)
+            end
+            if sample.scbUseButton then
+                sample.scbUseButton:SetWidth(height)
+                sample.scbUseButton:SetHeight(height)
+            end
+            if sample.scbPreviewKick then
+                sample.scbPreviewKick:SetWidth(height)
+                sample.scbPreviewKick:SetHeight(height)
             end
         end
     end
@@ -579,7 +615,7 @@ local function CreatePresentationFrame(kind, group)
     icon:SetHeight(group.height)
     icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     frame.icon = icon
-    if kind == "timer" or kind == "aura" then
+    if kind == "timer" or kind == "aura" or kind == "action" then
         local bar = CreateFrame("StatusBar", nil, frame)
         bar:SetPoint("TOPLEFT", frame, "TOPLEFT", group.height + 2, 0)
         bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
@@ -587,8 +623,19 @@ local function CreatePresentationFrame(kind, group)
         bar:SetStatusBarColor(0.22, 0.55, 0.94)
         bar:SetMinMaxValues(0, 1)
         bar:SetValue(1)
+        if kind == "action" then
+            bar:SetStatusBarColor(0.15, 0.37, 0.58)
+        end
         bar:SetFrameLevel(frame:GetFrameLevel())
         frame.bar = bar
+    end
+    if kind == "aura" or kind == "action" then
+        local slotBackground = frame:CreateTexture(nil, "ARTWORK")
+        slotBackground:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        slotBackground:SetWidth(group.height)
+        slotBackground:SetHeight(group.height)
+        slotBackground:SetTexture(0.10, 0.13, 0.17, 0.80)
+        frame.scbRightSlot = slotBackground
     end
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", frame, "LEFT", group.height + 6, 0)
@@ -608,11 +655,35 @@ local function CreatePresentationFrame(kind, group)
         overlay:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         overlay:Hide()
         frame.scbOverlay = overlay
+        local use = CreateFrame("Button", nil, frame)
+        use:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        use:SetWidth(group.height)
+        use:SetHeight(group.height)
+        use:SetFrameLevel(frame:GetFrameLevel() + 2)
+        local cog = use:CreateTexture(nil, "OVERLAY")
+        cog:SetAllPoints(use)
+        cog:SetTexture(SCB.assetRoot .. "lucide_cog.tga")
+        frame.scbUseButton = use
+        use:RegisterForClicks("LeftButtonUp")
+        use:SetScript("OnClick", function()
+            local slot = frame.scbSlot
+            if not slot or not slot.used or not active
+                or slot.generation ~= active.generation then return end
+            -- Use the exact existing generation-guarded action entry point.
+            mechanics.HandleActionClick(slot.key, "LeftButton")
+        end)
+        use:Hide()
         frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         frame:SetScript("OnClick", function()
             local slot = frame.scbSlot
             if not slot or not slot.used or not active
                 or slot.generation ~= active.generation then return end
+            -- Once assigned, only the cog invokes the action. The row itself
+            -- still assigns on first click, and right-click still clears.
+            if (arg1 or "LeftButton") == "LeftButton"
+                and slot.boundDefinition and slot.boundDefinition.assignable
+                and mechanics.GetBoundMember(slot.boundDefinition.binding,
+                    slot.generation, false) then return end
             mechanics.HandleActionClick(slot.key, arg1 or "LeftButton")
         end)
     end
@@ -650,7 +721,9 @@ local function CreatePreviewHandle(kind)
     local group = presentation[rowKind]
     local handle = CreateFrame("Frame", nil, UIParent)
     handle:SetWidth(panel.width)
-    handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4 + 2 * panel.height + 3 + 4)
+    local sampleCount = kind == "tracker" and 3 or 2
+    handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 8
+        + sampleCount * panel.height + (sampleCount - 1) * 3)
     handle:SetFrameStrata("DIALOG")
     handle:SetMovable(true)
     handle:SetClampedToScreen(true)
@@ -669,8 +742,9 @@ local function CreatePreviewHandle(kind)
     title:SetText(SCB_L(kind == "timer" and
         "BOSSMODS_DRAG_TIMER" or "BOSSMODS_DRAG_TRACKER"))
     handle.scbSamples = {}
-    for i = 1, 2 do
-        local sample = CreatePresentationFrame(rowKind, group)
+    for i = 1, sampleCount do
+        local sample = CreatePresentationFrame(
+            kind == "tracker" and i == 3 and "action" or rowKind, group)
         table.insert(handle.scbSamples, sample)
         sample:SetParent(handle)
         sample:SetFrameStrata("DIALOG")
@@ -684,9 +758,22 @@ local function CreatePreviewHandle(kind)
             sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_BLAST" or "BOSSMODS_SAMPLE_SHADOW"))
             sample.detail:SetText(i == 1 and "20s" or "12s")
             sample.bar:SetValue(i == 1 and 0.65 or 0.3)
-        else
+        elseif i < 3 then
             sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_AURA_BOT" or "BOSSMODS_SAMPLE_AURA_PLAYER"))
             sample.detail:SetText(i == 1 and "16s" or "10s")
+            if i == 1 then
+                -- Inert sample Kick; the victim's bar always has room for it.
+                local kick = sample:CreateTexture(nil, "OVERLAY")
+                kick:SetPoint("RIGHT", sample, "RIGHT", 0, 0)
+                kick:SetTexture("Interface\\Icons\\Ability_Kick")
+                sample.scbPreviewKick = kick
+            end
+        else
+            sample.label:SetText(SCB_L("BOSSMODS_SAMPLE_EGGBREAKER"))
+            sample.detail:SetText("")
+            sample.icon:SetTexture("Interface\\Icons\\INV_Egg_03")
+            -- Shows post-assignment Use without binding or invoking a command.
+            sample.scbUseButton:Show()
         end
         sample:Show()
     end
@@ -755,6 +842,8 @@ local function AcquirePresentation(kind, key)
     slot.frame.detail:Show()
     slot.frame.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     slot.frame.icon:Show()
+    if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
+    if slot.frame.bar then slot.frame.bar:Show() end
     if slot.frame.scbOverlay then
         slot.frame.scbOverlay:Hide()
         -- Recycled action frames may previously have contained an art overlay.
@@ -783,6 +872,7 @@ local function ReleasePresentation(kind, key)
             slot.timerName = nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
+            if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
             slot.frame:Hide()
             slot.frame.label:SetText("")
             slot.frame.detail:SetText("")
@@ -1027,6 +1117,13 @@ local function RefreshBoundAction(slot)
     end
     slot.frame.label:SetText(label)
     slot.frame.detail:SetText(name and not isBot and "Unavailable" or (config.detail or ""))
+    if slot.frame.scbUseButton then
+        if config.assignable and config.action and isBot then
+            slot.frame.scbUseButton:Show()
+        else
+            slot.frame.scbUseButton:Hide()
+        end
+    end
     slot.frame:Show()
 end
 
@@ -1169,6 +1266,7 @@ function mechanics.ClearPresentation()
             slot.position = nil
             slot.expiresAt = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
+            if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
             slot.generation = nil
             slot.timerName = nil
             slot.label = nil
