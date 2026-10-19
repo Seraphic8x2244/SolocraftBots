@@ -439,6 +439,14 @@ LayoutPresentation = function(kind)
         frame.label:SetPoint("LEFT", frame, "LEFT", rowHeight + 6, 0)
         frame.label:SetWidth(rowWidth - rowHeight - 64)
         frame.label:Show()
+        frame.detail:ClearAllPoints()
+        if panelKind == "tracker" and attached[slot.key] then
+            -- The aura countdown ends BEFORE the attached Kick button.
+            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -rowHeight - 4, 0)
+            frame.label:SetWidth(rowWidth - 2 * rowHeight - 68)
+        else
+            frame.detail:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+        end
         frame.detail:Show()
         if frame.bar then
             frame.bar:ClearAllPoints()
@@ -1205,12 +1213,17 @@ function mechanics.UpdatePresentationState(now)
     if not session then return end
     if type(now) ~= "number" then now = Now() end
     mechanics.UpdateAbilityStates(now)
+    local actionVisibilityChanged = false
     for _, slot in ipairs(presentation.action.pool) do
         if slot.used and slot.generation == session.generation then
             if slot.expiresAt and now >= slot.expiresAt then
                 ReleasePresentation("action", slot.key)
             elseif slot.boundDefinition then
+                local wasShown = slot.frame:IsShown()
                 RefreshBoundAction(slot)
+                if wasShown ~= slot.frame:IsShown() then
+                    actionVisibilityChanged = true
+                end
             end
         end
     end
@@ -1221,7 +1234,7 @@ function mechanics.UpdatePresentationState(now)
         end
     end
     mechanics.PruneAbilityAuras(now)
-    LayoutPresentation("tracker")
+    if actionVisibilityChanged then LayoutPresentation("tracker") end
 end
 
 function mechanics.UpdatePresentation(now)
@@ -1246,7 +1259,12 @@ function mechanics.UpdatePresentation(now)
                     slot.frame.bar:SetValue(math.max(0, math.min(1,
                         remaining / math.max(0.001, timer.deadline -
                             (slot.startedAt or now)))))
-                    slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                    if remaining / math.max(0.001, timer.deadline -
+                        (slot.startedAt or now)) <= 0.25 then
+                        slot.frame.bar:SetStatusBarColor(0.96, 0.61, 0.10)
+                    else
+                        slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                    end
                     slot.frame:Show()
                 end
             end
