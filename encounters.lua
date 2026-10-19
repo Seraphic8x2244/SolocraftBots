@@ -57,6 +57,7 @@ SoloCraftBots.bossModDefinitions = {
                             id = "burning", label = "Burning Adrenaline",
                             target = "player", duration = 20,
                             action = "kick", kickLabel = "Kick",
+                            retainAfterBossDeath = true,
                             gain = {
                                 event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
                                 contains = "You are afflicted by Burning Adrenaline.",
@@ -66,6 +67,7 @@ SoloCraftBots.bossModDefinitions = {
                             id = "burning", label = "Burning Adrenaline",
                             target = "capture", duration = 20,
                             action = "kick", kickLabel = "Kick",
+                            retainAfterBossDeath = true,
                             gain = {
                                 events = {
                                     "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
