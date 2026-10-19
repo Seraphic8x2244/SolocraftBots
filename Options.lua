@@ -316,6 +316,16 @@ function SCB_OptionsDebugOnClick()
     SCB_UpdateLayoutDebugBorders()
 end
 
+-- Boss Mods layout preview is a transient editing mode, not an encounter start.
+-- Its handles are implemented by the actual Boss Mods presentation engine.
+function SCB_BossModsPreviewOnClick()
+    if not SCB.mechanics or not SCB.mechanics.SetPreviewUnlocked then
+        this:SetChecked(nil)
+        return
+    end
+    SCB.mechanics.SetPreviewUnlocked(this:GetChecked() and true or false)
+end
+
 function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeight)
     local section = CreateFrame("Frame", nil, parent)
     local toggle, debugCheck, debugLabel, content
@@ -389,6 +399,7 @@ function SCB_LayoutOptionsUI()
     if not SCB.optionsPanel then return end
     layoutY = SCB_LayoutOptionsSection(SCB.optionCommandSection, SCB.optionLayoutSection.scbContent, 0)
     layoutY = SCB_LayoutOptionsSection(SCB.optionPresetSection, SCB.optionLayoutSection.scbContent, layoutY)
+    layoutY = SCB_LayoutOptionsSection(SCB.optionBossModsSection, SCB.optionLayoutSection.scbContent, layoutY)
     SCB.optionLayoutSection.scbContent:SetHeight(-layoutY)
     SCB.optionLayoutSection.scbExpandedHeight = 26 - layoutY
 
@@ -407,6 +418,11 @@ function SCB_RefreshOptionsUI()
     SCB_EnsureOptionsDB()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
+    if SCB.optionBossModsUnlockCheck then
+        SCB.optionBossModsUnlockCheck:SetChecked(
+            SCB.mechanics and SCB.mechanics.IsPreviewUnlocked
+            and SCB.mechanics.IsPreviewUnlocked() and 1 or nil)
+    end
     if SCB.optionAutoPromotePlayersCheck then SCB.optionAutoPromotePlayersCheck:SetChecked(options.autoPromotePlayers and 1 or nil) end
     if SCB.optionLootSafeCheck then SCB.optionLootSafeCheck:SetChecked(options.lootSafe and 1 or nil) end
     if SCB.optionSCBChatCheck then SCB.optionSCBChatCheck:SetChecked(options.hideSCBChatMessages and 1 or nil) end
@@ -499,7 +515,7 @@ end
 
 function SCB_CreateOptionsUI(frame)
     local panel = CreateFrame("Frame", "SoloCraftBotsOptionsPanel", UIParent)
-    local heading, miscContent, chatContent, layoutContent, commandContent, presetContent, sublabel, control, check
+    local heading, miscContent, chatContent, layoutContent, commandContent, presetContent, bossContent, sublabel, control, check
     panel:SetWidth(290)
     panel:SetHeight(220)
     panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
@@ -591,6 +607,25 @@ function SCB_CreateOptionsUI(frame)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconVertical", "OPTION_VERTICAL", -246, -10, 30, -20, 20); table.insert(SCB.optionLayoutControls, control)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
+    SCB.optionBossModsSection = SCB_CreateOptionsSubsection(
+        layoutContent, nil, "OPTION_BOSSMODS", 82)
+    SCB.optionBossModsSection.scbExpanded = false
+    bossContent = SCB.optionBossModsSection.scbContent
+    check = SCB_CreateMiniCheckButton(bossContent, 24)
+    check:SetPoint("TOPLEFT", bossContent, "TOPLEFT", 16, -3)
+    check:SetScript("OnClick", SCB_BossModsPreviewOnClick)
+    SCB.optionBossModsUnlockCheck = check
+    local unlockLabel = bossContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    unlockLabel:SetPoint("LEFT", check, "RIGHT", 4, 0)
+    unlockLabel:SetText(SCB_L("OPTION_BOSSMODS_UNLOCK"))
+    SCB_SetFontColor(unlockLabel, "text")
+    local previewHint = bossContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    previewHint:SetPoint("TOPLEFT", bossContent, "TOPLEFT", 16, -30)
+    previewHint:SetWidth(255)
+    previewHint:SetJustifyH("LEFT")
+    previewHint:SetText(SCB_L("OPTION_BOSSMODS_DRAG_HINT"))
+    SCB_SetFontColor(previewHint, "subheader")
+
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)
     SCB_SetFontColor(SCB.optionVersion, "text")
@@ -608,6 +643,9 @@ function SCB_CreateOptionsUI(frame)
         miscContent:SetHeight(162)
     end
     SCB_RefreshOptionsUI()
+    if SCB.mechanics and SCB.mechanics.LoadPreviewPositions then
+        SCB.mechanics.LoadPreviewPositions()
+    end
     if SCB_LayoutOptionsUI then SCB_LayoutOptionsUI() end
 
 end
