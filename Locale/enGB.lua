@@ -443,3 +443,8 @@ T["PRESET_NUMBER"] = "Preset %d"
 T["OPTION_AUTO_PROMOTE_PLAYERS"] = "Auto-promote players in raid"
 
 T["OPTIONS_MISC"] = "Misc"
+
+-- Boss Mods observed/predicted bar states
+T["BOSSMODS_READY"] = "READY"
+T["BOSSMODS_CAST"] = "CAST"
+T["BOSSMODS_UNRESOLVED"] = "?"

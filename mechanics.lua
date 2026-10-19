@@ -81,6 +81,7 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     end
     if active.engaged then return true end
     active.engaged = true
+    if not active.definition.declarative then return true end
     return mechanics.InitializeAbilities(active.generation)
 end
 
@@ -1373,7 +1374,7 @@ RenderAbilityBar = function(slot, now)
     frame.label:SetText((phase == "casting" and "" or "~") .. slot.label)
     if phase == "casting" then
         frame.bar:SetValue(1)
-        frame.detail:SetText("CAST")
+        frame.detail:SetText(SCB_L("BOSSMODS_CAST"))
         -- Flash only the bar fill; frame/background border is unchanged.
         if math.mod(math.floor(now * 4), 2) == 0 then
             frame.bar:SetStatusBarColor(0.12, 0.96, 0.20)
@@ -1383,11 +1384,11 @@ RenderAbilityBar = function(slot, now)
     elseif phase == "unresolved" then
         frame.bar:SetValue(1)
         frame.bar:SetStatusBarColor(0.94, 0.56, 0.12)
-        frame.detail:SetText("?")
+        frame.detail:SetText(SCB_L("BOSSMODS_UNRESOLVED"))
     elseif phase == "ready" or not deadline or now >= deadline then
         frame.bar:SetValue(1)
         frame.bar:SetStatusBarColor(0.12, 0.90, 0.22)
-        frame.detail:SetText("READY")
+        frame.detail:SetText(SCB_L("BOSSMODS_READY"))
     else
         total = math.max(0.001, deadline - (start or now))
         remaining = math.max(0, deadline - now)
@@ -1678,6 +1679,64 @@ function mechanics.RegisterDeclarativeEncounters(catalogue)
     if count == 0 then return false, "empty catalogue" end
     for id, def in pairs(pending) do encounters[id] = def end
     return true, count
+end
+
+-- Source registry for the pre-existing SCB event frame. No extra frame
+-- listens to combat text: the owner asks for precisely the events in BWL.
+function mechanics.GetDetectableBosses(zone)
+    local result, seen, entry, d = {}, {}, nil, nil
+    for _, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone and not seen[d.detect.boss] then
+            table.insert(result, d.detect.boss)
+            seen[d.detect.boss] = true
+        end
+    end
+    table.sort(result)
+    return result
+end
+
+function mechanics.GetRequiredEvents(zone)
+    local result, seen, entry, d, rule, spec, aura = {}, {}
+    local function AddRule(observation)
+        local i, eventName
+        if not observation then return end
+        if observation.event then
+            if not seen[observation.event] then
+                seen[observation.event] = true
+                table.insert(result, observation.event)
+            end
+        else
+            for i, eventName in ipairs(observation.events or {}) do
+                if not seen[eventName] then
+                    seen[eventName] = true
+                    table.insert(result, eventName)
+                end
+            end
+        end
+    end
+    for _, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone then
+            for _, rule in ipairs(d.triggers) do AddRule(rule) end
+            for _, spec in ipairs(d.abilities or {}) do
+                AddRule(spec.startRule)
+                AddRule(spec.finishRule)
+                AddRule(spec.interruptRule)
+                for _, aura in ipairs(spec.auras or {}) do
+                    AddRule(aura.gain)
+                    AddRule(aura.fade)
+                end
+            end
+            for _, spec in ipairs(d.abilityGroups or {}) do
+                AddRule(spec.startRule)
+                AddRule(spec.finishRule)
+                AddRule(spec.interruptRule)
+            end
+        end
+    end
+    table.sort(result)
+    return result
 end
 
 -- Only the SCB-owned, zone-gated observation pipeline may call this API.
