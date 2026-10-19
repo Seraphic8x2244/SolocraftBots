@@ -540,9 +540,12 @@ end
 -- SCB_RequestCommand; mechanics owns neither command transport nor a ticker.
 -- This is deliberately a target-propagation delay, NOT a server ACK.
 local sequenceSerial = 0
+-- Boss Mods-only settle after an addon-controlled target change. Regular
+-- player-initiated Single commands and Group's own settle are unaffected.
+local SCB_BOSSMOD_TARGET_SETTLE = 0.10
 local function ValidSequenceTargetDelay(value)
-    return type(value) == "number" and value > 0
-        and value == value and value < math.huge
+    return value == nil or (type(value) == "number" and value > 0
+        and value == value and value < math.huge)
 end
 
 local function AssignedBotStillTargeted(name)
@@ -591,7 +594,8 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
     timerName = "delayed-bot-sequence:" .. capturedGeneration .. ":" .. sequenceSerial
     -- Unique timer names preserve repeated clicks (including rapid Come spam).
     -- Reset/death/encounter change clears the encounter timer and bindings.
-    return mechanics.ScheduleTimer(timerName, action.targetDelay, function()
+    return mechanics.ScheduleTimer(timerName,
+        action.targetDelay or SCB_BOSSMOD_TARGET_SETTLE, function()
         local currentName, currentMember, commandStep, n
         if not active or active.generation ~= capturedGeneration
             or bindings[bindingKey] ~= originalBinding then return end
