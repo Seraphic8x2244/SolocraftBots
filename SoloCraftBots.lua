@@ -722,7 +722,18 @@ function SCB_CreateCollapsibleSection(parent, key, titleText, contentHeight)
     section.scbExpandedHeight = 26 + contentHeight
     section.scbCollapsedHeight = 26
 
+    -- The full 26-unit header is clickable; explicit header controls sit above it.
+    local headerClick = CreateFrame("Button", nil, section)
+    headerClick:SetPoint("TOPLEFT", section, "TOPLEFT", 0, 0)
+    headerClick:SetPoint("TOPRIGHT", section, "TOPRIGHT", 0, 0)
+    headerClick:SetHeight(26)
+    headerClick:SetFrameLevel(section:GetFrameLevel() + 1)
+    headerClick.scbSectionKey = key
+    headerClick:SetScript("OnClick", SCB_SectionToggleOnClick)
+    section.scbHeaderClick = headerClick
+
     local toggle = SCB_CreateArrowButton(section, 18)
+    toggle:SetFrameLevel(headerClick:GetFrameLevel() + 1)
     if key == "commands" or key == "assignments" then
         SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
     end
@@ -1524,6 +1535,7 @@ function SCB_CreateSummonUI(frame)
     -- One state button: silver telescope = Spawn Near (distance off, default),
     -- gold telescope = Spawn Far (distance on).
     local distance = SCB_CreateArtButton(section, "SoloCraftBotsDistanceToggle", 22, SCB.assetRoot .. "lucide_telescope_off.tga")
+    distance:SetFrameLevel(section.scbHeaderClick:GetFrameLevel() + 1)
     distance:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     distance:SetScript("OnClick", SCB_DistanceOnClick)
     distance:SetScript("OnEnter", SCB_TooltipOnEnter)
@@ -1902,6 +1914,7 @@ function SCB_CreateRaidmarkUI(frame)
     -- One always-highlighted state button. Focus is the default; clicking it
     -- swaps between Focus and CC assignment modes.
     local clearMarks = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "lucide_eraser.tga")
+    clearMarks:SetFrameLevel(section.scbHeaderClick:GetFrameLevel() + 1)
     SCB_SetArtButtonIconSize(clearMarks, SCB_GetLayoutValue("command", "iconSize"))
     clearMarks:SetPoint("TOPRIGHT", section, "TOPRIGHT", -14, -2)
     clearMarks.scbTooltip = SCB_L("TIP_CLEAR_MARKS")
@@ -1914,6 +1927,7 @@ function SCB_CreateRaidmarkUI(frame)
     SCB.assignmentClearButton = clearMarks
 
     local mode = SCB_CreateArtButton(section, nil, toggleSize, SCB.assetRoot .. "lucide_crosshair.tga")
+    mode:SetFrameLevel(section.scbHeaderClick:GetFrameLevel() + 1)
     SCB_SetArtButtonIconSize(mode, SCB_GetLayoutValue("command", "iconSize"))
     mode:SetPoint("RIGHT", clearMarks, "LEFT", -4, 0)
     mode:SetScript("OnClick", SCB_RaidmarkModeOnClick)

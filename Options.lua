@@ -334,7 +334,18 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
     section.scbCollapsedHeight = 26
     section.scbExpandedHeight = expandedHeight
 
+    -- Clickable full-width header under the arrow and debug checkbox.
+    local headerClick = CreateFrame("Button", nil, section)
+    headerClick:SetPoint("TOPLEFT", section, "TOPLEFT", 0, 0)
+    headerClick:SetPoint("TOPRIGHT", section, "TOPRIGHT", 0, 0)
+    headerClick:SetHeight(26)
+    headerClick:SetFrameLevel(section:GetFrameLevel() + 1)
+    headerClick.scbOptionsSection = section
+    headerClick:SetScript("OnClick", SCB_OptionsSubsectionToggleOnClick)
+    section.scbHeaderClick = headerClick
+
     toggle = SCB_CreateArrowButton(section, 18)
+    toggle:SetFrameLevel(headerClick:GetFrameLevel() + 1)
     if sectionKey == "command" then
         SCB_SetTextureRenderSize(toggle.scbArrowTexture, SCB_GetLayoutValue("command", "iconSize"), toggle)
     elseif sectionKey == "preset" then
@@ -352,6 +363,7 @@ function SCB_CreateOptionsSubsection(parent, sectionKey, labelKey, expandedHeigh
 
     if sectionKey then
         debugCheck = SCB_CreateMiniCheckButton(section, 20)
+        debugCheck:SetFrameLevel(headerClick:GetFrameLevel() + 1)
         debugCheck:SetWidth(20)
         debugCheck:SetHeight(20)
         debugCheck:SetPoint("TOPRIGHT", section, "TOPRIGHT", -10, -2)
