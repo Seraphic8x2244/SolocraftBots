@@ -1208,6 +1208,7 @@ function mechanics.ObserveAbilityStart(id, spellName, expectedGeneration)
     state.casts, state.uncertainty = state.casts + 1, nil
     state.phase = "casting"
     if state.spec.ordinary ~= false then session.casterCasts[state.caster] = state end
+    if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
     if state.spec.resetOn == "start" then
         -- An optional explicit startOffset is an estimate, NOT an observed
         -- cast completion. Keep that uncertainty visible to read-only callers.
@@ -1258,6 +1259,7 @@ function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration)
     else
         state.phase = now >= (state.readyAt or 0) and "ready" or "cooldown"
     end
+    if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
     return true, occurrence.id
 end
 
@@ -1328,7 +1330,7 @@ function mechanics.ShowAbilityBars()
     if not session or not session.engaged or not session.abilities then return false end
     for i, key in ipairs(session.abilityOrder) do
         state = session.abilities[key]
-        if state then
+        if state and state.phase ~= "unstarted" then
             slot, err = AcquirePresentation("timer", "ability:" .. key)
             if not slot then return false, err end
             slot.abilityRecord, slot.abilityHint = state, nil
@@ -1551,7 +1553,8 @@ local function CheckAbility(a, seen, isGroup)
     found = {}
     for i, aura in ipairs(a.auras or {}) do
         if type(aura) ~= "table" or not IsId(aura.id)
-            or found[aura.id] or type(aura.label) ~= "string"
+            or (found[aura.id] and found[aura.id] ~= aura.label)
+            or type(aura.label) ~= "string"
             or aura.label == ""
             or (aura.target ~= "capture" and aura.target ~= "player")
             or (aura.duration ~= nil and not IsDuration(aura.duration))
@@ -1561,7 +1564,7 @@ local function CheckAbility(a, seen, isGroup)
             or (aura.gain == nil and aura.fade == nil) then
             return false
         end
-        found[aura.id] = true
+        found[aura.id] = aura.label
         if aura.target == "capture" then
             if aura.gain and not aura.gain.pattern then return false end
             if aura.fade and not aura.fade.pattern then return false end
