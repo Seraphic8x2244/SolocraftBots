@@ -265,6 +265,47 @@ function SCB_CreateLayoutControl(parent, sectionKey, valueKey, labelKey, y, debu
     return { label = label, minus = minus, value = value, plus = plus, sectionKey = sectionKey, valueKey = valueKey }
 end
 
+-- Boss Mods uses its own two-panel size values, not Command/Preset debug offsets.
+function SCB_AdjustBossModsSize()
+    if not this or not SCB.mechanics or not SCB.mechanics.GetPanelSize then return end
+    local kind, key = this.scbBossPanel, this.scbBossDimension
+    local width, height = SCB.mechanics.GetPanelSize(kind)
+    if not width then return end
+    if key == "width" then
+        width = math.max(120, math.min(500, width + (this.scbDelta or 0) * 5))
+    else
+        height = math.max(14, math.min(40, height + (this.scbDelta or 0)))
+    end
+    if SCB.mechanics.SetPanelSize(kind, width, height) then
+        SCB_RefreshOptionsUI()
+    end
+end
+
+function SCB_CreateBossModsSizeControl(parent, kind, dimension, labelKey, y)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+    label:SetWidth(116)
+    label:SetJustifyH("LEFT")
+    label:SetText(SCB_L(labelKey))
+    SCB_SetFontColor(label, "text")
+    local minus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_minus.tga")
+    minus:SetWidth(22)
+    minus:SetPoint("LEFT", label, "RIGHT", 2, 0)
+    minus.scbBossPanel, minus.scbBossDimension, minus.scbDelta = kind, dimension, -1
+    minus:SetScript("OnClick", SCB_AdjustBossModsSize)
+    local value = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    value:SetPoint("LEFT", minus, "RIGHT", 3, 0)
+    value:SetWidth(32)
+    value:SetJustifyH("CENTER")
+    SCB_SetFontColor(value, "text")
+    local plus = SCB_CreateArtButton(parent, nil, 20, SCB.assetRoot .. "lucide_plus.tga")
+    plus:SetWidth(22)
+    plus:SetPoint("LEFT", value, "RIGHT", 3, 0)
+    plus.scbBossPanel, plus.scbBossDimension, plus.scbDelta = kind, dimension, 1
+    plus:SetScript("OnClick", SCB_AdjustBossModsSize)
+    return { panel = kind, dimension = dimension, value = value }
+end
+
 function SCB_OptionsSubsectionToggleOnClick()
     if not this or not this.scbOptionsSection then return end
     this.scbOptionsSection.scbExpanded = not this.scbOptionsSection.scbExpanded
@@ -430,6 +471,12 @@ function SCB_RefreshOptionsUI()
     SCB_EnsureOptionsDB()
     options = SoloCraftBotsDB.options
     SCB_RefreshAutoLootSelector()
+    for _, control in ipairs(SCB.optionBossModsSizeControls or {}) do
+        if SCB.mechanics and SCB.mechanics.GetPanelSize then
+            local width, height = SCB.mechanics.GetPanelSize(control.panel)
+            control.value:SetText(control.dimension == "width" and width or height)
+        end
+    end
     if SCB.optionBossModsUnlockCheck then
         SCB.optionBossModsUnlockCheck:SetChecked(
             SCB.mechanics and SCB.mechanics.IsPreviewUnlocked
@@ -545,6 +592,7 @@ function SCB_CreateOptionsUI(frame)
     SCB.optionsPanel = panel
     SCB.optionsDebugMode = { command = false, preset = false }
     SCB.optionLayoutControls = {}
+    SCB.optionBossModsSizeControls = {}
 
     heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     heading:SetPoint("TOP", panel, "TOP", 0, -13)
@@ -620,7 +668,7 @@ function SCB_CreateOptionsUI(frame)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionBossModsSection = SCB_CreateOptionsSubsection(
-        layoutContent, nil, "OPTION_BOSSMODS", 82)
+        layoutContent, nil, "OPTION_BOSSMODS", 204)
     SCB.optionBossModsSection.scbExpanded = false
     bossContent = SCB.optionBossModsSection.scbContent
     check = SCB_CreateMiniCheckButton(bossContent, 24)
@@ -637,6 +685,11 @@ function SCB_CreateOptionsUI(frame)
     previewHint:SetJustifyH("LEFT")
     previewHint:SetText(SCB_L("OPTION_BOSSMODS_DRAG_HINT"))
     SCB_SetFontColor(previewHint, "subheader")
+    local controls = SCB.optionBossModsSizeControls
+    table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "timer", "width", "OPTION_BOSSMODS_TIMER_WIDTH", -64))
+    table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "timer", "height", "OPTION_BOSSMODS_TIMER_HEIGHT", -90))
+    table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "tracker", "width", "OPTION_BOSSMODS_TRACKER_WIDTH", -116))
+    table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "tracker", "height", "OPTION_BOSSMODS_TRACKER_HEIGHT", -142))
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)

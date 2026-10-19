@@ -337,6 +337,7 @@ local function ApplyPreviewPosition(kind)
 end
 
 function mechanics.LoadPreviewPositions()
+    if mechanics.LoadPanelSizes then mechanics.LoadPanelSizes() end
     for kind in pairs(panelSpecs) do ApplyPreviewPosition(kind) end
     if LayoutPresentation then LayoutPresentation("timer"); LayoutPresentation("tracker") end
 end
@@ -480,6 +481,79 @@ LayoutPresentation = function(kind)
     root:Show()
 end
 
+-- Only width and row height are user-adjustable; no per-column remnants.
+-- The old aura/action positions remain untouched in SavedVariables.
+local function ValidPanelDimension(width, height)
+    return type(width) == "number" and width == math.floor(width)
+        and width >= 120 and width <= 500
+        and type(height) == "number" and height == math.floor(height)
+        and height >= 14 and height <= 40
+end
+
+local function ApplyPanelSize(kind, width, height)
+    local panel = panelSpecs[kind]
+    if not panel or not ValidPanelDimension(width, height) then return false end
+    panel.width, panel.height = width, height
+    local kinds = kind == "timer" and { "timer" } or { "aura", "action" }
+    for _, poolKind in ipairs(kinds) do
+        presentation[poolKind].width = width
+        presentation[poolKind].height = height
+    end
+    local handle = bossModsPreview.handles[kind]
+    if handle then
+        handle:SetWidth(width)
+        handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 4 + 2 * height + 3 + 4)
+        for i, sample in ipairs(handle.scbSamples or {}) do
+            sample:ClearAllPoints()
+            sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 4,
+                -SCB_BOSSMOD_PREVIEW_HEADER - 4 - (i - 1) * (height + 3))
+            sample:SetWidth(width - 8)
+            sample:SetHeight(height)
+            sample.icon:SetWidth(height)
+            sample.icon:SetHeight(height)
+            sample.label:ClearAllPoints()
+            sample.label:SetPoint("LEFT", sample, "LEFT", height + 6, 0)
+            sample.label:SetWidth(width - height - 72)
+            if sample.bar then
+                sample.bar:ClearAllPoints()
+                sample.bar:SetPoint("TOPLEFT", sample, "TOPLEFT", height + 2, 0)
+                sample.bar:SetPoint("BOTTOMRIGHT", sample, "BOTTOMRIGHT", 0, 0)
+            end
+        end
+    end
+    if LayoutPresentation then LayoutPresentation(kind) end
+    return true
+end
+
+function mechanics.LoadPanelSizes()
+    local opts = SoloCraftBotsDB and SoloCraftBotsDB.options
+    local sizes = opts and opts.bossModsSizes or {}
+    for kind, panel in pairs(panelSpecs) do
+        local saved = sizes[kind]
+        if type(saved) == "table" and ValidPanelDimension(saved.width, saved.height) then
+            ApplyPanelSize(kind, saved.width, saved.height)
+        else
+            ApplyPanelSize(kind, 220, 20)
+        end
+    end
+end
+
+function mechanics.GetPanelSize(kind)
+    local panel = panelSpecs[kind]
+    if not panel then return nil end
+    return panel.width, panel.height
+end
+
+function mechanics.SetPanelSize(kind, width, height)
+    if not ApplyPanelSize(kind, width, height) then return false end
+    if not SoloCraftBotsDB then return false end
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    local opts = SoloCraftBotsDB.options
+    opts.bossModsSizes = opts.bossModsSizes or {}
+    opts.bossModsSizes[kind] = { width = width, height = height }
+    return true
+end
+
 local function CreatePresentationFrame(kind, group)
     local frame = CreateFrame(kind == "action" and "Button" or "Frame", nil, UIParent)
     frame.scbKind = kind
@@ -586,8 +660,10 @@ local function CreatePreviewHandle(kind)
     title:SetPoint("TOPLEFT", handle, "TOPLEFT", 6, -4)
     title:SetText(SCB_L(kind == "timer" and
         "BOSSMODS_DRAG_TIMER" or "BOSSMODS_DRAG_TRACKER"))
+    handle.scbSamples = {}
     for i = 1, 2 do
         local sample = CreatePresentationFrame(rowKind, group)
+        table.insert(handle.scbSamples, sample)
         sample:SetParent(handle)
         sample:SetFrameStrata("DIALOG")
         sample:SetFrameLevel(handle:GetFrameLevel() + 1)
@@ -617,6 +693,7 @@ local function CreatePreviewHandle(kind)
     handle:SetScript("OnHide", function() this:StopMovingOrSizing() end)
     handle:Hide()
     bossModsPreview.handles[kind] = handle
+    ApplyPanelSize(kind, panel.width, panel.height)
     ApplyPreviewPosition(kind)
     return handle
 end
