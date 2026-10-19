@@ -471,15 +471,14 @@ local function CreatePreviewHandle(kind)
         -- Preview actions must never execute the real bound bot callback.
         if kind == "action" then sample:EnableMouse(false) end
         if kind == "timer" then
-            sample.label:SetText(i == 1 and "~Blast Wave" or "~Shadow Flame")
+            sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_BLAST" or "BOSSMODS_SAMPLE_SHADOW"))
             sample.detail:SetText(i == 1 and "20s" or "12s")
             sample.bar:SetValue(i == 1 and 0.65 or 0.3)
         elseif kind == "aura" then
-            sample.label:SetText(i == 1 and "Botname*: Burning Adrenaline"
-                or "Player: Burning Adrenaline")
+            sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_AURA_BOT" or "BOSSMODS_SAMPLE_AURA_PLAYER"))
             sample.detail:SetText(i == 1 and "16s" or "10s")
         else
-            sample.label:SetText(i == 1 and "Kick Botname*" or "Eggbreaker Botname*")
+            sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_KICK" or "BOSSMODS_SAMPLE_EGGBREAKER"))
             sample.detail:SetText("")
             if i == 2 then
                 sample.scbOverlay:SetPoint("CENTER", sample, "LEFT", 0, 3)
