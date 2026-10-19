@@ -551,6 +551,8 @@ function SCB_EnsureOptionsDB()
     if options.autoPromotePlayers == nil then options.autoPromotePlayers = false end
     if options.autoSwapPresetGroup == nil then options.autoSwapPresetGroup = false end
     if options.autoAcceptRaidConvertRequests == nil then options.autoAcceptRaidConvertRequests = false end
+    if options.bossModsShowPlayerName == nil then options.bossModsShowPlayerName = true end
+    if options.bossModsShowAuraName == nil then options.bossModsShowAuraName = true end
     if options.drawerJustification ~= "left" and options.drawerJustification ~= "right" then
         options.drawerJustification = "right"
     end

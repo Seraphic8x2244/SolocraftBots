@@ -106,6 +106,10 @@ function SCB_OptionCheckOnClick()
     if this.scbOptionKey == "autoSwapPresetGroup" and SoloCraftBotsDB.options.autoSwapPresetGroup and SCB_ApplyCurrentLocationPresetGroup then
         SCB_ApplyCurrentLocationPresetGroup()
     end
+    if (key == "bossModsShowPlayerName" or key == "bossModsShowAuraName")
+        and SCB.mechanics and SCB.mechanics.RefreshTrackerPreview then
+        SCB.mechanics.RefreshTrackerPreview()
+    end
     if key == "confirmBotRolesFromCombat" then
         if SCB_RefreshRoleDetectionLifecycle then SCB_RefreshRoleDetectionLifecycle() end
         if SCB_RefreshPresetRoleIndicators then SCB_RefreshPresetRoleIndicators() end
@@ -477,6 +481,12 @@ function SCB_RefreshOptionsUI()
             control.value:SetText(control.dimension == "width" and width or height)
         end
     end
+    if SCB.optionBossModsShowPlayerNameCheck then
+        SCB.optionBossModsShowPlayerNameCheck:SetChecked(options.bossModsShowPlayerName and 1 or nil)
+    end
+    if SCB.optionBossModsShowAuraNameCheck then
+        SCB.optionBossModsShowAuraNameCheck:SetChecked(options.bossModsShowAuraName and 1 or nil)
+    end
     if SCB.optionBossModsUnlockCheck then
         SCB.optionBossModsUnlockCheck:SetChecked(
             SCB.mechanics and SCB.mechanics.IsPreviewUnlocked
@@ -668,7 +678,7 @@ function SCB_CreateOptionsUI(frame)
     control = SCB_CreateLayoutControl(presetContent, "preset", "iconSize", "OPTION_ICON_SIZE", -272, 8, 24, 8, 24); table.insert(SCB.optionLayoutControls, control)
 
     SCB.optionBossModsSection = SCB_CreateOptionsSubsection(
-        layoutContent, nil, "OPTION_BOSSMODS", 204)
+        layoutContent, nil, "OPTION_BOSSMODS", 260)
     SCB.optionBossModsSection.scbExpanded = false
     bossContent = SCB.optionBossModsSection.scbContent
     check = SCB_CreateMiniCheckButton(bossContent, 24)
@@ -690,6 +700,10 @@ function SCB_CreateOptionsUI(frame)
     table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "timer", "height", "OPTION_BOSSMODS_TIMER_HEIGHT", -90))
     table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "tracker", "width", "OPTION_BOSSMODS_TRACKER_WIDTH", -116))
     table.insert(controls, SCB_CreateBossModsSizeControl(bossContent, "tracker", "height", "OPTION_BOSSMODS_TRACKER_HEIGHT", -142))
+    SCB.optionBossModsShowPlayerNameCheck = SCB_CreateOptionCheck(
+        bossContent, "bossModsShowPlayerName", "OPTION_BOSSMODS_SHOW_PLAYER", -168)
+    SCB.optionBossModsShowAuraNameCheck = SCB_CreateOptionCheck(
+        bossContent, "bossModsShowAuraName", "OPTION_BOSSMODS_SHOW_AURA", -194)
 
     SCB.optionVersion = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     SCB.optionVersion:SetText(SCB_L("VERSION_LABEL") .. ": " .. SCB.version)

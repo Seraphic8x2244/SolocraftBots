@@ -300,6 +300,29 @@ local LayoutPresentation
 -- itself is temporary, so reloads never leave the edit handles open.
 local SCB_BOSSMOD_PREVIEW_HEADER = 22
 local bossModsPreview = { unlocked = false, handles = {} }
+
+-- Labels are presentation-only, never a roster/binding filter.
+-- Missing preferences default ON to preserve information in existing profiles.
+local function TrackerMemberLabel(name, aura)
+    local opts = SoloCraftBotsDB and SoloCraftBotsDB.options or {}
+    local showName = opts.bossModsShowPlayerName ~= false
+    local showAura = opts.bossModsShowAuraName ~= false
+    if showName and showAura then return name .. ": " .. aura end
+    if showName then return name end
+    if showAura then return aura end
+    return ""
+end
+
+function mechanics.RefreshTrackerPreview()
+    local handle = bossModsPreview.handles.tracker
+    if not handle then return end
+    for _, sample in ipairs(handle.scbSamples or {}) do
+        if sample.scbPreviewUnit and sample.scbPreviewAura then
+            sample.label:SetText(TrackerMemberLabel(
+                sample.scbPreviewUnit, sample.scbPreviewAura))
+        end
+    end
+end
 local previewDefaults = {
     timer = { anchor = "TOP", x = -312, y = -128 },
     tracker = { anchor = "TOP", x = -80, y = -128 },
@@ -759,7 +782,11 @@ local function CreatePreviewHandle(kind)
             sample.detail:SetText(i == 1 and "20s" or "12s")
             sample.bar:SetValue(i == 1 and 0.65 or 0.3)
         elseif i < 3 then
-            sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_AURA_BOT" or "BOSSMODS_SAMPLE_AURA_PLAYER"))
+            sample.scbPreviewUnit = SCB_L(i == 1 and
+                "BOSSMODS_SAMPLE_BOT_NAME" or "BOSSMODS_SAMPLE_PLAYER_NAME")
+            sample.scbPreviewAura = SCB_L("BOSSMODS_SAMPLE_AURA_NAME")
+            sample.label:SetText(TrackerMemberLabel(
+                sample.scbPreviewUnit, sample.scbPreviewAura))
             sample.detail:SetText(i == 1 and "16s" or "10s")
             if i == 1 then
                 -- Inert sample Kick; the victim's bar always has room for it.
@@ -1351,8 +1378,7 @@ function mechanics.UpdatePresentation(now)
                     ReleasePresentation("timer", slot.key)
                 else
                     remaining = math.max(0, timer.deadline - now)
-                    slot.frame.label:SetText(timer.kind == "predicted"
-                        and "~" .. slot.label or slot.label)
+                    slot.frame.label:SetText(slot.label)
                     slot.frame.detail:SetText(string.format("%.0fs", remaining))
                     slot.frame.bar:SetValue(math.max(0, math.min(1,
                         remaining / math.max(0.001, timer.deadline -
@@ -1370,7 +1396,12 @@ function mechanics.UpdatePresentation(now)
     end
     for _, slot in ipairs(presentation.aura.pool) do
         if slot.used and slot.generation == session.generation then
-            slot.frame.label:SetText(slot.target)
+            if slot.memberBinding then
+                slot.frame.label:SetText(TrackerMemberLabel(slot.target, slot.label))
+            else
+                -- Observed abilities without a recipient keep their own name.
+                slot.frame.label:SetText(slot.target)
+            end
             if slot.expiresAt then
                 local remain = math.max(0, slot.expiresAt - now)
                 local duration = math.max(0.001, slot.expiresAt - (slot.startedAt or now))
@@ -1712,7 +1743,7 @@ RenderAbilityBar = function(slot, now)
         ReleasePresentation("timer", slot.key)
         return
     end
-    frame.label:SetText((phase == "casting" and "" or "~") .. slot.label)
+    frame.label:SetText(slot.label)
     if phase == "casting" then
         -- Estimated visual casting length never proves actual completion.
         local occurrence = state and state.occurrence
