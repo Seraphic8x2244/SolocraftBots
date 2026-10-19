@@ -22,6 +22,7 @@ local generation = 0
 local timers = {}
 local timerOrder = 0
 local bindings = {} -- encounter-local names only; never cache roster objects
+local prepSuppressed = {} -- boss death within this BWL zone session
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -89,7 +90,8 @@ function mechanics.GetEncounterState()
     if not active then return nil end
     return { id = active.id, generation = active.generation,
         boss = active.definition.declarative and active.definition.declarative.detect.boss,
-        bossVisible = active.bossVisible == true, engaged = active.engaged == true }
+        bossVisible = active.bossVisible == true, engaged = active.engaged == true,
+        prepared = active.prepared == true }
 end
 
 -- Return an immutable-by-copy view of genuinely observed abilities in a named
@@ -129,6 +131,7 @@ function mechanics.Reset(reason)
     generation = generation + 1
     ClearTimers()
     bindings = {}
+    prepSuppressed = {}
     mechanics.ClearPresentation()
     return true
 end
@@ -1590,13 +1593,17 @@ local function CheckDeclaration(d)
     if type(d) ~= "table" or type(d.detect) ~= "table"
         or type(d.detect.zone) ~= "string" or d.detect.zone == ""
         or type(d.detect.boss) ~= "string" or d.detect.boss == ""
+        or (d.detect.prepareInZone ~= nil
+            and type(d.detect.prepareInZone) ~= "boolean")
         or type(d.mechanics) ~= "table" or type(d.triggers) ~= "table" then
         return false, "missing detect, mechanics or triggers"
     end
     for i = 1, table.getn(d.mechanics) do
         w = d.mechanics[i]
         if type(w) ~= "table" or not IsId(w.id) or seen[w.id]
-            or w.when ~= "present" or w.type ~= "assignable_bot_action"
+            or (w.when ~= "present" and w.when ~= "zone")
+            or (w.when == "zone" and d.detect.prepareInZone ~= true)
+            or w.type ~= "assignable_bot_action"
             or not IsId(w.binding) or type(w.label) ~= "string"
             or w.label == "" or w.assignable ~= true
             or type(w.action) ~= "table" or w.action.type ~= "sequence"
@@ -1670,7 +1677,13 @@ end
 -- Registration is all-or-nothing; the caller owns loading encounters.lua.
 function mechanics.RegisterDeclarativeEncounters(catalogue)
     local pending, raid, bosses, name, def, id, ok, why, count
+    local zonePrep = {}
     if type(catalogue) ~= "table" then return false, "invalid catalogue" end
+    for _, entry in pairs(encounters) do
+        if entry.declarative and entry.declarative.detect.prepareInZone then
+            zonePrep[entry.declarative.detect.zone] = true
+        end
+    end
     pending, count = {}, 0
     for raid, bosses in pairs(catalogue) do
         if not IsId(raid) or type(bosses) ~= "table" then
@@ -1682,6 +1695,12 @@ function mechanics.RegisterDeclarativeEncounters(catalogue)
             if pending[id] or encounters[id] then return false, "duplicate " .. id end
             ok, why = CheckDeclaration(def)
             if not ok then return false, id .. ": " .. why end
+            if def.detect.prepareInZone then
+                if zonePrep[def.detect.zone] then
+                    return false, "duplicate zone preparation"
+                end
+                zonePrep[def.detect.zone] = true
+            end
             pending[id] = { events = {}, declarative = def }
             count = count + 1
         end
@@ -1728,6 +1747,9 @@ function mechanics.GetRequiredEvents(zone)
     for _, entry in pairs(encounters) do
         d = entry.declarative
         if d and d.detect.zone == zone then
+            -- The SCB-owned event frame also needs reliable positive death
+            -- evidence when the boss is no longer held in anyone's target.
+            AddRule({ event = "CHAT_MSG_COMBAT_HOSTILE_DEATH" })
             for _, rule in ipairs(d.triggers) do AddRule(rule) end
             for _, spec in ipairs(d.abilities or {}) do
                 AddRule(spec.startRule)
@@ -1749,6 +1771,52 @@ function mechanics.GetRequiredEvents(zone)
     return result
 end
 
+-- An explicit, zone-gated PREPARATION is not an NPC-alive observation.
+-- It makes the eggbreaker available before any raid member targets the boss.
+-- Command clicks still use the existing SCB action/roster owners. Only one
+-- declarative preparation is permitted per zone, avoiding arbitrary selection.
+function mechanics.PrepareZoneEncounter(zone)
+    local id, entry, d, w, i, ok, why
+    if active then return false, "encounter already active" end
+    for id, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone and d.detect.prepareInZone
+            and not prepSuppressed[id] then
+            ok, why = mechanics.StartEncounter(id)
+            if not ok then return false, why end
+            active.prepared = true
+            active.bossVisible = false
+            for i = 1, table.getn(d.mechanics) do
+                w = d.mechanics[i]
+                if w.when == "zone" then
+                    mechanics.ShowBoundBotAction("presence:" .. w.id, w)
+                end
+            end
+            return true
+        end
+    end
+    return false, "no zone preparation"
+end
+
+-- Match documented native Vanilla combat-death messages exactly. Neither
+-- losing a target nor guessing a raid lockout counts as a boss death.
+function mechanics.ObserveBossDeathMessage(zone, eventName, message)
+    local d, boss
+    if eventName ~= "CHAT_MSG_COMBAT_HOSTILE_DEATH"
+        or type(message) ~= "string" then return false end
+    for _, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone then
+            boss = d.detect.boss
+            if message == boss .. " dies."
+                or message == "You have slain " .. boss .. "!" then
+                return mechanics.ObserveBoss(zone, boss, "dead")
+            end
+        end
+    end
+    return false
+end
+
 -- Only the SCB-owned, zone-gated observation pipeline may call this API.
 -- A positively observed living boss unlocks its pre-pull action. Losing
 -- target visibility does NOT prove absence or death and must not hide the
@@ -1759,6 +1827,16 @@ function mechanics.ObserveBoss(zone, boss, state)
     if type(zone) ~= "string" or type(boss) ~= "string"
         or (state ~= "alive" and state ~= "absent" and state ~= "dead") then
         return false, "invalid observation"
+    end
+    -- Track definitive death even if the target was lost before the message.
+    -- Positive living observation can clear a prior suppression (e.g. reset).
+    for id, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone and d.detect.boss == boss
+            and d.detect.prepareInZone then
+            if state == "dead" then prepSuppressed[id] = true
+            elseif state == "alive" then prepSuppressed[id] = nil end
+        end
     end
     if active and active.definition.declarative
         and active.definition.declarative.detect.zone ~= zone then
@@ -1807,7 +1885,7 @@ function mechanics.ObserveBoss(zone, boss, state)
     end
     for i = 1, table.getn(d.mechanics) do
         w = d.mechanics[i]
-        if w.when == "present" then
+        if w.when == "present" or w.when == "zone" then
             mechanics.ShowBoundBotAction("presence:" .. w.id, w)
         end
     end

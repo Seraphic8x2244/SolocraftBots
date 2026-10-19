@@ -2185,6 +2185,9 @@ local function SCB_BossModsRefreshZone()
     bossModsZoneActive = enabled
     if enabled then
         for eventName in pairs(bossModsEvents) do eventFrame:RegisterEvent(eventName) end
+        -- Setup is available on entry without selecting the boss, but this
+        -- does not claim positive NPC presence or engage combat.
+        engine.PrepareZoneEncounter(SCB_BOSSMODS_ZONE)
     else
         for eventName in pairs(bossModsEvents) do eventFrame:UnregisterEvent(eventName) end
         engine.Reset("zone exit")
@@ -2192,8 +2195,9 @@ local function SCB_BossModsRefreshZone()
     bossModsPollElapsed = 0
 end
 
--- Vanilla has no world NPC enumeration. Only positively observed target units
--- count as boss presence. Missing target data cannot prove boss death.
+-- Native 1.12 cannot enumerate arbitrary world NPCs. Supplement friendly
+-- raid targets with mouseover and target-of-target, without changing the
+-- player's target. A missing observation is never a death confirmation.
 local function SCB_BossModsObserveTargets()
     local engine, names, lookup, state, selected, observed, dead
     local tokens, name, token, i
@@ -2202,19 +2206,34 @@ local function SCB_BossModsObserveTargets()
     names = engine.GetDetectableBosses(SCB_BOSSMODS_ZONE)
     lookup = {}
     for i = 1, table.getn(names) do lookup[names[i]] = true end
-    tokens = { "target" }
-    for i = 1, 40 do table.insert(tokens, "raid" .. i .. "target") end
-    for i = 1, 4 do table.insert(tokens, "party" .. i .. "target") end
+    tokens = { "mouseover", "target", "targettarget" }
+    for i = 1, 40 do
+        table.insert(tokens, "raid" .. i .. "target")
+        table.insert(tokens, "raid" .. i .. "targettarget")
+    end
+    for i = 1, 4 do
+        table.insert(tokens, "party" .. i .. "target")
+        table.insert(tokens, "party" .. i .. "targettarget")
+    end
     observed = {}
     for i = 1, table.getn(tokens) do
         token = tokens[i]
         if UnitExists and UnitExists(token) and UnitName then
             name = UnitName(token)
-            if lookup[name] and not observed[name] then
+            if lookup[name] then
                 dead = (UnitIsDeadOrGhost and UnitIsDeadOrGhost(token))
                     or (UnitIsDead and UnitIsDead(token))
-                observed[name] = { dead = dead and true or false,
-                    combat = UnitAffectingCombat and UnitAffectingCombat(token) and true or false }
+                selected = observed[name]
+                -- A live observation takes priority over an earlier stale
+                -- corpse token; accumulate combat when either sees it.
+                if not selected or (selected.dead and not dead) then
+                    observed[name] = { dead = dead and true or false,
+                        combat = UnitAffectingCombat
+                            and UnitAffectingCombat(token) and true or false }
+                elseif not dead and not selected.dead and UnitAffectingCombat
+                    and UnitAffectingCombat(token) then
+                    selected.combat = true
+                end
             end
         end
     end
@@ -2255,6 +2274,10 @@ local function SCB_BossModsOnCombatEvent(eventName, message)
     if not bossModsZoneActive or not bossModsEvents[eventName] then return end
     engine = SCB.mechanics
     if not engine then return end
+    if eventName == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
+        engine.ObserveBossDeathMessage(SCB_BOSSMODS_ZONE, eventName, message)
+        return
+    end
     state = engine.GetEncounterState()
     if not state then return end
     -- An actual boss-origin spell report is independent evidence of engage

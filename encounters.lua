@@ -26,10 +26,11 @@ SoloCraftBots = SoloCraftBots or {}
 SoloCraftBots.bossModDefinitions = {
     bwl = {
         razorgore = {
-            detect = { zone = "Blackwing Lair", boss = "Razorgore the Untamed" },
+            detect = { zone = "Blackwing Lair", boss = "Razorgore the Untamed",
+                prepareInZone = true },
             mechanics = {
                 {
-                    id = "egg", type = "assignable_bot_action", when = "present",
+                    id = "egg", type = "assignable_bot_action", when = "zone",
                     binding = "razoreggboi", label = "Assign Eggbreaker",
                     assignedLabel = "name", assignable = true,
                     icon = {
