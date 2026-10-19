@@ -273,10 +273,12 @@ end
 -- UpdatePresentation() along with UpdateTimers() after activation. Nothing in
 -- this section registers events, installs an OnUpdate or alters bot state.
 -- Anchors are session-local; persistence/options belong to activation.
+-- Three adjacent top-centred columns, left to right: Timer | Aura | Action.
+-- Total width: 220 + 12 + 190 + 12 + 190 = 624, centred about UIParent.
 local presentation = {
-    timer = { pool = {}, position = { "TOP", "TOP", 0, -150 }, width = 220, height = 23 },
-    aura = { pool = {}, position = { "TOPLEFT", "TOPLEFT", 30, -180 }, width = 190, height = 25 },
-    action = { pool = {}, position = { "TOPRIGHT", "TOPRIGHT", -30, -180 }, width = 190, height = 28 },
+    timer = { pool = {}, position = { "TOPLEFT", "TOP", -312, -150 }, width = 220, height = 23 },
+    aura = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 190, height = 25 },
+    action = { pool = {}, position = { "TOPLEFT", "TOP", 122, -150 }, width = 190, height = 28 },
 }
 local presentationOrder = 0
 
@@ -372,6 +374,7 @@ local function AcquirePresentation(kind, key)
     slot.boundDefinition = nil
     slot.position = nil
     slot.expiresAt = nil
+    slot.memberBinding = nil
     if slot.frame.scbOverlay then
         slot.frame.scbOverlay:Hide()
         -- Recycled action frames may previously have contained an art overlay.
@@ -395,6 +398,7 @@ local function ReleasePresentation(kind, key)
             slot.boundDefinition = nil
             slot.position = nil
             slot.expiresAt = nil
+            slot.memberBinding = nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             slot.frame:Hide()
@@ -445,12 +449,15 @@ function mechanics.ShowTimer(key, timerName, label)
     return true
 end
 
--- Aura rows display caller-observed state, never infer target identity or
--- independently scan/track party members. expiresAt is optional.
-function mechanics.ShowTrackedAura(key, label, target, expiresAt)
+-- Aura rows display caller-observed state. Only recipient/member auras have
+-- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
+-- Member auras are retired when the target is dead or leaves the live roster.
+function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding)
     local slot, err
     if type(label) ~= "string" or type(target) ~= "string"
-        or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt)) then
+        or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt))
+        or (memberBinding ~= nil and (type(memberBinding) ~= "string"
+            or memberBinding == "")) then
         return false, "invalid aura"
     end
     slot, err = AcquirePresentation("aura", key)
@@ -458,6 +465,7 @@ function mechanics.ShowTrackedAura(key, label, target, expiresAt)
     slot.label = label
     slot.target = target
     slot.expiresAt = expiresAt
+    slot.memberBinding = memberBinding
     mechanics.UpdatePresentation()
     return true
 end
@@ -781,9 +789,31 @@ function mechanics.ClearPresentation()
             slot.label = nil
             slot.target = nil
             slot.expiresAt = nil
+            slot.memberBinding = nil
             slot.frame:Hide()
         end
     end
+end
+
+-- A member aura disappears when its recorded recipient is confirmed dead
+-- or no longer occupies a live SCB roster unit (including after filtered kick).
+-- Read the authoritative roster; never maintain a shadow roster or poll units
+-- with a separate frame. Ability observations have no memberBinding and persist.
+local function TrackedMemberGone(name)
+    local member
+    if not SCB_GetLiveMember or not UnitName then return false end
+    member = SCB_GetLiveMember(name, false)
+    if not member or not member.unit or UnitName(member.unit) ~= name
+        or (UnitExists and not UnitExists(member.unit)) then return true end
+    return UnitIsDeadOrGhost and UnitIsDeadOrGhost(member.unit) and true or false
+end
+
+local function RetireTrackedMemberAura(slot)
+    local key, binding = slot.key, slot.memberBinding
+    mechanics.CancelTimer("expiration:" .. key)
+    ReleasePresentation("action", "kick:" .. key)
+    mechanics.ClearBinding(binding, slot.generation)
+    ReleasePresentation("aura", key)
 end
 
 -- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
@@ -822,11 +852,15 @@ function mechanics.UpdatePresentation(now)
     end
     for _, slot in ipairs(presentation.aura.pool) do
         if slot.used and slot.generation == session.generation then
-            slot.frame.label:SetText(slot.target .. ": " .. slot.label)
-            if slot.expiresAt then
-                slot.frame.detail:SetText(string.format("%.0fs", math.max(0, slot.expiresAt - now)))
+            if slot.memberBinding and TrackedMemberGone(slot.target) then
+                RetireTrackedMemberAura(slot)
             else
-                slot.frame.detail:SetText("")
+                slot.frame.label:SetText(slot.target .. ": " .. slot.label)
+                if slot.expiresAt then
+                    slot.frame.detail:SetText(string.format("%.0fs", math.max(0, slot.expiresAt - now)))
+                else
+                    slot.frame.detail:SetText("")
+                end
             end
         end
     end
@@ -1147,7 +1181,7 @@ local function RunDeclaredEffect(effect, captured)
             mechanics.ClearBinding(binding)
         else
             deadline = effect.duration and Now() + effect.duration or nil
-            mechanics.ShowTrackedAura(key, effect.label, name, deadline)
+            mechanics.ShowTrackedAura(key, effect.label, name, deadline, binding)
             if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
                 mechanics.ShowBoundBotAction("kick:" .. key, {
                     binding = binding, label = (effect.kickLabel or "Kick") .. " " .. name,
