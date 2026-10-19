@@ -35,8 +35,6 @@ SoloCraftBots.bossModDefinitions = {
                     assignedLabel = "name", assignable = true,
                     icon = {
                         texture = "Interface\\Icons\\INV_Egg_03",
-                        size = 30, point = "CENTER", relativePoint = "LEFT",
-                        x = 0, y = 3,
                     },
                     action = { type = "sequence", steps = {
                         { command = "come", scope = "target" },
