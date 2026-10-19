@@ -79,8 +79,9 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "stale encounter"
     end
+    if active.engaged then return true end
     active.engaged = true
-    return true
+    return mechanics.InitializeAbilities(active.generation)
 end
 
 function mechanics.GetEncounterState()
@@ -1040,6 +1041,262 @@ function mechanics.UpdatePresentation(now)
     end
 end
 
+
+-- Encounter -> unique caster -> ability -> cast occurrence.
+-- Pure encounter-local observations. No polling, transport, roster clone or
+-- invented server casts; the existing SCB owner supplies events and time.
+local function AbilityClock()
+    return Now()
+end
+
+local function GetAbilitySession()
+    if not active or not active.definition.declarative then return nil end
+    return active
+end
+
+local function AddAbilityState(session, spec, spellName, observed)
+    local id = spec.id
+    if spellName then id = id .. ":" .. spellName end
+    if session.abilities[id] then return session.abilities[id] end
+    local now = AbilityClock()
+    local state = {
+        id = id, baseId = spec.id, name = spellName,
+        spec = spec, caster = spec.caster, phase = "unstarted",
+        casts = 0, auras = {}, generation = session.generation,
+        observed = observed == true, uncertainty = nil,
+    }
+    if spec.firstDelay and not observed then
+        state.startedAt = now
+        state.readyAt = now + spec.firstDelay
+        state.phase = "cooldown"
+    elseif observed then
+        state.phase = "ready"
+        state.startedAt = now
+        state.readyAt = now
+    end
+    session.abilities[id] = state
+    table.insert(session.abilityOrder, id)
+    return state
+end
+
+function mechanics.InitializeAbilities(expectedGeneration)
+    local session = GetAbilitySession()
+    local spec, group, i, j
+    if not session or (expectedGeneration and session.generation ~= expectedGeneration) then
+        return false, "stale encounter"
+    end
+    if not session.engaged then return false, "not engaged" end
+    if session.abilities then return true end
+    session.abilities, session.abilityOrder = {}, {}
+    session.casterCasts, session.castSerial, session.firstSlotHints = {}, 0, {}
+    for i, spec in ipairs(session.definition.declarative.abilities or {}) do
+        AddAbilityState(session, spec, nil, false)
+    end
+    -- Unconfirmed first slots are visual predictions, never named breaths.
+    for i, group in ipairs(session.definition.declarative.abilityGroups or {}) do
+        session.firstSlotHints[group.id] = {}
+        for j, duration in ipairs(group.firstSlots or {}) do
+            session.firstSlotHints[group.id][j] = {
+                id = "first:" .. group.id .. ":" .. j,
+                label = group.label .. " " .. j, startedAt = AbilityClock(),
+                readyAt = AbilityClock() + duration, speculative = true,
+                provenance = "predicted",
+            }
+        end
+    end
+    return true
+end
+
+-- Dynamic names are learned from observed casts alone; never guess the
+-- weekly breath setup from a first-countdown placeholder.
+local function ResolveAbility(id, spellName)
+    local session, group, i, j, observed, count, state
+    session = GetAbilitySession()
+    if not session or not session.engaged then return nil end
+    if not session.abilities then mechanics.InitializeAbilities(session.generation) end
+    state = session.abilities[id]
+    if state then return state end
+    for i, group in ipairs(session.definition.declarative.abilityGroups or {}) do
+        if group.id == id and type(spellName) == "string" then
+            observed = false
+            for j = 1, table.getn(group.names or {}) do
+                if group.names[j] == spellName then observed = true; break end
+            end
+            if not observed then return nil end
+            state = session.abilities[id .. ":" .. spellName]
+            if state then return state end
+            count = 0
+            for _, other in pairs(session.abilities) do
+                if other.baseId == id then count = count + 1 end
+            end
+            -- Continue recognising later observations without a third UI bar.
+            if count >= (group.maxVisible or 2) then return nil end
+            state = AddAbilityState(session, group, spellName, true)
+            session.observedAbilities = session.observedAbilities or {}
+            if not session.observedAbilities[id] then
+                session.observedAbilities[id] = { order = {}, names = {} }
+            end
+            table.insert(session.observedAbilities[id].order, spellName)
+            session.observedAbilities[id].names[spellName] = true
+            return state
+        end
+    end
+    return nil
+end
+
+local function BeginAbilityCooldown(state, at)
+    local spec = state.spec
+    if not spec.repeatDelay then
+        state.phase, state.readyAt = "ready", at
+        state.startedAt = at
+        return
+    end
+    state.startedAt = at
+    state.readyAt = at + spec.repeatDelay
+    state.phase = "cooldown"
+end
+
+-- Only observed starts can enter CASTING; a ready clock never synthesises one.
+function mechanics.ObserveAbilityStart(id, spellName, expectedGeneration)
+    local session, state, now, previous, occurrence
+    session = GetAbilitySession()
+    if not session or (expectedGeneration and session.generation ~= expectedGeneration)
+        or not session.engaged then return false, "stale encounter" end
+    state = ResolveAbility(id, spellName)
+    if not state then return false, "unknown ability" end
+    now = AbilityClock()
+    if state.phase == "casting" and state.occurrence and not state.occurrence.finished then
+        return true, state.occurrence.id
+    end
+    -- A new authoritative cast by this NPC supersedes an unresolved predicted
+    -- finish of the previous ordinary cast; never move another spell's timer.
+    previous = session.casterCasts[state.caster]
+    if previous and previous ~= state and previous.occurrence
+        and not previous.occurrence.finished then
+        previous.phase, previous.uncertainty = "unresolved", "superseded"
+        previous.occurrence.finished = true
+    end
+    session.castSerial = session.castSerial + 1
+    occurrence = {
+        id = session.castSerial, startedAt = now,
+        expectedEnd = now + (state.spec.castTime or 0),
+        finished = false, observedStart = true,
+    }
+    state.occurrence, state.lastCastAt = occurrence, now
+    state.casts, state.uncertainty = state.casts + 1, nil
+    state.phase = "casting"
+    if state.spec.ordinary ~= false then session.casterCasts[state.caster] = state end
+    if state.spec.resetOn == "start" then
+        -- An optional explicit startOffset is an estimate, NOT an observed
+        -- cast completion. Keep that uncertainty visible to read-only callers.
+        BeginAbilityCooldown(state, now + (state.spec.startOffset or 0))
+        state.phase = "casting"
+        state.cooldownFromStart = true
+    else
+        state.cooldownFromStart = false
+    end
+    return true, occurrence.id
+end
+
+-- One AoE cast -> one completion; subsequent recipient hits during the
+-- resulting cooldown cannot restart it. Missing start logs remain explicit.
+function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration)
+    local session, state, occurrence, now
+    session = GetAbilitySession()
+    if not session or (expectedGeneration and session.generation ~= expectedGeneration)
+        or not session.engaged then return false, "stale encounter" end
+    state = ResolveAbility(id, spellName)
+    if not state then return false, "unknown ability" end
+    now = AbilityClock()
+    occurrence = state.occurrence
+    if occurrence and occurrence.finished and not state.cooldownFromStart
+        and state.readyAt and now < state.readyAt then
+        return true, "duplicate hit"
+    end
+    if not occurrence or occurrence.finished then
+        -- If no fresh start message exists, multiple hits inside an observed
+        -- cooldown describe one event, not many invented casts.
+        if state.lastFinishedAt and state.readyAt and now < state.readyAt then
+            return true, "duplicate hit"
+        end
+        session.castSerial = session.castSerial + 1
+        occurrence = { id = session.castSerial, finished = false,
+            observedStart = false }
+        state.occurrence = occurrence
+        state.casts = state.casts + 1
+    end
+    occurrence.finished, occurrence.observedFinish = true, true
+    occurrence.finishedAt = now
+    state.lastFinishedAt, state.uncertainty = now, nil
+    if session.casterCasts[state.caster] == state then
+        session.casterCasts[state.caster] = nil
+    end
+    if state.spec.resetOn == "finish" or not state.cooldownFromStart then
+        BeginAbilityCooldown(state, now)
+    else
+        state.phase = now >= (state.readyAt or 0) and "ready" or "cooldown"
+    end
+    return true, occurrence.id
+end
+
+function mechanics.ObserveAbilityInterrupt(id, spellName, expectedGeneration)
+    local session, state
+    session = GetAbilitySession()
+    if not session or (expectedGeneration and session.generation ~= expectedGeneration) then
+        return false, "stale encounter"
+    end
+    state = ResolveAbility(id, spellName)
+    if not state or not state.occurrence or state.occurrence.finished then
+        return false, "no active cast"
+    end
+    state.occurrence.finished = true
+    state.phase, state.uncertainty = "unresolved", "interrupted"
+    if session.casterCasts[state.caster] == state then session.casterCasts[state.caster] = nil end
+    return true
+end
+
+-- Expected cast length limits the FLASHING display only. It is never proof
+-- of success, does not reset a finish-anchored cooldown, and never invents a hit.
+function mechanics.UpdateAbilityStates(now)
+    local session, state, key
+    session = GetAbilitySession()
+    if not session or not session.abilities then return end
+    if type(now) ~= "number" then now = AbilityClock() end
+    for key, state in pairs(session.abilities) do
+        if state.phase == "casting" and state.occurrence and
+            now >= state.occurrence.expectedEnd then
+            if state.cooldownFromStart then
+                state.phase = now >= state.readyAt and "ready" or "cooldown"
+                state.uncertainty = "finish not observed"
+            else
+                state.phase, state.uncertainty = "unresolved", "finish not observed"
+            end
+            if session.casterCasts[state.caster] == state then
+                session.casterCasts[state.caster] = nil
+            end
+        elseif state.phase == "cooldown" and state.readyAt and now >= state.readyAt then
+            state.phase = "ready"
+        end
+    end
+end
+
+function mechanics.GetAbilityState(id, spellName, expectedGeneration)
+    local session, state, result
+    session = GetAbilitySession()
+    if not session or not session.abilities
+        or (expectedGeneration and expectedGeneration ~= session.generation) then return nil end
+    state = session.abilities[spellName and id .. ":" .. spellName or id]
+    if not state then return nil end
+    result = { id = state.id, caster = state.caster, name = state.name,
+        phase = state.phase, readyAt = state.readyAt, startedAt = state.startedAt,
+        lastCastAt = state.lastCastAt, lastFinishedAt = state.lastFinishedAt,
+        uncertainty = state.uncertainty, casts = state.casts,
+        occurrenceId = state.occurrence and state.occurrence.id,
+        observedStart = state.occurrence and state.occurrence.observedStart,
+        observedFinish = state.occurrence and state.occurrence.observedFinish,
+        generation = session.generation }
+    return result
+end
 
 -- Dormant declarative encounter system. The SCB lifecycle owner must explicitly
 -- register the catalogue and forward zone-scoped boss observations and events.
