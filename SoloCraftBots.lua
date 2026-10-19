@@ -2168,6 +2168,7 @@ end
 local SCB_BOSSMODS_ZONE = "Blackwing Lair"
 local bossModsZoneActive = false
 local bossModsElapsed = 0
+local bossModsVisualElapsed = 0
 local bossModsPollElapsed = 0
 local bossModsEvents = {}
 
@@ -2207,6 +2208,8 @@ local function SCB_BossModsRefreshZone()
         engine.Reset("zone exit")
     end
     bossModsPollElapsed = 0
+    bossModsElapsed = 0
+    bossModsVisualElapsed = 0
 end
 
 -- Native 1.12 cannot enumerate arbitrary world NPCs. Supplement friendly
@@ -2314,14 +2317,19 @@ local function SCB_BossModsOnUpdate(elapsed)
         if bossModsZoneActive then SCB_BossModsObserveTargets() end
     end
     if not bossModsZoneActive then return end
+    if not engine.GetEncounterState() then return end
+    -- Existing SCB owner: 10 Hz state/timer tick and 30 Hz presentation tick.
     bossModsElapsed = bossModsElapsed + elapsed
-    if bossModsElapsed < 0.10 then return end
-    bossModsElapsed = 0
-    local state = engine.GetEncounterState()
-    if state then
+    if bossModsElapsed >= 0.10 then
+        bossModsElapsed = math.mod(bossModsElapsed, 0.10)
         local now = GetTime and GetTime() or 0
         engine.UpdateTimers(now)
-        engine.UpdatePresentation(now)
+        engine.UpdatePresentationState(now)
+    end
+    bossModsVisualElapsed = bossModsVisualElapsed + elapsed
+    if bossModsVisualElapsed >= (1 / 30) then
+        bossModsVisualElapsed = math.mod(bossModsVisualElapsed, 1 / 30)
+        engine.UpdatePresentation(GetTime and GetTime() or 0)
     end
 end
 

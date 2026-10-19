@@ -576,7 +576,7 @@ local function CreatePreviewHandle(kind)
     handle:RegisterForDrag("LeftButton")
     handle:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\Tooltips\UI-Tooltip-Border",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 10,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
@@ -1121,12 +1121,37 @@ end
 
 -- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
 local RenderAbilityBar
+-- The SCB 10 Hz owner handles ability transitions, roster checks and cleanup.
+-- The faster UpdatePresentation below only interpolates visible bars.
+function mechanics.UpdatePresentationState(now)
+    local session = active
+    if not session then return end
+    if type(now) ~= "number" then now = Now() end
+    mechanics.UpdateAbilityStates(now)
+    for _, slot in ipairs(presentation.action.pool) do
+        if slot.used and slot.generation == session.generation then
+            if slot.expiresAt and now >= slot.expiresAt then
+                ReleasePresentation("action", slot.key)
+            elseif slot.boundDefinition then
+                RefreshBoundAction(slot)
+            end
+        end
+    end
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and slot.generation == session.generation
+            and slot.memberBinding and TrackedMemberGone(slot.target) then
+            RetireTrackedMemberAura(slot)
+        end
+    end
+    mechanics.PruneAbilityAuras(now)
+    LayoutPresentation("tracker")
+end
+
 function mechanics.UpdatePresentation(now)
     local session = active
     local group, slot, timer, remaining
     if not session then return end
     if type(now) ~= "number" then now = Now() end
-    mechanics.UpdateAbilityStates(now)
     group = presentation.timer
     for _, slot in ipairs(group.pool) do
         if slot.used and slot.generation == session.generation then
@@ -1141,47 +1166,32 @@ function mechanics.UpdatePresentation(now)
                     slot.frame.label:SetText(timer.kind == "predicted"
                         and "~" .. slot.label or slot.label)
                     slot.frame.detail:SetText(string.format("%.0fs", remaining))
-                    slot.frame.bar:SetValue(math.max(0, math.min(1, (now -
-                        (slot.startedAt or now)) / math.max(0.001, timer.deadline -
-                        (slot.startedAt or now)))))
+                    slot.frame.bar:SetValue(math.max(0, math.min(1,
+                        remaining / math.max(0.001, timer.deadline -
+                            (slot.startedAt or now)))))
                     slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
                     slot.frame:Show()
                 end
             end
         end
     end
-    for _, slot in ipairs(presentation.action.pool) do
-        if slot.used and slot.generation == session.generation then
-            if slot.expiresAt and now >= slot.expiresAt then
-                ReleasePresentation("action", slot.key)
-            elseif slot.boundDefinition then
-                RefreshBoundAction(slot)
-            end
-        end
-    end
     for _, slot in ipairs(presentation.aura.pool) do
         if slot.used and slot.generation == session.generation then
-            if slot.memberBinding and TrackedMemberGone(slot.target) then
-                RetireTrackedMemberAura(slot)
+            slot.frame.label:SetText(slot.target)
+            if slot.expiresAt then
+                local remain = math.max(0, slot.expiresAt - now)
+                local duration = math.max(0.001, slot.expiresAt - (slot.startedAt or now))
+                slot.frame.detail:SetText(string.format("%.0fs", remain))
+                slot.frame.bar:SetValue(math.max(0, math.min(1, remain / duration)))
+                slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
             else
-                slot.frame.label:SetText(slot.target)
-                if slot.expiresAt then
-                    local remain = math.max(0, slot.expiresAt - now)
-                    local duration = math.max(0.001, slot.expiresAt - (slot.startedAt or now))
-                    slot.frame.detail:SetText(string.format("%.0fs", remain))
-                    slot.frame.bar:SetValue(math.max(0, math.min(1, remain / duration)))
-                    slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
-                else
-                    slot.frame.detail:SetText("")
-                    slot.frame.bar:SetValue(1)
-                    slot.frame.bar:SetStatusBarColor(0.12, 0.40, 0.18)
-                end
+                slot.frame.detail:SetText("")
+                slot.frame.bar:SetValue(1)
+                slot.frame.bar:SetStatusBarColor(0.12, 0.40, 0.18)
             end
         end
     end
-    mechanics.PruneAbilityAuras(now)
 end
-
 
 -- Encounter -> unique caster -> ability -> cast occurrence.
 -- Pure encounter-local observations. No polling, transport, roster clone or
@@ -1491,7 +1501,7 @@ function mechanics.ShowAbilityBars()
 end
 
 RenderAbilityBar = function(slot, now)
-    local state, hint, phase, start, deadline, remaining, progress, total
+    local state, hint, phase, start, deadline, remaining, total, progress
     local frame = slot.frame
     state, hint = slot.abilityRecord, slot.abilityHint
     if hint then
@@ -1511,29 +1521,30 @@ RenderAbilityBar = function(slot, now)
     end
     frame.label:SetText((phase == "casting" and "" or "~") .. slot.label)
     if phase == "casting" then
-        frame.bar:SetValue(1)
+        -- Estimated visual casting length never proves actual completion.
+        local occurrence = state and state.occurrence
+        local from = occurrence and occurrence.startedAt or now
+        local finish = occurrence and occurrence.expectedEnd or now
+        total = math.max(0.001, finish - from)
+        progress = math.max(0, math.min(1, (now - from) / total))
+        frame.bar:SetValue(progress)
+        frame.bar:SetStatusBarColor(0.12, 0.96, 0.20)
         frame.detail:SetText(SCB_L("BOSSMODS_CAST"))
-        -- Flash only the bar fill; frame/background border is unchanged.
-        if math.mod(math.floor(now * 4), 2) == 0 then
-            frame.bar:SetStatusBarColor(0.12, 0.96, 0.20)
-        else
-            frame.bar:SetStatusBarColor(0.04, 0.46, 0.12)
-        end
     elseif phase == "unresolved" then
         frame.bar:SetValue(1)
         frame.bar:SetStatusBarColor(0.94, 0.56, 0.12)
         frame.detail:SetText(SCB_L("BOSSMODS_UNRESOLVED"))
     elseif phase == "ready" or not deadline or now >= deadline then
         frame.bar:SetValue(1)
-        frame.bar:SetStatusBarColor(0.12, 0.90, 0.22)
+        frame.bar:SetStatusBarColor(0.05, 0.38, 0.14)
         frame.detail:SetText(SCB_L("BOSSMODS_READY"))
     else
         total = math.max(0.001, deadline - (start or now))
         remaining = math.max(0, deadline - now)
-        progress = math.max(0, math.min(1, (now - (start or now)) / total))
+        progress = math.max(0, math.min(1, remaining / total))
         frame.bar:SetValue(progress)
         frame.detail:SetText(string.format("~%.0fs", remaining))
-        if remaining / total < 0.25 then
+        if progress <= 0.25 then
             frame.bar:SetStatusBarColor(0.96, 0.61, 0.10)
         else
             frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
