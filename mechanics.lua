@@ -1,7 +1,7 @@
--- SoloCraft Bots - dormant Boss Mods encounter core (Lua 5.0.3).
--- Not loaded by the TOC. Activation must forward events and ticks through the
--- existing SCB lifecycle owner; this file deliberately creates no frame,
--- registrations, command transport, bot-control path, or SavedVariables.
+-- SoloCraft Bots - Boss Mods encounter engine (Lua 5.0.3).
+-- Loaded by SCB after Communication.lua. The existing SCB lifecycle owner
+-- forwards observations/ticks; this file never registers native events,
+-- installs an independent update frame or sends commands directly.
 --
 -- Definition: { events = { { event = "CHAT_MSG_...", pattern = "...",
 --             plain = true/false, filter = function(message, details, event),
@@ -1197,8 +1197,17 @@ function mechanics.ObserveAbilityStart(id, spellName, expectedGeneration)
     previous = session.casterCasts[state.caster]
     if previous and previous ~= state and previous.occurrence
         and not previous.occurrence.finished then
-        previous.phase, previous.uncertainty = "unresolved", "superseded"
+        previous.uncertainty = "finish not observed; superseded by next cast"
         previous.occurrence.finished = true
+        if previous.cooldownFromStart then
+            -- The other ability's clock is already running from its OWN
+            -- observed start. Never halt or move it because this caster
+            -- started a different spell.
+            previous.phase = previous.readyAt and now >= previous.readyAt
+                and "ready" or "cooldown"
+        else
+            previous.phase = "unresolved"
+        end
     end
     session.castSerial = session.castSerial + 1
     occurrence = {
@@ -1958,7 +1967,7 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                     RunDeclaredEffect(effect, captured)
                     if state then
                         now = Now()
-                        state.auras[recipient] = { name = recipient, appliedAt = now,
+                        state.auras[aura.id .. ":" .. recipient] = { name = recipient, appliedAt = now,
                             expiresAt = aura.duration and now + aura.duration or nil,
                             occurrenceId = state.occurrence and state.occurrence.id }
                     end
@@ -1972,7 +1981,7 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                     effect = { type = "aura_remove", id = spec.id .. "_" .. aura.id,
                         target = aura.target }
                     RunDeclaredEffect(effect, captured)
-                    if state then state.auras[recipient] = nil end
+                    if state then state.auras[aura.id .. ":" .. recipient] = nil end
                     count = count + 1
                 end
             end
@@ -1999,7 +2008,7 @@ function mechanics.PruneAbilityAuras(now)
     for _, state in pairs(session.abilities) do
         for name, aura in pairs(state.auras) do
             if (aura.expiresAt and now >= aura.expiresAt)
-                or TrackedMemberGone(name) then
+                or TrackedMemberGone(aura.name) then
                 state.auras[name] = nil
             end
         end
