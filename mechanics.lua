@@ -282,6 +282,74 @@ local presentation = {
 }
 local presentationOrder = 0
 
+-- Position previews have no encounter/event/tick dependency. Their sample rows
+-- are made with the actual presentation factory and cannot execute actions.
+-- The persistent positions belong to the existing SCB options DB; unlocking
+-- itself is temporary, so reloads never leave the edit handles open.
+local SCB_BOSSMOD_PREVIEW_HEADER = 22
+local bossModsPreview = { unlocked = false, handles = {} }
+local previewDefaults = {
+    timer = { anchor = "TOP", x = -312, y = -128 },
+    aura = { anchor = "TOP", x = -80, y = -128 },
+    action = { anchor = "TOP", x = 122, y = -128 },
+}
+local function PreviewPosition(kind)
+    local options = SoloCraftBotsDB and SoloCraftBotsDB.options
+    local saved = options and options.bossModsPositions
+        and options.bossModsPositions[kind]
+    if type(saved) == "table"
+        and (saved.anchor == "TOP" or saved.anchor == "TOPLEFT"
+            or saved.anchor == "TOPRIGHT" or saved.anchor == "BOTTOMLEFT"
+            or saved.anchor == "BOTTOMRIGHT")
+        and type(saved.x) == "number" and saved.x == saved.x
+        and math.abs(saved.x) < math.huge
+        and type(saved.y) == "number" and saved.y == saved.y
+        and math.abs(saved.y) < math.huge then
+        return saved
+    end
+    return previewDefaults[kind]
+end
+
+local function ApplyPreviewPosition(kind)
+    local pos = PreviewPosition(kind)
+    local group = presentation[kind]
+    if not group then return end
+    -- Saved coordinates anchor the preview header; live rows start beneath it.
+    group.position = { "TOPLEFT", pos.anchor, pos.x,
+        pos.y - SCB_BOSSMOD_PREVIEW_HEADER }
+    local handle = bossModsPreview.handles[kind]
+    if handle then
+        handle:ClearAllPoints()
+        handle:SetPoint("TOPLEFT", UIParent, pos.anchor, pos.x, pos.y)
+    end
+    -- Uses the existing real-row layout owner.
+    -- LayoutPresentation is declared below, and invoked by LoadPreviewPositions.
+end
+
+function mechanics.LoadPreviewPositions()
+    for kind in pairs(presentation) do
+        ApplyPreviewPosition(kind)
+    end
+    -- The live UI is still dormant at this stage; existing rows are normally
+    -- empty here. Reposition any previously allocated slots when requested.
+    for kind, group in pairs(presentation) do
+        local index = 0
+        for _, slot in ipairs(group.pool) do
+            if slot.used then
+                index = index + 1
+                local p = slot.position or group.position
+                slot.frame:ClearAllPoints()
+                slot.frame:SetPoint(p[1], UIParent, p[2], p[3],
+                    p[4] - (slot.position and 0 or (index - 1) * (group.height + 4)))
+            end
+        end
+    end
+end
+
+function mechanics.IsPreviewUnlocked()
+    return bossModsPreview.unlocked
+end
+
 local function PresentationGroup(kind)
     if type(kind) ~= "string" then return nil end
     return presentation[kind]
@@ -345,6 +413,111 @@ local function CreatePresentationFrame(kind, group)
     end
     frame:Hide()
     return frame
+end
+
+-- UI-only layout editor: two real-style sample elements per column.
+-- They never use AcquirePresentation, an active encounter or command owners.
+local function SavePreviewDrag(kind, handle)
+    if not SoloCraftBotsDB then return end
+    SoloCraftBotsDB.options = SoloCraftBotsDB.options or {}
+    local opts = SoloCraftBotsDB.options
+    opts.bossModsPositions = opts.bossModsPositions or {}
+    local left, right, top, bottom = handle:GetLeft(), handle:GetRight(),
+        handle:GetTop(), handle:GetBottom()
+    local pl, pr, pt, pb = UIParent:GetLeft(), UIParent:GetRight(),
+        UIParent:GetTop(), UIParent:GetBottom()
+    if not left or not right or not top or not bottom
+        or not pl or not pr or not pt or not pb then return end
+    local horizontal = (left - pl <= pr - right) and "LEFT" or "RIGHT"
+    local vertical = (pt - top <= bottom - pb) and "TOP" or "BOTTOM"
+    local anchor = vertical .. horizontal
+    local originX = horizontal == "LEFT" and pl or pr
+    local originY = vertical == "TOP" and pt or pb
+    opts.bossModsPositions[kind] = {
+        anchor = anchor, x = left - originX, y = top - originY,
+    }
+    mechanics.LoadPreviewPositions()
+end
+
+local function CreatePreviewHandle(kind)
+    local group = presentation[kind]
+    local handle = CreateFrame("Frame", nil, UIParent)
+    handle:SetWidth(group.width)
+    handle:SetHeight(SCB_BOSSMOD_PREVIEW_HEADER + 2 * (group.height + 4))
+    handle:SetFrameStrata("DIALOG")
+    handle:SetMovable(true)
+    handle:SetClampedToScreen(true)
+    handle:EnableMouse(true)
+    handle:RegisterForDrag("LeftButton")
+    handle:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    handle:SetBackdropColor(0.04, 0.08, 0.12, 0.65)
+    handle:SetBackdropBorderColor(0.4, 0.7, 0.95, 1)
+    local title = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("TOPLEFT", handle, "TOPLEFT", 6, -4)
+    title:SetText(SCB_L("BOSSMODS_DRAG_" .. string.upper(kind)))
+    for i = 1, 2 do
+        local sample = CreatePresentationFrame(kind, group)
+        sample:SetParent(handle)
+        sample:ClearAllPoints()
+        sample:SetPoint("TOPLEFT", handle, "TOPLEFT", 0,
+            -SCB_BOSSMOD_PREVIEW_HEADER - (i - 1) * (group.height + 4))
+        -- Preview actions must never execute the real bound bot callback.
+        if kind == "action" then sample:EnableMouse(false) end
+        if kind == "timer" then
+            sample.label:SetText(i == 1 and "~Blast Wave" or "~Shadow Flame")
+            sample.detail:SetText(i == 1 and "20s" or "12s")
+            sample.bar:SetValue(i == 1 and 0.65 or 0.3)
+        elseif kind == "aura" then
+            sample.label:SetText(i == 1 and "Botname*: Burning Adrenaline"
+                or "Player: Burning Adrenaline")
+            sample.detail:SetText(i == 1 and "16s" or "10s")
+        else
+            sample.label:SetText(i == 1 and "Kick Botname*" or "Eggbreaker Botname*")
+            sample.detail:SetText("")
+            if i == 2 then
+                sample.scbOverlay:SetPoint("CENTER", sample, "LEFT", 0, 3)
+                sample.scbOverlay:SetWidth(24)
+                sample.scbOverlay:SetHeight(24)
+                sample.scbOverlay:SetTexture("Interface\\Icons\\INV_Egg_03")
+                sample.scbOverlay:Show()
+            end
+        end
+        sample:Show()
+    end
+    handle:SetScript("OnDragStart", function()
+        if bossModsPreview.unlocked then this:StartMoving() end
+    end)
+    handle:SetScript("OnDragStop", function()
+        this:StopMovingOrSizing()
+        if this.SetUserPlaced then this:SetUserPlaced(false) end
+        SavePreviewDrag(kind, this)
+    end)
+    handle:SetScript("OnHide", function()
+        this:StopMovingOrSizing()
+    end)
+    handle:Hide()
+    bossModsPreview.handles[kind] = handle
+    ApplyPreviewPosition(kind)
+    return handle
+end
+
+function mechanics.SetPreviewUnlocked(enabled)
+    bossModsPreview.unlocked = enabled and true or false
+    if bossModsPreview.unlocked then
+        mechanics.LoadPreviewPositions()
+        for _, kind in ipairs({ "timer", "aura", "action" }) do
+            local handle = bossModsPreview.handles[kind] or CreatePreviewHandle(kind)
+            handle:Show()
+        end
+    else
+        for _, handle in pairs(bossModsPreview.handles) do handle:Hide() end
+    end
+    return true
 end
 
 local function AcquirePresentation(kind, key)
