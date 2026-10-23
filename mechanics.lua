@@ -2271,6 +2271,20 @@ end
 
 function mechanics.GetRequiredEvents(zone)
     local result, seen, entry, d, rule, spec, aura = {}, {}
+    -- Native 1.12 creature melee observations complement spell casts. They
+    -- can positively discover bosses with no configured special ability.
+    local melee = {
+        "CHAT_MSG_COMBAT_CREATURE_VS_CREATURE_HITS",
+        "CHAT_MSG_COMBAT_CREATURE_VS_CREATURE_MISSES",
+        "CHAT_MSG_COMBAT_CREATURE_VS_PARTY_HITS",
+        "CHAT_MSG_COMBAT_CREATURE_VS_PARTY_MISSES",
+        "CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS",
+        "CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES",
+    }
+    for _, eventName in ipairs(melee) do
+        seen[eventName] = true
+        table.insert(result, eventName)
+    end
     local function AddRule(observation)
         local i, eventName
         if not observation then return end
@@ -2313,6 +2327,46 @@ function mechanics.GetRequiredEvents(zone)
     end
     table.sort(result)
     return result
+end
+
+-- Match source-bound native messages before starting an unseen encounter.
+-- Boss names must be exact beginning-of-message sources (not victims or
+-- substrings). Monster yells use the native author field and only declared
+-- text patterns, so unrelated speech cannot start a boss encounter.
+function mechanics.GetBossFromCombatEvidence(zone, eventName, message, speaker)
+    local d, boss, suffix, matched
+    if type(message) ~= "string" or message == "" then return nil end
+    for _, entry in pairs(encounters) do
+        d = entry.declarative
+        if d and d.detect.zone == zone then
+            boss = d.detect.boss
+            if eventName == "CHAT_MSG_MONSTER_YELL" and speaker == boss then
+                for _, rule in ipairs(d.triggers or {}) do
+                    if rule.event == eventName and
+                        ((rule.contains and string.find(message, rule.contains, 1, true))
+                        or (rule.pattern and string.find(message, rule.pattern))) then
+                        return boss, false
+                    end
+                end
+            elseif string.sub(message, 1, string.len(boss)) == boss then
+                suffix = string.sub(message, string.len(boss) + 1)
+                if string.find(eventName, "CHAT_MSG_COMBAT_CREATURE_VS_", 1, true) == 1 then
+                    matched = string.find(suffix, "^ hits ")
+                        or string.find(suffix, "^ crits ")
+                        or string.find(suffix, "^ misses ")
+                        or string.find(suffix, "^ attacks ")
+                        or string.find(suffix, "^ is parried ")
+                    if matched then return boss, true end
+                elseif string.find(eventName, "CHAT_MSG_SPELL_CREATURE_VS_", 1, true) == 1 then
+                    matched = string.find(suffix, "^ begins to cast ")
+                        or string.find(suffix, "^ casts ")
+                        or string.find(suffix, "^'s ")
+                    if matched then return boss, true end
+                end
+            end
+        end
+    end
+    return nil
 end
 
 -- An explicit, zone-gated PREPARATION is not an NPC-alive observation.
@@ -2409,6 +2463,10 @@ function mechanics.ObserveBoss(zone, boss, state)
             active.bossVisible = true
         elseif state ~= "alive" then
             return false, "other boss observed"
+        elseif active.engaged and not active.postBossCleanup then
+            -- Encounter engagement is authoritative; a raid member targeting
+            -- a later boss through the wall cannot replace this fight.
+            return false, "engaged encounter locked"
         else
             mechanics.StopEncounter("different boss")
         end
