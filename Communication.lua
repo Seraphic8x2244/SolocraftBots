@@ -2207,7 +2207,11 @@ function SCB_QueueGroupScopedCommand(commandKey, forceMove)
     return true
 end
 
-local function SCB_GetPauseHealerSelfBootstrapSettle()
+-- Used by both the healer self-target bootstrap and Boss Mods' programmatic
+-- target changes. The client target name updates before the server has
+-- necessarily resolved the new recipient; a fixed 0.10-second wait can let
+-- the server interpret the first targeted command as untargeted/global.
+function SCB_GetTargetPropagationSettle()
     local bandwidthIn, bandwidthOut, latency
     local delay = SCB_PAUSE_HEALER_SELF_SETTLE_MIN
 
@@ -2297,7 +2301,7 @@ local function SCB_SelectCurrentPauseHealerRecipient()
                     state.index = (state.index or 1) + 1
                 else
                     settleDelay = state.needsInitialSelfSettle
-                        and SCB_GetPauseHealerSelfBootstrapSettle()
+                        and SCB_GetTargetPropagationSettle()
                         or SCB_TARGETED_TARGET_SETTLE
                     state.currentName = name
                     state.phase = "settle"
@@ -2308,7 +2312,7 @@ local function SCB_SelectCurrentPauseHealerRecipient()
                 end
             else
                 settleDelay = state.needsInitialSelfSettle
-                    and SCB_GetPauseHealerSelfBootstrapSettle()
+                    and SCB_GetTargetPropagationSettle()
                     or SCB_TARGETED_TARGET_SETTLE
                 state.currentName = name
                 state.phase = "settle"
