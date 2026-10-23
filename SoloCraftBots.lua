@@ -2175,6 +2175,8 @@ local bossModsElapsed = 0
 local bossModsVisualElapsed = 0
 local bossModsPollElapsed = 0
 local bossModsEvents = {}
+local bossModsGroupCombatGeneration = nil
+local bossModsCalmSamples = 0
 
 local function SCB_BossModsInitialize()
     local engine = SCB.mechanics
@@ -2213,6 +2215,27 @@ local function SCB_BossModsRefreshZone()
     bossModsPollElapsed = 0
     bossModsElapsed = 0
     bossModsVisualElapsed = 0
+    bossModsGroupCombatGeneration = nil
+    bossModsCalmSamples = 0
+end
+
+-- Read the current player's *group* combat states, not only the local
+-- PLAYER_REGEN_ENABLED event (which says nothing about another raid member).
+-- No roster cache: use native units within the existing 0.4-second owner scan.
+local function SCB_BossModsGroupCombat()
+    if not UnitExists or not UnitAffectingCombat then return nil end
+    local tokens = { "player" }
+    local i, token, count = 0, nil, 0
+    for i = 1, 40 do table.insert(tokens, "raid" .. i) end
+    for i = 1, 4 do table.insert(tokens, "party" .. i) end
+    for _, token in ipairs(tokens) do
+        if UnitExists(token) then
+            count = count + 1
+            if UnitAffectingCombat(token) then return true end
+        end
+    end
+    if count == 0 then return nil end
+    return false
 end
 
 -- Native 1.12 cannot enumerate arbitrary world NPCs. Supplement friendly
@@ -2258,10 +2281,36 @@ local function SCB_BossModsObserveTargets()
         end
     end
     state = engine.GetEncounterState()
+    -- Once the raid actually entered combat, require two consecutive complete
+    -- group-out-of-combat scans before declaring a reset. Do not infer a wipe
+    -- from missing targets, death of one player or another boss's presence.
+    -- Positive boss-in-combat evidence also vetoes the reset.
+    if state and state.engaged and not state.postBossCleanup then
+        local groupCombat = SCB_BossModsGroupCombat()
+        local bossObserved = observed[state.boss]
+        if groupCombat then
+            bossModsGroupCombatGeneration = state.generation
+            bossModsCalmSamples = 0
+        elseif groupCombat == false
+            and bossModsGroupCombatGeneration == state.generation
+            and not (bossObserved and bossObserved.combat) then
+            bossModsCalmSamples = bossModsCalmSamples + 1
+            if bossModsCalmSamples >= 2 then
+                engine.StopEncounter("raid disengaged", state.generation)
+                bossModsGroupCombatGeneration = nil
+                bossModsCalmSamples = 0
+                state = nil
+            end
+        else
+            bossModsCalmSamples = 0
+        end
+    else
+        bossModsCalmSamples = 0
+    end
     if state and state.boss then
-        -- Preserve the current boss if still observed. A completely different
-        -- living boss can supersede a hidden previous session through the
-        -- engine's existing generation-invalidating ObserveBoss path.
+        -- Preserve the active encounter even when nobody targets its boss.
+        -- Engaged sessions are protected against unrelated bosses being
+        -- targeted through geometry or via combat logs.
         selected = observed[state.boss]
         if selected then
             if selected.dead then
@@ -2281,16 +2330,18 @@ local function SCB_BossModsObserveTargets()
         if selected and not selected.dead then
             engine.ObserveBoss(SCB_BOSSMODS_ZONE, name, "alive")
             state = engine.GetEncounterState()
-            if selected.combat and state then
-                engine.MarkEncounterEngaged(state.generation)
+            if state and state.boss == name then
+                if selected.combat then
+                    engine.MarkEncounterEngaged(state.generation)
+                end
+                return
             end
-            return
         end
     end
 end
 
-local function SCB_BossModsOnCombatEvent(eventName, message)
-    local engine, state
+local function SCB_BossModsOnCombatEvent(eventName, message, speaker)
+    local engine, state, observedBoss, isCombat
     if not bossModsZoneActive or not bossModsEvents[eventName] then return end
     engine = SCB.mechanics
     if not engine then return end
@@ -2298,15 +2349,22 @@ local function SCB_BossModsOnCombatEvent(eventName, message)
         engine.ObserveBossDeathMessage(SCB_BOSSMODS_ZONE, eventName, message)
         return
     end
+    observedBoss, isCombat = engine.GetBossFromCombatEvidence(
+        SCB_BOSSMODS_ZONE, eventName, message, speaker)
     state = engine.GetEncounterState()
-    if not state then return end
-    -- An actual boss-origin spell report is independent evidence of engage
-    -- even when the Vanilla NPC combat flag is unavailable/inaccurate.
-    if not state.engaged and state.boss and type(message) == "string"
-        and string.find(eventName, "CHAT_MSG_SPELL_", 1, true) == 1
-        and string.find(message, state.boss, 1, true) then
-        engine.MarkEncounterEngaged(state.generation)
+    if observedBoss then
+        -- No transition to a later boss while one is already engaged.
+        if state and state.engaged and not state.postBossCleanup
+            and state.boss ~= observedBoss then return end
+        engine.ObserveBoss(SCB_BOSSMODS_ZONE, observedBoss, "alive")
+        state = engine.GetEncounterState()
+        if state and state.boss == observedBoss and isCombat then
+            engine.MarkEncounterEngaged(state.generation)
+        end
     end
+    if not state then return end
+    -- Unscoped aura messages are only consumed by the current encounter,
+    -- never used to discover a boss or assert engagement.
     engine.DispatchEvent(eventName, message, nil, state.generation)
 end
 
@@ -2365,7 +2423,7 @@ eventFrame:SetScript("OnEvent", function()
         return
     end
     if bossModsZoneActive and bossModsEvents[event] then
-        SCB_BossModsOnCombatEvent(event, arg1)
+        SCB_BossModsOnCombatEvent(event, arg1, arg2)
     end
     if event == "PLAYER_TARGET_CHANGED" then
         if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
