@@ -1149,7 +1149,7 @@ local function AssignedBotStillTargeted(name)
 end
 
 function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
-    local name, member, i, step, info, route, capturedGeneration, timerName
+    local name, member, i, step, info, route, capturedGeneration, timerName, settle
     if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "stale encounter"
     end
@@ -1186,24 +1186,29 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
         route = info and info.routes and info.routes[step.scope] or nil
         if not route then return false, "unsupported command route" end
     end
-    if not TargetUnit or not SCB_RequestCommand then
-        return false, "target or command owner unavailable"
+    if not TargetUnit or not SCB_RequestCommand
+        or not SCB_GetTargetPropagationSettle then
+        return false, "target, command or settle owner unavailable"
     end
 
-    -- Target selection is the only immediate operation. Commands must not be
-    -- sent on this click/frame, even if UnitName("target") updates instantly.
+    -- Target selection is the only immediate operation. A client's
+    -- UnitName("target") may update before the server knows that target.
+    -- Use SCB's already-established RTT-aware initial settle (minimum 0.25s)
+    -- rather than a 0.10s local-only confirmation, which could broadcast Come
+    -- to every bot on the first auto-target action.
     TargetUnit(member.unit)
     if not AssignedBotStillTargeted(name) then
         return false, "assigned bot target selection failed"
     end
+    settle = math.max(action.targetDelay or SCB_BOSSMOD_TARGET_SETTLE,
+        SCB_GetTargetPropagationSettle())
     capturedGeneration = active.generation
     local originalBinding = bindings[bindingKey]
     sequenceSerial = sequenceSerial + 1
     timerName = "delayed-bot-sequence:" .. capturedGeneration .. ":" .. sequenceSerial
     -- Unique timer names preserve repeated clicks (including rapid Come spam).
     -- Reset/death/encounter change clears the encounter timer and bindings.
-    return mechanics.ScheduleTimer(timerName,
-        action.targetDelay or SCB_BOSSMOD_TARGET_SETTLE, function()
+    return mechanics.ScheduleTimer(timerName, settle, function()
         local currentName, currentMember, commandStep, n
         if not active or active.generation ~= capturedGeneration
             or bindings[bindingKey] ~= originalBinding then return end
