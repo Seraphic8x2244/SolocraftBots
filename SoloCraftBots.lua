@@ -2204,9 +2204,8 @@ local function SCB_BossModsRefreshZone()
     bossModsZoneActive = enabled
     if enabled then
         for eventName in pairs(bossModsEvents) do eventFrame:RegisterEvent(eventName) end
-        -- Setup is available on entry without selecting the boss, but this
-        -- does not claim positive NPC presence or engage combat.
-        engine.PrepareZoneEncounter(SCB_BOSSMODS_ZONE)
+        -- Register observations only; entering the zone does not prove
+        -- a boss is alive or authorize an encounter action.
     else
         for eventName in pairs(bossModsEvents) do eventFrame:UnregisterEvent(eventName) end
         engine.Reset("zone exit")
