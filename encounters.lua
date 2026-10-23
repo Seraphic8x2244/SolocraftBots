@@ -26,11 +26,11 @@ SoloCraftBots = SoloCraftBots or {}
 SoloCraftBots.bossModDefinitions = {
     bwl = {
         razorgore = {
-            detect = { zone = "Blackwing Lair", boss = "Razorgore the Untamed",
-                prepareInZone = true },
+            -- Presence actions require the SCB owner's positive alive scan.
+            detect = { zone = "Blackwing Lair", boss = "Razorgore the Untamed" },
             mechanics = {
                 {
-                    id = "egg", type = "assignable_bot_action", when = "zone",
+                    id = "egg", type = "assignable_bot_action", when = "present",
                     binding = "razoreggboi", label = "Assign Eggbreaker",
                     assignedLabel = "name", assignable = true,
                     icon = {
