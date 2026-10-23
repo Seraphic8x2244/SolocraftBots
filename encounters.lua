@@ -55,6 +55,7 @@ SoloCraftBots.bossModDefinitions = {
                     auras = {
                         {
                             id = "burning", label = "Burning Adrenaline",
+                            icon = "Interface\\Icons\\INV_Gauntlets_03",
                             target = "player", duration = 20,
                             action = "kick", kickLabel = "Kick",
                             retainAfterBossDeath = true,
@@ -65,6 +66,7 @@ SoloCraftBots.bossModDefinitions = {
                         },
                         {
                             id = "burning", label = "Burning Adrenaline",
+                            icon = "Interface\\Icons\\INV_Gauntlets_03",
                             target = "capture", duration = 20,
                             action = "kick", kickLabel = "Kick",
                             retainAfterBossDeath = true,
@@ -116,6 +118,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "blastwave", caster = "Broodlord Lashlayer",
                     label = "Blast Wave", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Holy_Excorcism_02",
                     repeatDelay = 20, resetOn = "finish",
                     finishRule = {
                         events = {
@@ -135,6 +138,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "shadowflame", caster = "Firemaw",
                     label = "Shadow Flame", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
                     resetOn = "finish",
                     startRule = {
@@ -153,6 +157,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "wingbuffet", caster = "Firemaw",
                     label = "Wing Buffet", mode = "opportunistic",
+                    icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1,
                     -- Only start is observed; this forecasts 29s after the
                     -- expected 1s cast, never asserts completion occurred.
@@ -171,6 +176,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "shadowflame", caster = "Ebonroc",
                     label = "Shadow Flame", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
                     resetOn = "finish",
                     startRule = {
@@ -189,6 +195,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "wingbuffet", caster = "Ebonroc",
                     label = "Wing Buffet", mode = "opportunistic",
+                    icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1, repeatDelay = 29,
                     resetOn = "start", startOffset = 1,
                     startRule = {
@@ -205,6 +212,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "shadowflame", caster = "Flamegor",
                     label = "Shadow Flame", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
                     resetOn = "finish",
                     startRule = {
@@ -223,6 +231,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "wingbuffet", caster = "Flamegor",
                     label = "Wing Buffet", mode = "opportunistic",
+                    icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1, repeatDelay = 29,
                     resetOn = "start", startOffset = 1,
                     startRule = {
@@ -242,6 +251,15 @@ SoloCraftBots.bossModDefinitions = {
                     firstSlots = { 30, 60 },
                     names = { "Corrosive Acid", "Frost Burn", "Ignite Flesh",
                         "Incinerate", "Time Lapse" },
+                    -- 1.12-era BigWigs icon identities for the five breaths.
+                    -- First-slot hints remain '?' until an actual breath is seen.
+                    icons = {
+                        ["Corrosive Acid"] = "Interface\\Icons\\Spell_Nature_Acid_01",
+                        ["Frost Burn"] = "Interface\\Icons\\Spell_Frost_ChillingBlast",
+                        ["Ignite Flesh"] = "Interface\\Icons\\Spell_Fire_Fire",
+                        ["Incinerate"] = "Interface\\Icons\\Spell_Shadow_ChillTouch",
+                        ["Time Lapse"] = "Interface\\Icons\\Spell_Arcane_PortalOrgrimmar",
+                    },
                     castTime = 2,
                     -- Independent observed breath: ~60s from its projected
                     -- end, anchored ONLY to that breath's real cast start.
@@ -260,6 +278,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "fear", caster = "Nefarian",
                     label = "Bellowing Roar", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Shadow_Charm",
                     firstDelay = 25, castTime = 1.5,
                     repeatDelay = 23.5, resetOn = "start", startOffset = 1.5,
                     startRule = {
@@ -270,6 +289,7 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "shadowflame", caster = "Nefarian",
                     label = "Shadow Flame", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 19.7, castTime = 2,
                     repeatDelay = 16.5, resetOn = "finish",
                     startRule = {
