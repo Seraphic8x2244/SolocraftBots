@@ -805,12 +805,16 @@ local function CreatePreviewHandle(kind)
         sample:SetHeight(panel.height)
         if kind == "timer" then
             sample.label:SetText(SCB_L(i == 1 and "BOSSMODS_SAMPLE_BLAST" or "BOSSMODS_SAMPLE_SHADOW"))
+            sample.icon:SetTexture(i == 1 and
+                "Interface\\Icons\\Spell_Holy_Excorcism_02" or
+                "Interface\\Icons\\Spell_Fire_Incinerate")
             sample.detail:SetText(i == 1 and "20s" or "12s")
             sample.bar:SetValue(i == 1 and 0.65 or 0.3)
         elseif i < 3 then
             sample.scbPreviewUnit = SCB_L(i == 1 and
                 "BOSSMODS_SAMPLE_BOT_NAME" or "BOSSMODS_SAMPLE_PLAYER_NAME")
             sample.scbPreviewAura = SCB_L("BOSSMODS_SAMPLE_AURA_NAME")
+            sample.icon:SetTexture("Interface\\Icons\\INV_Gauntlets_03")
             sample.label:SetText(TrackerMemberLabel(
                 sample.scbPreviewUnit, sample.scbPreviewAura))
             sample.detail:SetText(i == 1 and "16s" or "10s")
@@ -1029,16 +1033,19 @@ end
 -- Aura rows display caller-observed state. Only recipient/member auras have
 -- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
 -- Member auras are retired when the target is dead or leaves the live roster.
-function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding, retainAfterBossDeath)
+function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding, retainAfterBossDeath, iconTexture)
     local slot, err
     if type(label) ~= "string" or type(target) ~= "string"
         or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt))
         or (memberBinding ~= nil and (type(memberBinding) ~= "string"
-            or memberBinding == "")) then
+            or memberBinding == ""))
+        or (iconTexture ~= nil and (type(iconTexture) ~= "string"
+            or iconTexture == "")) then
         return false, "invalid aura"
     end
     slot, err = AcquirePresentation("aura", key)
     if not slot then return false, err end
+    if iconTexture then slot.frame.icon:SetTexture(iconTexture) end
     slot.label = label
     slot.target = target
     slot.startedAt = Now()
@@ -1862,6 +1869,12 @@ function mechanics.ShowAbilityBars()
             if not slot then return false, err end
             slot.abilityRecord, slot.abilityHint = state, nil
             slot.label = state.name or state.spec.label
+            -- Native 1.12.1 cannot resolve arbitrary NPC spells by name.
+            -- Use the specific, validated encounter icon (including each
+            -- observed Chromaggus breath), not the pool's '?' default.
+            local iconTexture = state.name and state.spec.icons
+                and state.spec.icons[state.name] or state.spec.icon
+            if iconTexture then slot.frame.icon:SetTexture(iconTexture) end
         end
     end
     for _, group in ipairs(session.definition.declarative.abilityGroups or {}) do
@@ -2055,6 +2068,8 @@ local function CheckAbility(a, seen, isGroup)
         or (a.resetOn ~= nil and a.resetOn ~= "start" and a.resetOn ~= "finish")
         or (a.repeatDelay ~= nil and a.resetOn == nil)
         or (a.ordinary ~= nil and type(a.ordinary) ~= "boolean")
+        or (a.icon ~= nil and (type(a.icon) ~= "string" or a.icon == ""))
+        or (a.icons ~= nil and (not isGroup or type(a.icons) ~= "table"))
         or not CheckObservation(a.startRule)
         or not CheckObservation(a.finishRule)
         or not CheckObservation(a.interruptRule)
@@ -2075,6 +2090,16 @@ local function CheckAbility(a, seen, isGroup)
         for i = 1, table.getn(a.firstSlots) do
             if not IsDuration(a.firstSlots[i]) then return false end
         end
+        -- Every named observed breath has its own valid texture.
+        if a.icons then
+            for name, texture in pairs(a.icons) do
+                if not found[name] or type(texture) ~= "string"
+                    or texture == "" then return false end
+            end
+            for name in pairs(found) do
+                if not a.icons[name] then return false end
+            end
+        end
     elseif a.names or a.firstSlots or a.maxVisible then
         return false
     end
@@ -2087,6 +2112,8 @@ local function CheckAbility(a, seen, isGroup)
             or (aura.target ~= "capture" and aura.target ~= "player")
             or (aura.duration ~= nil and not IsDuration(aura.duration))
             or (aura.action ~= nil and aura.action ~= "kick")
+            or (aura.icon ~= nil and (type(aura.icon) ~= "string"
+                or aura.icon == ""))
             or (aura.kickLabel ~= nil and type(aura.kickLabel) ~= "string")
             or (aura.retainAfterBossDeath ~= nil
                 and type(aura.retainAfterBossDeath) ~= "boolean")
@@ -2489,7 +2516,7 @@ local function RunDeclaredEffect(effect, captured)
         else
             deadline = effect.duration and Now() + effect.duration or nil
             mechanics.ShowTrackedAura(key, effect.label, name, deadline, binding,
-                effect.retainAfterBossDeath)
+                effect.retainAfterBossDeath, effect.icon)
             if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
                 mechanics.ShowBoundBotAction("kick:" .. key, {
                     binding = binding, label = (effect.kickLabel or "Kick") .. " " .. name,
@@ -2573,7 +2600,8 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                     effect = { type = "aura_apply", id = spec.id .. "_" .. aura.id,
                         target = aura.target, label = aura.label, duration = aura.duration,
                         action = aura.action, kickLabel = aura.kickLabel,
-                        retainAfterBossDeath = aura.retainAfterBossDeath }
+                        retainAfterBossDeath = aura.retainAfterBossDeath,
+                        icon = aura.icon or spec.icon }
                     RunDeclaredEffect(effect, captured)
                     if state then
                         now = Now()
