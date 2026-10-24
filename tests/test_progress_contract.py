@@ -47,6 +47,7 @@ class ProgressContract(unittest.TestCase):
         self.assertIn("active.stageTimers[id] == stage", SOURCE)
         self.assertIn('return false, "stale encounter"', SOURCE)
         self.assertIn('state.maximumAt > state.minimumAt', SOURCE)
+        self.assertIn('frame.detail:SetText("Ready?")', SOURCE)
         # No timer expiry can select another stage or fabricate an emote.
         stage_slice = SOURCE.split("function mechanics.SetTimerStage(", 1)[1].split(
             "function mechanics.GetTimerStage(", 1)[0]
