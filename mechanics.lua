@@ -1326,6 +1326,31 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
     end, "fixed")
 end
 
+-- Conditions are evaluated against SCB's current observed roster, never a
+-- cached role or a guessed unit. Unknown roles fail closed.
+local function BoundActionAvailable(slot)
+    local config = slot.boundDefinition
+    local condition = config and config.condition
+    if not condition then return true end
+    local name, member = mechanics.GetBoundMember(config.binding, slot.generation, false)
+    if not member then return false end
+    local bot = member.isBot and SCB_IsBotName and SCB_IsBotName(name)
+    if condition.recipient == "bot" and not bot then return false end
+    if condition.recipient == "human" and bot then return false end
+    if condition.role and (member.confirmedRole or member.assumedRole or member.role)
+        ~= condition.role then return false end
+    if condition.target == "bound" and (not UnitName
+        or UnitName("target") ~= name) then return false end
+    return true
+end
+
+local function ActionForMember(config, member)
+    local action = config.action
+    if not action or not action.byRole then return action end
+    local role = member and (member.confirmedRole or member.assumedRole or member.role)
+    return role and action.byRole[role] or nil
+end
+
 local function RefreshBoundAction(slot)
     local config = slot.boundDefinition
     local name, member, isBot, label
@@ -1336,6 +1361,13 @@ local function RefreshBoundAction(slot)
     -- kick action. Also hide an unavailable victim rather than guessing.
     if config.action and config.action.type == "kick" and not config.assignable
         and not isBot then slot.frame:Hide(); return end
+    local available = BoundActionAvailable(slot)
+    if config.hideWhenUnavailable and not available then
+        slot.frame:Hide()
+        return
+    end
+    slot.frame:SetAlpha(available and 1 or 0.4)
+    slot.actionEnabled = available
     if name then
         if config.assignedLabel == "name" then label = name
         else label = (config.assignedLabel or config.label) .. ": " .. name end
@@ -1343,9 +1375,10 @@ local function RefreshBoundAction(slot)
         label = config.label
     end
     slot.frame.label:SetText(label)
-    slot.frame.detail:SetText(name and not isBot and "Unavailable" or (config.detail or ""))
+    slot.frame.detail:SetText(not available and "Unavailable"
+        or (name and not isBot and "Unavailable" or (config.detail or "")))
     if slot.frame.scbUseButton then
-        if config.assignable and config.action and isBot then
+        if config.assignable and config.action and isBot and available then
             slot.frame.scbUseButton:Show()
         else
             slot.frame.scbUseButton:Hide()
@@ -1367,12 +1400,45 @@ function mechanics.ShowBoundBotAction(key, config)
         or config.label == "" or (config.assignedLabel ~= nil
         and type(config.assignedLabel) ~= "string")
         or (config.detail ~= nil and type(config.detail) ~= "string")
-        or (config.assignable ~= nil and type(config.assignable) ~= "boolean") then
+        or (config.assignable ~= nil and type(config.assignable) ~= "boolean")
+        or (config.hideWhenUnavailable ~= nil
+            and type(config.hideWhenUnavailable) ~= "boolean") then
         return false, "invalid bound action"
+    end
+    if config.condition ~= nil then
+        local c = config.condition
+        if type(c) ~= "table"
+            or (c.recipient ~= nil and c.recipient ~= "bot"
+                and c.recipient ~= "human" and c.recipient ~= "any")
+            or (c.role ~= nil and (type(c.role) ~= "string" or c.role == ""))
+            or (c.target ~= nil and c.target ~= "bound") then
+            return false, "invalid action condition"
+        end
     end
     if config.action ~= nil then
         if type(config.action) ~= "table" then return false, "invalid bound action" end
-        if config.action.type == "sequence" then
+        if config.action.type == "by_role" then
+            if type(config.action.byRole) ~= "table"
+                or not next(config.action.byRole) then
+                return false, "invalid role actions"
+            end
+            for role, variant in pairs(config.action.byRole) do
+                if type(role) ~= "string" or role == ""
+                    or type(variant) ~= "table"
+                    or variant.type ~= "sequence" or type(variant.steps) ~= "table"
+                    or table.getn(variant.steps) == 0
+                    or not ValidSequenceTargetDelay(variant.targetDelay) then
+                    return false, "invalid role action"
+                end
+                for _, commandStep in ipairs(variant.steps) do
+                    if type(commandStep) ~= "table"
+                        or type(commandStep.command) ~= "string"
+                        or type(commandStep.scope) ~= "string" then
+                        return false, "invalid role command"
+                    end
+                end
+            end
+        elseif config.action.type == "sequence" then
             if type(config.action.steps) ~= "table"
                 or table.getn(config.action.steps) == 0
                 or not ValidSequenceTargetDelay(config.action.targetDelay) then
@@ -1414,6 +1480,7 @@ function mechanics.ShowBoundBotAction(key, config)
     slot.boundDefinition = config
     slot.position = pos
     slot.expiresAt = config.expiresAt
+    slot.actionEnabled = nil
     if icon then
         -- The old overlay is never used for egg art; attached Kick still uses it.
         slot.frame.scbOverlay:Hide()
@@ -1454,6 +1521,10 @@ function mechanics.HandleActionClick(key, mouseButton)
                 end
                 return false, "no action"
             end
+            if not BoundActionAvailable(slot) then
+                RefreshBoundAction(slot)
+                return false, "action condition not met"
+            end
             if mouseButton == "RightButton" then
                 if not cfg.assignable then return false, "not assignable" end
                 ok = mechanics.ClearBinding(cfg.binding, active.generation)
@@ -1468,9 +1539,28 @@ function mechanics.HandleActionClick(key, mouseButton)
                 return ok, err
             end
             if not cfg.action then return false, "no action configured" end
-            ok, err = mechanics.RunBoundBotAction(cfg.binding, cfg.action, active.generation)
+            local action = ActionForMember(cfg, member)
+            if not action then return false, "no action for recipient role" end
+            ok, err = mechanics.RunBoundBotAction(cfg.binding, action, active.generation)
             RefreshBoundAction(slot)
             return ok, err
+        end
+    end
+    return false, "action not shown"
+end
+
+-- Optional post-aura retention: caller supplies positive fade/expiration evidence
+-- and a bounded duration; the existing presentation tick owns the expiry.
+-- Repeated calls may extend availability without introducing a second timer.
+function mechanics.RetainBoundActionAfterAura(key, seconds)
+    if not active or type(seconds) ~= "number" or seconds < 0
+        or seconds ~= seconds or seconds == math.huge then
+        return false, "invalid retention"
+    end
+    for _, slot in ipairs(presentation.action.pool) do
+        if slot.used and slot.key == key and slot.generation == active.generation then
+            slot.expiresAt = math.max(slot.expiresAt or 0, Now() + seconds)
+            return true
         end
     end
     return false, "action not shown"
