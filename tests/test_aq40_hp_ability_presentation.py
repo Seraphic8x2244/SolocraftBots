@@ -8,7 +8,7 @@ SRC = (pathlib.Path(__file__).resolve().parents[1] / "mechanics.lua").read_text(
 class ObservedHPAbilityPresentation(unittest.TestCase):
     def test_sort_uses_original_only(self):
         layout = SRC.split("LayoutPresentation = function(kind)", 1)[1].split("-- Only width and row height", 1)[0]
-        self.assertIn('active.id == "aq40_sentinels"', layout)
+        self.assertIn('active.id == "aq40.sentinels"', layout)
         self.assertIn("a.sentinelAbilities.priority", layout)
         self.assertIn("b.sentinelAbilities.priority", layout)
         self.assertIn("return order[a] < order[b]", layout)
