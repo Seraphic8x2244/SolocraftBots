@@ -3755,11 +3755,29 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "viscidus_toxin" then
+    if effect.type == "cthun_glare" then
+        if active.id ~= "aq40.cthun" or active.cthunPhase == 2 then return end
+        local currentGeneration = active.generation
+        mechanics.SetTimerStage("glare_cast", {
+            label = "Dark Glare casting", minDelay = 3,
+            provenance = "predicted",
+        }, currentGeneration)
+        mechanics.ScheduleTimer("cthun-glare-active", 3, function()
+            if not active or active.generation ~= currentGeneration
+                or active.cthunPhase == 2 then return end
+            mechanics.SetTimerStage("glare_active", {
+                label = "Dark Glare active", minDelay = 39,
+                provenance = "predicted",
+            }, currentGeneration)
+        end, "predicted")
+    elseif effect.type == "viscidus_toxin" then
         mechanics.ObserveViscidusToxin(captured, active.generation)
     elseif effect.type == "cthun_phase2" then
         if active.id ~= "aq40.cthun" or active.cthunPhase == 2 then return end
         active.cthunPhase = 2
+        mechanics.CancelTimer("cthun-glare-active")
+        mechanics.HidePresentation("timer", "stage:glare_cast")
+        mechanics.HidePresentation("timer", "stage:glare_active")
         -- Eye-death is a native event; do not keep the phase-one Dark Glare.
         for _, slot in ipairs(presentation.timer.pool) do
             if slot.used and slot.key == "ability:darkglare" then
