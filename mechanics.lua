@@ -1326,6 +1326,78 @@ function mechanics.ObserveDeclaredUnits(tokens, expectedGeneration)
     return true
 end
 
+-- Positive GUID-bound Sentinel observations. Source callers must identify a
+-- specific live unit token; text-only combat events are NOT adequate evidence.
+-- Original identity cannot be inferred from abilities inherited later.
+local function SentinelPriority(name)
+    local declaration = SoloCraftBots.bossModDefinitions
+    local group = declaration and declaration.aq40 and declaration.aq40.sentinels
+    for _, tier in ipairs(group and group.initialAbilityPriority or {}) do
+        for _, candidate in ipairs(tier.names or {}) do
+            if candidate == name then return tier.rank end
+        end
+    end
+    return nil
+end
+
+function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGeneration)
+    if not active or active.id ~= "aq40_sentinels" or not active.engaged
+        or active.postBossCleanup
+        or (expectedGeneration and active.generation ~= expectedGeneration)
+        or (provenance ~= "original" and provenance ~= "inherited")
+        or type(ability) ~= "string" or not SentinelPriority(ability)
+        or not UnitName or UnitName(unit) ~= "Anubisath Sentinel" then
+        return false, "unverified sentinel observation"
+    end
+    local guid = mechanics.NPCInstanceID(unit)
+    if not guid then return false, "unidentified sentinel" end
+    local row
+    for _, slot in ipairs(presentation.hp.pool) do
+        if slot.used and not slot.dead and slot.instanceID == guid
+            and slot.key == "sentinel:" .. guid then row = slot; break end
+    end
+    if not row then return false, "sentinel hp not tracked" end
+    local state = row.sentinelAbilities
+    if not state then state = { observed = {} }; row.sentinelAbilities = state end
+    if provenance == "original" then
+        if state.original and state.original ~= ability then
+            return false, "conflicting original ability"
+        end
+        state.original = ability
+    end
+    state.observed[ability] = true
+    return true
+end
+
+function mechanics.GetSentinelAbilities(unit, expectedGeneration)
+    if not active or active.id ~= "aq40_sentinels" or not active.engaged
+        or (expectedGeneration and active.generation ~= expectedGeneration) then
+        return nil
+    end
+    local guid = mechanics.NPCInstanceID(unit)
+    if not guid or not UnitName or UnitName(unit) ~= "Anubisath Sentinel" then
+        return nil
+    end
+    for _, row in ipairs(presentation.hp.pool) do
+        if row.used and not row.dead and row.instanceID == guid
+            and row.key == "sentinel:" .. guid then
+            local state = row.sentinelAbilities
+            local observed = {}
+            if state then
+                for ability in pairs(state.observed) do
+                    table.insert(observed, ability)
+                end
+                table.sort(observed)
+            end
+            return { guid = guid, original = state and state.original,
+                priority = state and state.original
+                    and SentinelPriority(state.original) or nil,
+                observed = observed }
+        end
+    end
+    return nil
+end
+
 -- Dev-only Defender interval sampler. Samples are consecutive locally
 -- observed applications/hits for exactly one positively GUID-bound Defender;
 -- no ability cooldown is inferred from them. No independent polling owner.
