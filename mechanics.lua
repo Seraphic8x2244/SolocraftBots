@@ -1350,21 +1350,25 @@ function mechanics.RecordDefenderHit(ability, expectedGeneration)
         if defenderSampleNames[i] == ability then allowed = true; break end
     end
     if not allowed then return false, "invalid ability" end
-    -- Require exactly one live, currently identified Defender instance.
+    -- Attribution must remain unambiguous even when another live
+    -- Defender is temporarily out of token range. Do not silently ignore
+    -- such a tracked instance and attach its hit to the visible one.
     local id, candidate
     for _, slot in ipairs(presentation.hp.pool) do
-        if slot.used and slot.key
-            and string.find(slot.key, "^defender:")
-            and not slot.dead and slot.unit
-            and UnitName and UnitName(slot.unit) == "Anubisath Defender"
-            and mechanics.NPCInstanceID(slot.unit) == slot.instanceID then
+        if slot.used and slot.key and string.find(slot.key, "^defender:")
+            and not slot.dead then
             if id and id ~= slot.instanceID then
                 return false, "ambiguous defender"
             end
             id = slot.instanceID
+            candidate = slot
         end
     end
-    if not id then return false, "defender GUID unavailable" end
+    if not id or not candidate or not candidate.unit
+        or not UnitName or UnitName(candidate.unit) ~= "Anubisath Defender"
+        or mechanics.NPCInstanceID(candidate.unit) ~= id then
+        return false, "defender GUID unavailable"
+    end
     active.defenderLastHits = active.defenderLastHits or {}
     active.defenderLastHits[id] = active.defenderLastHits[id] or {}
     local times = active.defenderLastHits[id]
