@@ -111,6 +111,17 @@ class AQ40Chunk5Contract(unittest.TestCase):
         click = MECH.split('function mechanics.HandleActionClick', 1)[1]
         self.assertIn('if not BoundActionAvailable(slot) then', click)
 
+    def test_observed_finish_deduplicates_only_exact_positive_event_identity(self):
+        section = MECH.split('function mechanics.ObserveAbilityFinish(', 1)[1].split('function mechanics.ObserveAbilityInterrupt(', 1)[0]
+        self.assertIn('state.lastFinishObservationId == observationId', section)
+        self.assertIn('return true, "duplicate observation"', section)
+        self.assertIn('state.lastFinishObservationId = observationId', section)
+        self.assertIn('return false, "invalid observation identity"', section)
+        self.assertNotIn('observationId or', section)
+        dispatch = MECH.split('local function Deliver(spec, isGroup)', 1)[1].split('-- Per-recipient auras', 1)[0]
+        self.assertIn('details and details.observationId', dispatch)
+        self.assertIn('mechanics.ObserveAbilityFinish(spec.id,', dispatch)
+
     def test_version_is_dev(self):
         self.assertRegex(TOC, r'## Version: 0\.9\.\d+-dev')
 
