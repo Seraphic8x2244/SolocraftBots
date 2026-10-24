@@ -2212,7 +2212,12 @@ local function SCB_BossModsRefreshZone()
         or (not enabled and not bossModsZone) then return end
     if bossModsZone then
         for eventName in pairs(bossModsEvents[bossModsZone] or {}) do
-            eventFrame:UnregisterEvent(eventName)
+            if eventName == "UNIT_CASTEVENT" then
+                -- Vanilla clients may not recognise this optional SuperWoW event.
+                pcall(eventFrame.UnregisterEvent, eventFrame, eventName)
+            else
+                eventFrame:UnregisterEvent(eventName)
+            end
         end
         engine.Reset("zone exit")
     end
@@ -2220,7 +2225,12 @@ local function SCB_BossModsRefreshZone()
     bossModsZoneActive = enabled
     if enabled then
         for eventName in pairs(bossModsEvents[zone] or {}) do
-            eventFrame:RegisterEvent(eventName)
+            if eventName == "UNIT_CASTEVENT" then
+                -- Optional extension: absence must never break ordinary SCB.
+                pcall(eventFrame.RegisterEvent, eventFrame, eventName)
+            else
+                eventFrame:RegisterEvent(eventName)
+            end
         end
         -- Register observations only; entering the zone does not prove
         -- a boss is alive or authorize an encounter action.
@@ -2356,12 +2366,23 @@ local function SCB_BossModsObserveTargets()
     end
 end
 
-local function SCB_BossModsOnCombatEvent(eventName, message, speaker)
+local function SCB_BossModsOnCombatEvent(eventName, message, speaker,
+    castType, spellId)
     local engine, state, observedBoss, isCombat
     if not bossModsZoneActive or not (bossModsEvents[bossModsZone]
         and bossModsEvents[bossModsZone][eventName]) then return end
     engine = SCB.mechanics
     if not engine then return end
+    if eventName == "UNIT_CASTEVENT" then
+        -- SuperWoW: arg1 casterGUID, arg2 targetGUID, arg3 cast type,
+        -- arg4 spellID. Only matched observed caster GUIDs may change stages.
+        local current = engine.GetEncounterState()
+        if current and current.engaged then
+            engine.ObserveDeclaredCastEvent(message, castType,
+                spellId, current.generation)
+        end
+        return
+    end
     if eventName == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
         engine.ObserveBossDeathMessage(bossModsZone, eventName, message)
         return
@@ -2441,7 +2462,7 @@ eventFrame:SetScript("OnEvent", function()
     end
     if bossModsZoneActive and bossModsEvents[bossModsZone]
         and bossModsEvents[bossModsZone][event] then
-        SCB_BossModsOnCombatEvent(event, arg1, arg2)
+        SCB_BossModsOnCombatEvent(event, arg1, arg2, arg3, arg4)
     end
     if event == "PLAYER_TARGET_CHANGED" then
         if SCB.frame and SCB.frame:IsShown() and SCB_RefreshTargetCommandRow then
