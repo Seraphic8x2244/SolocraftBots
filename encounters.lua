@@ -508,6 +508,13 @@ SoloCraftBots.bossModDefinitions = {
         ouro = {
             detect = { zone = "Ahn'Qiraj", boss = "Ouro" },
             mechanics = {},
+            -- First readiness is estimated from observed engagement.
+            -- Only a positive Ground Rupture refreshes this single row.
+            initialStages = {
+                { id = "ourocycle", label = "Next Submerge (estimated)",
+                    minDelay = 89, provenance = "predicted",
+                    icon = "Interface\\Icons\\INV_Misc_Shovel_01" },
+            },
             thresholds = {
                 { id = "berserk", name = "Ouro",
                     label = "Berserk (20% HP)", threshold = 0.20,
