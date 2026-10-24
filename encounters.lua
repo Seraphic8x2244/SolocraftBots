@@ -398,13 +398,52 @@ SoloCraftBots.bossModDefinitions = {
                 { id = "worm", name = "Spawn of Fankriss",
                     label = "Enraging Worm", hideOnDeath = true },
             },
-            abilities = {}, triggers = {},
-            -- Entangle Come must remain disabled until a positively observed
-            -- fade; it cannot be represented by a generic Kick aura.
+            abilities = {
+                {
+                    id = "entangle", caster = "Fankriss the Unyielding",
+                    label = "Entangle", mode = "opportunistic",
+                    observedOnly = true,
+                    auras = {
+                        { id = "self", label = "Entangle",
+                            target = "player",
+                            icon = "Interface\\Icons\\Spell_Nature_Web",
+                            gain = { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                                contains = "You are afflicted by Entangle." },
+                            fade = { event = "CHAT_MSG_SPELL_AURA_GONE_SELF",
+                                contains = "Entangle fades from you." } },
+                        { id = "other", label = "Entangle",
+                            target = "capture",
+                            icon = "Interface\\Icons\\Spell_Nature_Web",
+                            gain = { events = {
+                                "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
+                                "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE" },
+                                pattern = "^(.+) is afflicted by Entangle%.$" },
+                            fade = { events = {
+                                "CHAT_MSG_SPELL_AURA_GONE_PARTY",
+                                "CHAT_MSG_SPELL_AURA_GONE_OTHER" },
+                                pattern = "^Entangle fades from (.+)%.$" } },
+                    },
+                },
+            }, triggers = {},
+            -- No Come command until target-bound post-fade safety is proven.
         },
         viscidus = {
             detect = { zone = "Ahn'Qiraj", boss = "Viscidus" },
-            mechanics = {}, abilities = {},
+            mechanics = {},
+            abilities = {
+                {
+                    id = "toxin", caster = "Viscidus", label = "Toxin",
+                    observedOnly = true, mode = "opportunistic",
+                    auras = {
+                        { id = "self", label = "Toxin", target = "player",
+                            icon = "Interface\\Icons\\Spell_Nature_AbolishMagic",
+                            gain = { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                                contains = "You are afflicted by Toxin." },
+                            fade = { event = "CHAT_MSG_SPELL_AURA_GONE_SELF",
+                                contains = "Toxin fades from you." } },
+                    },
+                },
+            },
             counters = {
                 { id = "frosthits", label = "Observed Frost Hits",
                     maximum = 200, maximumKind = "reference",
