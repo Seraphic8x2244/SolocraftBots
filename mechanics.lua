@@ -2943,7 +2943,9 @@ function mechanics.ShowAbilityBars()
     if not session or not session.engaged or not session.abilities then return false end
     for i, key in ipairs(session.abilityOrder) do
         state = session.abilities[key]
-        if state and state.phase ~= "unstarted" then
+        if state and state.phase ~= "unstarted"
+            and not (session.id == "aq40.cthun" and session.cthunPhase == 2
+                and key == "darkglare") then
             slot, err = AcquirePresentation("timer", "ability:" .. key)
             if not slot then return false, err end
             slot.abilityRecord, slot.abilityHint = state, nil
