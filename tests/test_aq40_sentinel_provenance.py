@@ -9,7 +9,7 @@ class SentinelObservationContract(unittest.TestCase):
     def test_requires_engaged_exact_encounter_and_live_guid(self):
         body = SOURCE.split("function mechanics.ObserveSentinelAbility(", 1)[1].split(
             "function mechanics.GetSentinelAbilities(", 1)[0]
-        self.assertIn('active.id ~= "aq40_sentinels"', body)
+        self.assertIn('active.id ~= "aq40.sentinels"', body)
         self.assertIn('UnitName(unit) ~= "Anubisath Sentinel"', body)
         self.assertIn('guid = mechanics.NPCInstanceID(unit)', body)
         self.assertIn('not slot.dead and slot.instanceID == guid', body)
