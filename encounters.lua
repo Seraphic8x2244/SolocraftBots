@@ -639,6 +639,11 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "darkglare", caster = "Eye of C'Thun",
                     label = "Dark Glare", mode = "opportunistic",
+                    -- Elesion 47b5380 reference estimates, not runtime-verified.
+                    -- Readiness never fabricates a cast; native cast text
+                    -- confirms each actual start and refreshes the cycle.
+                    firstDelay = 45, repeatDelay = 87,
+                    resetOn = "start", castTime = 3,
                     icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt",
                     startRule = {
                         event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
@@ -646,8 +651,17 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
             },
-            -- Additional source evidence required for a shared Giant
-            -- Tentacle row and positively signalled Weakened interval.
+            triggers = {
+                -- Native emote positively establishes the start of Weakened.
+                -- This 45s bar is an Elesion reference, not a phase detector.
+                { event = "CHAT_MSG_MONSTER_EMOTE",
+                    contains = "is weakened!",
+                    effects = { { id = "weakened", type = "timer",
+                        label = "Weakened (reference 45s)",
+                        duration = 45, provenance = "predicted" } } },
+            },
+            -- Giant Tentacle shared HP row remains separate from spawn
+            -- estimates; do not derive identity from birth messages.
         },
         sentinels = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Sentinel",
