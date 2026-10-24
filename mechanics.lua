@@ -3048,7 +3048,15 @@ end
 local function CheckEffect(e, hasPattern)
     local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
-    if e.type == "ability_lockout" then
+    if e.type == "viscidus_toxin" then
+        return (e.target == nil or e.target == "player")
+            and (e.target == "player" or hasPattern)
+    elseif e.type == "viscidus_phase" then
+        return e.phase == "frost" or e.phase == "melee"
+    elseif e.type == "cthun_glare" or e.type == "cthun_phase2"
+        or e.type == "cthun_weakened" then
+        return true
+    elseif e.type == "ability_lockout" then
         return type(e.ability) == "string" and IsId(e.ability)
             and IsDuration(e.duration)
     elseif e.type == "dev_interval" then
