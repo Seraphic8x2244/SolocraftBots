@@ -652,6 +652,12 @@ SoloCraftBots.bossModDefinitions = {
                 { id = "flesh", name = "Flesh Tentacle",
                     label = "Flesh Tentacle", hideOnDeath = true,
                     clickTarget = true, attackAll = true },
+                { id = "giant_claw", name = "Giant Claw Tentacle",
+                    label = "Giant Claw Tentacle", hideOnDeath = true,
+                    clickTarget = true },
+                { id = "giant_eye", name = "Giant Eye Tentacle",
+                    label = "Giant Eye Tentacle", hideOnDeath = true,
+                    clickTarget = true },
             },
             abilities = {
                 {
@@ -670,6 +676,9 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             triggers = {
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    contains = "Eye of C'Thun begins to cast Dark Glare.",
+                    effects = { { type = "cthun_glare" } } },
                 { event = "CHAT_MSG_COMBAT_HOSTILE_DEATH",
                     contains = "Eye of C'Thun dies.",
                     effects = { { type = "cthun_phase2" } } },
