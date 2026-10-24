@@ -1467,7 +1467,13 @@ function mechanics.ObserveDeclaredUnits(tokens, expectedGeneration)
         if type(unit) == "string" and UnitExists and UnitExists(unit) and UnitName then
             name = UnitName(unit)
             for _, spec in ipairs(d.hpUnits or {}) do
-                if name == spec.name then
+                local matches = name == spec.name
+                if not matches then
+                    for _, alias in ipairs(spec.aliases or {}) do
+                        if name == alias then matches = true; break end
+                    end
+                end
+                if matches then
                     mechanics.ObserveNPCHealth(spec.id, unit, spec)
                 end
             end
@@ -3269,6 +3275,15 @@ local function CheckObservedUnits(d)
                 return false
             end
             if kind == "hpUnits" then
+                if spec.aliases ~= nil then
+                    if type(spec.aliases) ~= "table" then return false end
+                    local aliasSeen = { [spec.name] = true }
+                    for _, alias in ipairs(spec.aliases) do
+                        if type(alias) ~= "string" or alias == ""
+                            or aliasSeen[alias] then return false end
+                        aliasSeen[alias] = true
+                    end
+                end
                 if (spec.hideOnDeath ~= nil and type(spec.hideOnDeath) ~= "boolean")
                     or (spec.clickTarget ~= nil and type(spec.clickTarget) ~= "boolean")
                     or (spec.attackAll ~= nil and type(spec.attackAll) ~= "boolean")
