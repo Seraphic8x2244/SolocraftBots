@@ -539,7 +539,7 @@ SoloCraftBots.bossModDefinitions = {
             hpUnits = {
                 { id = "flesh", name = "Flesh Tentacle",
                     label = "Flesh Tentacle", hideOnDeath = true,
-                    clickTarget = true },
+                    clickTarget = true, attackAll = true },
             },
             abilities = {
                 {
