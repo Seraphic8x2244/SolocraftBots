@@ -1,5 +1,13 @@
 # Development Progress
 
+## User scope correction — remove unrequested native AQ40 mechanics (2026-10-24)
+- User explicitly rejected added Viscidus "five stages" (these were five emote messages, NOT five approved stages), Sartura Enrage, Huhuran Wyvern Sting/Noxious Poison/Berserk, and Twins Twin Teleport/Blizzard. The team must implement **ONLY the user's approved mechanics** and must not copy unrelated BigWigs mechanics into SCB.
+- Restored `encounters.lua` exactly to approved baseline commit `35a30c5` (code revert commit `7d7aa1c`). This also removes the added Viscidus emote notices, Sartura fade/Enrage notice, C'Thun unrequested birth/weakening notices, and Huhuran/Twins additions from the recent native-only sweep. Kept `mechanics.lua` dotted encounter-ID integration fix `38e4f36` and previous scoped Fankriss Entangle / Viscidus Toxin observation declarations. `main` untouched. Current TOC **0.9.80-dev**.
+- Deleted two regression files that asserted the unwanted features; reduced `tests/test_aq40_native_events.py` to canonical dotted encounter-ID checks only. Removed features must NOT be re-added without user approval.
+- Previous native-only checkpoint sections below describe superseded historical work; **this section overrides them** for current scope. Follow original approved AQ40 requirements, not the historical feature additions. Regression, canonical Lua compiler, CI and game tests have not been run in this correction pass.
+- Next: implement approved timers/actions only. Do not infer that every BigWigs mechanic is desired.
+
+
 ## AQ40 native-only continuation — Huhuran and Twins (2026-10-24)
 - Continued dev-only code from preceding native AQ40 checkpoint. TOC **0.9.79-dev**, `main` untouched. Runtime commit `f7576e4`, TOC `5f53943`, regressions `fd420b9`.
 - Huhuran now has native positive self-only Noxious Poison and Wyvern Sting gain/fade aura observations, plus Frenzy gain/fade and observed Berserk notices. Twin Emperors now have native self Blizzard gain/fade and observed Twin Teleport notice. Source based on pinned Elesion BigWigs `47b5380` modules. No inferred next cooldown, target-of-target, encounter GUID, phase reset or unsupported recipient attribution. All use existing SCB event dispatcher and generic presentation.
