@@ -2384,12 +2384,68 @@ local function RefreshToxinTracker()
     end or nil
 end
 
+-- Native AQ40 observations use the existing encounter presentation tick.
+local function AQ40VisibleBoss(name)
+    if not UnitExists or not UnitName then return false end
+    if UnitExists("target") and UnitName("target") == name then return true end
+    local count = GetNumRaidMembers and GetNumRaidMembers() or 0
+    for i = 1, count do
+        local token = "raid" .. i .. "target"
+        if UnitExists(token) and UnitName(token) == name then return true end
+    end
+    return false
+end
+
+local function AQ40SkeramMark()
+    if not UnitExists or not UnitName or not UnitHealthMax
+        or not SetRaidTarget or not GetNumRaidMembers then return end
+    if not ((IsRaidLeader and IsRaidLeader())
+        or (IsRaidOfficer and IsRaidOfficer())) then return end
+    local count = GetNumRaidMembers()
+    local minimum = count >= 20 and count <= 40
+        and count * 10000 or (count < 20 and 200000 or nil)
+    if not minimum then return end
+    local tokens = { "target" }
+    for i = 1, count do table.insert(tokens, "raid" .. i .. "target") end
+    for _, token in ipairs(tokens) do
+        if UnitExists(token) and UnitName(token) == "The Prophet Skeram"
+            and UnitHealthMax(token) > minimum then
+            local marker = GetRaidTargetIndex and GetRaidTargetIndex(token)
+            if marker ~= 6 and not active.skeramMarked then
+                SetRaidTarget(token, 6)
+                active.skeramMarked = true
+            elseif marker == 6 then
+                active.skeramMarked = true
+            end
+            return
+        end
+    end
+end
+
+local function AQ40OuroSubmerge(now)
+    if not active or not active.engaged or active.postBossCleanup
+        or active.id ~= "aq40.ouro" then return end
+    if AQ40VisibleBoss("Ouro") then
+        active.ouroSeen = true
+    elseif active.ouroSeen and active.ouroPhase ~= "submerged"
+        and not (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) then
+        active.ouroPhase = "submerged"
+        mechanics.SetTimerStage("ourocycle", {
+            label = "Next Emerge (reference)", minDelay = 27,
+            provenance = "predicted",
+            icon = "Interface\\Icons\\INV_Misc_Shovel_01",
+        }, active.generation)
+    end
+end
+
 function mechanics.UpdatePresentationState(now)
     local session = active
     if not session then return end
     if type(now) ~= "number" then now = Now() end
     if not session.postBossCleanup then mechanics.UpdateAbilityStates(now) end
     if session.id == "aq40.viscidus" then RefreshToxinTracker() end
+    if session.engaged and session.id == "aq40.skeram" then AQ40SkeramMark() end
+    if session.engaged and session.id == "aq40.ouro" then AQ40OuroSubmerge(now) end
     local actionVisibilityChanged = false
     for _, slot in ipairs(presentation.action.pool) do
         if slot.used and slot.generation == session.generation then
@@ -3893,6 +3949,10 @@ local function RunDeclaredEffect(effect, captured, details)
     elseif effect.type == "counter_reset" then
         mechanics.ResetCounter(effect.id, active.generation)
     elseif effect.type == "timer_stage" then
+        if active.id == "aq40.ouro" and effect.id == "ourocycle" then
+            active.ouroPhase = "emerged"
+            active.ouroSeen = false
+        end
         mechanics.SetTimerStage(effect.id, effect, active.generation)
     elseif effect.type == "timer" then
         if mechanics.ScheduleTimer(key, effect.duration, nil, effect.provenance) then
