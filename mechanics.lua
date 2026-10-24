@@ -1246,14 +1246,18 @@ function mechanics.ObserveHPThreshold(key, unit, options, expectedGeneration)
         or type(options.threshold) ~= "number" or options.threshold <= 0
         or options.threshold >= 1 or options.threshold ~= options.threshold
         or (options.icon ~= nil and (type(options.icon) ~= "string"
-            or options.icon == "")) then return false, "invalid threshold" end
+            or options.icon == ""))
+        or (options.group ~= nil and (type(options.group) ~= "string"
+            or not string.find(options.group, "^[%w_]+$")))
+        then return false, "invalid threshold" end
     local id = mechanics.NPCInstanceID(unit)
     if not id or not UnitHealth or not UnitHealthMax then
         return false, "unidentified npc instance"
     end
     local health, maximum = UnitHealth(unit), UnitHealthMax(unit)
     if type(health) ~= "number" or type(maximum) ~= "number"
-        or maximum <= 0 or health ~= health or health < 0 then
+        or maximum <= 0 or health ~= health or health < 0
+        or health > maximum then
         return false, "invalid hp"
     end
     local slot, err = AcquirePresentation("timer", "threshold:" .. key)
@@ -1921,6 +1925,7 @@ function mechanics.UpdatePresentation(now)
                         observed = type(health) == "number"
                             and type(maximum) == "number" and maximum > 0
                             and health == health and health >= 0
+                            and health <= maximum
                     end
                     if observed then
                         local pct = math.max(0, math.min(1, health / maximum))
@@ -1940,7 +1945,7 @@ function mechanics.UpdatePresentation(now)
                         frame.detail:SetText("?")
                     elseif pct <= state.threshold then
                         -- Reaching HP percentage does not prove a boss ability.
-                        frame.detail:SetText("HP threshold")
+                        frame.detail:SetText(string.format("%.0f%% HP", 100 * state.threshold))
                     elseif elapsed > 0 and loss > 0 then
                         frame.detail:SetText(string.format("~%.0fs",
                             (pct - state.threshold) * elapsed / loss))
@@ -2427,6 +2432,7 @@ local function CheckEffect(e, hasPattern)
                 or e.provenance == "predicted")
             and (e.group == nil or (type(e.group) == "string"
                 and string.find(e.group, "^[%w_]+$") ~= nil))
+            and (e.icon == nil or (type(e.icon) == "string" and e.icon ~= ""))
     elseif e.type == "timer" then
         return type(e.label) == "string" and e.label ~= ""
             and IsDuration(e.duration)
