@@ -536,13 +536,22 @@ SoloCraftBots.bossModDefinitions = {
                     contains = "Viscidus gains Winter's Chill.",
                     effects = { { type = "counter_hit", id = "frosthits" } },
                 },
-                {
-                    events = { "CHAT_MSG_COMBAT_SELF_HITS",
-                        "CHAT_MSG_COMBAT_PARTY_HITS",
+                -- Native physical hit/crit text differs for self and others.
+                -- Do not count spell damage as a physical hit.
+                { event = "CHAT_MSG_COMBAT_SELF_HITS",
+                    pattern = "^You [hc][ir][ti].* Viscidus for ",
+                    effects = { { type = "counter_hit", id = "meleehits" } } },
+                { events = { "CHAT_MSG_COMBAT_PARTY_HITS",
                         "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS" },
-                    contains = " Viscidus for ",
-                    effects = { { type = "counter_hit", id = "meleehits" } },
-                },
+                    pattern = " [hc][ir][ti].* Viscidus for ",
+                    effects = { { type = "counter_hit", id = "meleehits" } } },
+                -- Elesion counts native spell combat messages containing Frost
+                -- damage; restrict to messages explicitly naming Viscidus.
+                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    pattern = "Viscidus.*Frost damage",
+                    effects = { { type = "counter_hit", id = "frosthits" } } },
             },
             -- No guessed phase transitions from incomplete hit totals.
         },
@@ -652,6 +661,18 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             triggers = {
+                -- These Birth messages identify a *spawn already occurring*.
+                -- A reference next-spawn window is not a claimed unique unit.
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                    contains = "Giant Claw Tentacle begins to cast Birth.",
+                    effects = { { type = "timer_stage", id = "giant_eye_next",
+                        label = "Next Giant Eye (reference)",
+                        minDelay = 30, provenance = "predicted" } } },
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                    contains = "Giant Eye Tentacle begins to cast Birth.",
+                    effects = { { type = "timer_stage", id = "giant_claw_next",
+                        label = "Next Giant Claw (reference)",
+                        minDelay = 30, provenance = "predicted" } } },
                 -- Native emote positively establishes the start of Weakened.
                 -- This 45s bar is an Elesion reference, not a phase detector.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
@@ -766,7 +787,15 @@ SoloCraftBots.bossModDefinitions = {
                     effects = { { type = "dev_interval", id = "thu_sample",
                         ability = "thunderclap" } } },
             },
-            -- Reflect needs positive school evidence for an icon.
+            -- Native reflection strings identify the school pair, not a
+            -- 600-second cooldown. Persist a passive identified marker only.
+            -- Individual casts need no GUID while a single Defender is active.
+            -- No mutually exclusive pair inferred from unverified damage.
+            -- Reflect evidence uses Elesion's exact spell examples.
+            -- (Ability 3 is identification only; 4/5 deliberately ignored.)
+            -- Reflect-specific icons are not yet wired to this generic
+            -- observed-ability UI; source-positive text labels only.
+            -- Additional cooldowns require recorded intervals.
         },
     },
 }
