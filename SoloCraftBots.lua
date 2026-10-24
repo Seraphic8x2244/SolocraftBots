@@ -2183,7 +2183,7 @@ local bossModsCalmSamples = 0
 
 local function SCB_BossModsInitialize()
     local engine = SCB.mechanics
-    local ok, why, eventNames, i
+    local ok, why, eventNames, i, zoneName
     if not engine or not SCB.bossModDefinitions or SCB.bossModsInitialised then return end
     ok, why = engine.RegisterDeclarativeEncounters(SCB.bossModDefinitions)
     if not ok then

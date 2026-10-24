@@ -308,4 +308,272 @@ SoloCraftBots.bossModDefinitions = {
             },
         },
     },
+
+    -- Chosen AQ40 mechanics only. Missing reliable native evidence remains
+    -- undeclared: an absent effect is NOT inferred from an unobserved event.
+    aq40 = {
+        skeram = {
+            detect = { zone = "Ahn'Qiraj", boss = "The Prophet Skeram",
+                endOnBossDeath = false },
+            mechanics = {}, abilities = {}, triggers = {},
+            -- True-copy identification/remark requires server-specific proof.
+        },
+        bugtrio = {
+            detect = { zone = "Ahn'Qiraj", boss = "Lord Kri",
+                endOnBossDeath = false },
+            mechanics = {},
+            hpUnits = {
+                { id = "kri", name = "Lord Kri", label = "Lord Kri" },
+                { id = "yauj", name = "Princess Yauj", label = "Princess Yauj" },
+                { id = "vem", name = "Vem", label = "Vem" },
+            },
+            abilities = {
+                {
+                    id = "poison", caster = "Lord Kri", label = "Poison Volley",
+                    mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Nature_CorrosiveBreath",
+                    finishRule = {
+                        events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
+                        contains = "Lord Kri's Poison Volley",
+                    },
+                },
+                {
+                    id = "greatheal", caster = "Princess Yauj",
+                    label = "Great Heal", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
+                    startRule = {
+                        events = { "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                            "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
+                        contains = "Princess Yauj begins to cast Great Heal.",
+                    },
+                },
+                {
+                    id = "fear", caster = "Princess Yauj", label = "Fear",
+                    mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Shadow_Possession",
+                    startRule = {
+                        event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                        contains = "Princess Yauj begins to cast Fear.",
+                    },
+                },
+            },
+            triggers = {},
+        },
+        sartura = {
+            detect = { zone = "Ahn'Qiraj", boss = "Battleguard Sartura" },
+            mechanics = {},
+            hpUnits = {
+                { id = "boss", name = "Battleguard Sartura",
+                    label = "Battleguard Sartura" },
+                { id = "guard", name = "Sartura's Royal Guard",
+                    label = "Royal Guard" },
+            },
+            abilities = {
+                {
+                    id = "whirlwind", caster = "Battleguard Sartura",
+                    label = "Whirlwind", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Ability_Whirlwind",
+                    -- Aura gain is observed activation, not a cast start or
+                    -- proof of when the next Whirlwind will become available.
+                    finishRule = {
+                        event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
+                        contains = "Battleguard Sartura gains Whirlwind.",
+                    },
+                },
+            },
+            triggers = {},
+        },
+        fankriss = {
+            detect = { zone = "Ahn'Qiraj", boss = "Fankriss the Unyielding" },
+            mechanics = {},
+            hpUnits = {
+                { id = "boss", name = "Fankriss the Unyielding",
+                    label = "Fankriss" },
+                { id = "worm", name = "Spawn of Fankriss",
+                    label = "Enraging Worm", hideOnDeath = true },
+            },
+            abilities = {}, triggers = {},
+            -- Entangle Come must remain disabled until a positively observed
+            -- fade; it cannot be represented by a generic Kick aura.
+        },
+        viscidus = {
+            detect = { zone = "Ahn'Qiraj", boss = "Viscidus" },
+            mechanics = {}, abilities = {},
+            counters = {
+                { id = "frosthits", label = "Observed Frost Hits",
+                    maximum = 200, maximumKind = "reference",
+                    icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" },
+                { id = "meleehits", label = "Observed Melee Hits",
+                    maximum = 110, maximumKind = "reference",
+                    icon = "Interface\\Icons\\INV_Sword_04" },
+            },
+            triggers = {
+                -- Confirmed creature buff applications; these are only a
+                -- subset of frost damage hits, not a complete frost count.
+                {
+                    event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
+                    pattern = "^Viscidus gains (Chilled)%.$",
+                    effects = { { type = "counter_hit", id = "frosthits" } },
+                },
+                {
+                    event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
+                    contains = "Viscidus gains Winter's Chill.",
+                    effects = { { type = "counter_hit", id = "frosthits" } },
+                },
+                {
+                    events = { "CHAT_MSG_COMBAT_SELF_HITS",
+                        "CHAT_MSG_COMBAT_PARTY_HITS",
+                        "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS" },
+                    contains = " Viscidus for ",
+                    effects = { { type = "counter_hit", id = "meleehits" } },
+                },
+            },
+            -- No guessed phase transitions from incomplete hit totals.
+        },
+        huhuran = {
+            detect = { zone = "Ahn'Qiraj", boss = "Princess Huhuran" },
+            mechanics = {}, abilities = {}, triggers = {},
+            thresholds = {
+                { id = "berserk", name = "Princess Huhuran",
+                    label = "Berserk (30% HP)", threshold = 0.30,
+                    icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy" },
+            },
+        },
+        twins = {
+            detect = { zone = "Ahn'Qiraj", boss = "Emperor Vek'lor",
+                endOnBossDeath = false },
+            mechanics = {}, abilities = {}, triggers = {},
+            -- Vek'lor target-of-target requires positive target-chain
+            -- identity; no name-only fallback.
+        },
+        ouro = {
+            detect = { zone = "Ahn'Qiraj", boss = "Ouro" },
+            mechanics = {},
+            thresholds = {
+                { id = "berserk", name = "Ouro",
+                    label = "Berserk (20% HP)", threshold = 0.20,
+                    icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy" },
+            },
+            abilities = {
+                {
+                    id = "sweep", caster = "Ouro", label = "Sweep",
+                    mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Nature_Thorns",
+                    startRule = {
+                        event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                        contains = "Ouro begins to cast Sweep.",
+                    },
+                },
+                {
+                    id = "sandblast", caster = "Ouro", label = "Sand Blast",
+                    mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Nature_Cyclone",
+                    startRule = {
+                        event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                        contains = "Ouro begins to perform Sand Blast.",
+                    },
+                },
+            },
+            triggers = {
+                {
+                    event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                    contains = "Ground Rupture",
+                    effects = { { type = "notice", id = "emerge",
+                        label = "Ouro emerge observed", lifespan = 5 } },
+                },
+            },
+            -- Submerge lacks a confirmed native signal: do not infer it from
+            -- losing the target or invent a stage/interval countdown.
+        },
+        cthun = {
+            detect = { zone = "Ahn'Qiraj", boss = "C'Thun" },
+            mechanics = {}, triggers = {},
+            hpUnits = {
+                { id = "flesh", name = "Flesh Tentacle",
+                    label = "Flesh Tentacle", hideOnDeath = true,
+                    clickTarget = true },
+            },
+            abilities = {
+                {
+                    id = "darkglare", caster = "Eye of C'Thun",
+                    label = "Dark Glare", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt",
+                    startRule = {
+                        event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                        contains = "Eye of C'Thun begins to cast Dark Glare.",
+                    },
+                },
+            },
+            -- Additional source evidence required for a shared Giant
+            -- Tentacle row and positively signalled Weakened interval.
+        },
+        sentinels = {
+            detect = { zone = "Ahn'Qiraj", boss = "Anubisath Sentinel",
+                endOnBossDeath = false },
+            mechanics = {}, abilities = {}, triggers = {},
+            hpUnits = {
+                { id = "sentinel", name = "Anubisath Sentinel",
+                    label = "Anubisath Sentinel", clickTarget = true,
+                    hideOnDeath = true },
+            },
+            -- Per-GUID initial distinguishing ability and inheritance
+            -- attribution needs positive evidence; no invented icons/ranks.
+        },
+        defender = {
+            detect = { zone = "Ahn'Qiraj", boss = "Anubisath Defender" },
+            mechanics = {},
+            hpUnits = {
+                { id = "defender", name = "Anubisath Defender",
+                    label = "Anubisath Defender", hideOnDeath = true },
+            },
+            abilities = {
+                {
+                    id = "meteor", caster = "Anubisath Defender",
+                    label = "Meteor observed", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Fire_Fireball02",
+                    finishRule = {
+                        events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
+                        contains = "Anubisath Defender's Meteor hits",
+                    },
+                },
+                {
+                    id = "plague", caster = "Anubisath Defender",
+                    label = "Plague observed", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
+                    finishRule = {
+                        event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                        contains = "You are afflicted by Plague.",
+                    },
+                },
+                {
+                    id = "shadowstorm", caster = "Anubisath Defender",
+                    label = "Shadow Storm observed", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt",
+                    finishRule = {
+                        events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
+                        contains = "Anubisath Defender's Shadow Storm hits",
+                    },
+                },
+                {
+                    id = "thunderclap", caster = "Anubisath Defender",
+                    label = "Thunderclap observed", mode = "opportunistic",
+                    icon = "Interface\\Icons\\Ability_ThunderClap",
+                    finishRule = {
+                        events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_PARTY_DAMAGE",
+                            "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" },
+                        contains = "Anubisath Defender's Thunderclap hits",
+                    },
+                },
+            },
+            triggers = {},
+            -- Reflect needs positive school evidence for an icon.
+        },
+    },
 }
