@@ -2829,6 +2829,17 @@ local function CheckDeclaration(d)
             and type(d.detect.endOnBossDeath) ~= "boolean") then
         return false, "missing detect, mechanics or triggers"
     end
+    local aliases = {}
+    if d.detect.aliases ~= nil then
+        if type(d.detect.aliases) ~= "table" then return false, "invalid aliases" end
+        for _, name in ipairs(d.detect.aliases) do
+            if type(name) ~= "string" or name == ""
+                or name == d.detect.boss or aliases[name] then
+                return false, "invalid alias"
+            end
+            aliases[name] = true
+        end
+    end
     for i = 1, table.getn(d.mechanics) do
         w = d.mechanics[i]
         if type(w) ~= "table" or not IsId(w.id) or seen[w.id]
@@ -2960,13 +2971,30 @@ end
 
 -- Source registry for the pre-existing SCB event frame. No extra frame
 -- listens to combat text: the owner asks for precisely the events in BWL.
+function mechanics.CanonicalBoss(zone, boss)
+    for _, entry in pairs(encounters) do
+        local d = entry.declarative
+        if d and d.detect.zone == zone then
+            if d.detect.boss == boss then return boss end
+            for _, alias in ipairs(d.detect.aliases or {}) do
+                if alias == boss then return d.detect.boss end
+            end
+        end
+    end
+    return boss
+end
+
 function mechanics.GetDetectableBosses(zone)
     local result, seen, entry, d = {}, {}, nil, nil
     for _, entry in pairs(encounters) do
         d = entry.declarative
-        if d and d.detect.zone == zone and not seen[d.detect.boss] then
-            table.insert(result, d.detect.boss)
-            seen[d.detect.boss] = true
+        if d and d.detect.zone == zone then
+            for _, name in ipairs({ d.detect.boss, unpack(d.detect.aliases or {}) }) do
+                if not seen[name] then
+                    table.insert(result, name)
+                    seen[name] = true
+                end
+            end
         end
     end
     table.sort(result)
@@ -3043,29 +3071,31 @@ function mechanics.GetBossFromCombatEvidence(zone, eventName, message, speaker)
     for _, entry in pairs(encounters) do
         d = entry.declarative
         if d and d.detect.zone == zone then
-            boss = d.detect.boss
-            if eventName == "CHAT_MSG_MONSTER_YELL" and speaker == boss then
-                for _, rule in ipairs(d.triggers or {}) do
-                    if rule.event == eventName and
-                        ((rule.contains and string.find(message, rule.contains, 1, true))
-                        or (rule.pattern and string.find(message, rule.pattern))) then
-                        return boss, false
+            for _, actor in ipairs({ d.detect.boss, unpack(d.detect.aliases or {}) }) do
+                boss = d.detect.boss -- actor identity resolves to one encounter
+                if eventName == "CHAT_MSG_MONSTER_YELL" and speaker == actor then
+                    for _, rule in ipairs(d.triggers or {}) do
+                        if rule.event == eventName and
+                            ((rule.contains and string.find(message, rule.contains, 1, true))
+                            or (rule.pattern and string.find(message, rule.pattern))) then
+                            return boss, false
+                        end
                     end
-                end
-            elseif string.sub(message, 1, string.len(boss)) == boss then
-                suffix = string.sub(message, string.len(boss) + 1)
-                if string.find(eventName, "CHAT_MSG_COMBAT_CREATURE_VS_", 1, true) == 1 then
-                    matched = string.find(suffix, "^ hits ")
-                        or string.find(suffix, "^ crits ")
-                        or string.find(suffix, "^ misses ")
-                        or string.find(suffix, "^ attacks ")
-                        or string.find(suffix, "^ is parried ")
-                    if matched then return boss, true end
-                elseif string.find(eventName, "CHAT_MSG_SPELL_CREATURE_VS_", 1, true) == 1 then
-                    matched = string.find(suffix, "^ begins to cast ")
-                        or string.find(suffix, "^ casts ")
-                        or string.find(suffix, "^'s ")
-                    if matched then return boss, true end
+                elseif string.sub(message, 1, string.len(actor)) == actor then
+                    suffix = string.sub(message, string.len(actor) + 1)
+                    if string.find(eventName, "CHAT_MSG_COMBAT_CREATURE_VS_", 1, true) == 1 then
+                        matched = string.find(suffix, "^ hits ")
+                            or string.find(suffix, "^ crits ")
+                            or string.find(suffix, "^ misses ")
+                            or string.find(suffix, "^ attacks ")
+                            or string.find(suffix, "^ is parried ")
+                        if matched then return boss, true end
+                    elseif string.find(eventName, "CHAT_MSG_SPELL_CREATURE_VS_", 1, true) == 1 then
+                        matched = string.find(suffix, "^ begins to cast ")
+                            or string.find(suffix, "^ casts ")
+                            or string.find(suffix, "^'s ")
+                        if matched then return boss, true end
+                    end
                 end
             end
         end
@@ -3131,6 +3161,7 @@ function mechanics.ObserveBoss(zone, boss, state)
         or (state ~= "alive" and state ~= "absent" and state ~= "dead") then
         return false, "invalid observation"
     end
+    boss = mechanics.CanonicalBoss(zone, boss)
     -- Track definitive death even if the target was lost before the message.
     -- Positive living observation can clear a prior suppression (e.g. reset).
     for id, entry in pairs(encounters) do

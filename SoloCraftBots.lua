@@ -2346,7 +2346,7 @@ local function SCB_BossModsObserveTargets()
         if selected and not selected.dead then
             engine.ObserveBoss(bossModsZone, name, "alive")
             state = engine.GetEncounterState()
-            if state and state.boss == name then
+            if state and state.boss == engine.CanonicalBoss(bossModsZone, name) then
                 if selected.combat then
                     engine.MarkEncounterEngaged(state.generation)
                 end

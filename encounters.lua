@@ -320,6 +320,7 @@ SoloCraftBots.bossModDefinitions = {
         },
         bugtrio = {
             detect = { zone = "Ahn'Qiraj", boss = "Lord Kri",
+                aliases = { "Princess Yauj", "Vem" },
                 endOnBossDeath = false },
             mechanics = {},
             hpUnits = {
@@ -445,6 +446,7 @@ SoloCraftBots.bossModDefinitions = {
         },
         twins = {
             detect = { zone = "Ahn'Qiraj", boss = "Emperor Vek'lor",
+                aliases = { "Emperor Vek'nilash" },
                 endOnBossDeath = false },
             mechanics = {}, abilities = {}, triggers = {},
             -- Vek'lor target-of-target requires positive target-chain
@@ -490,7 +492,8 @@ SoloCraftBots.bossModDefinitions = {
             -- losing the target or invent a stage/interval countdown.
         },
         cthun = {
-            detect = { zone = "Ahn'Qiraj", boss = "C'Thun" },
+            detect = { zone = "Ahn'Qiraj", boss = "C'Thun",
+                aliases = { "Eye of C'Thun" } },
             mechanics = {}, triggers = {},
             hpUnits = {
                 { id = "flesh", name = "Flesh Tentacle",
