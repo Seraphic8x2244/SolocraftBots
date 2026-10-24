@@ -1398,6 +1398,61 @@ function mechanics.GetSentinelAbilities(unit, expectedGeneration)
     return nil
 end
 
+-- Defender pair selection is recorded only against an observed individual
+-- GUID. No global combat-log hit selects a pair, and no readiness is inferred.
+local defenderPairs = {
+    meteor = 1, plague = 1,
+    shadowstorm = 2, thunderclap = 2,
+    firearcane = 3, frostshadow = 3,
+}
+function mechanics.ObserveDefenderAbility(unit, ability, expectedGeneration)
+    if not active or active.id ~= "aq40_defender" or not active.engaged
+        or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation)
+        or type(ability) ~= "string" or not defenderPairs[ability]
+        or not UnitName or UnitName(unit) ~= "Anubisath Defender" then
+        return false, "unverified defender observation"
+    end
+    local guid = mechanics.NPCInstanceID(unit)
+    if not guid then return false, "unidentified defender" end
+    for _, row in ipairs(presentation.hp.pool) do
+        if row.used and not row.dead and row.instanceID == guid
+            and row.key == "defender:" .. guid then
+            local selected = row.defenderPairs or {}
+            local pair = defenderPairs[ability]
+            if selected[pair] and selected[pair] ~= ability then
+                return false, "conflicting defender pair"
+            end
+            selected[pair] = ability
+            row.defenderPairs = selected
+            return true
+        end
+    end
+    return false, "defender hp not tracked"
+end
+
+function mechanics.GetDefenderAbilities(unit, expectedGeneration)
+    if not active or active.id ~= "aq40_defender" or not active.engaged
+        or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation)
+        or not UnitName or UnitName(unit) ~= "Anubisath Defender" then
+        return nil
+    end
+    local guid = mechanics.NPCInstanceID(unit)
+    if not guid then return nil end
+    for _, row in ipairs(presentation.hp.pool) do
+        if row.used and not row.dead and row.instanceID == guid
+            and row.key == "defender:" .. guid then
+            local pairs = {}
+            for pair, ability in pairs(row.defenderPairs or {}) do
+                pairs[pair] = ability
+            end
+            return { guid = guid, pairs = pairs }
+        end
+    end
+    return nil
+end
+
 -- Dev-only Defender interval sampler. Samples are consecutive locally
 -- observed applications/hits for exactly one positively GUID-bound Defender;
 -- no ability cooldown is inferred from them. No independent polling owner.
