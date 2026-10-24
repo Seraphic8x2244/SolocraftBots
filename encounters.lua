@@ -524,6 +524,15 @@ SoloCraftBots.bossModDefinitions = {
                     icon = "Interface\\Icons\\INV_Sword_04" },
             },
             triggers = {
+                -- Native other-recipient Toxin applications expose a roster name.
+                -- Only the first positively matched live bot is retained.
+                { events = { "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE" },
+                    pattern = "^(.+) is afflicted by Toxin%.$",
+                    effects = { { type = "viscidus_toxin" } } },
+                { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                    contains = "You are afflicted by Toxin.",
+                    effects = { { type = "viscidus_toxin", target = "player" } } },
                 -- Confirmed creature buff applications; these are only a
                 -- subset of frost damage hits, not a complete frost count.
                 {
