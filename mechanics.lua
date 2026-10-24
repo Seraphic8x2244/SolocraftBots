@@ -440,6 +440,19 @@ LayoutPresentation = function(kind)
         for _, slot in ipairs(presentation.hp.pool) do
             if slot.used then table.insert(rows, slot) end
         end
+        -- Sentinel kill priority follows the ORIGINAL observed ability.
+        -- Unknown originals sort last, retaining acquisition order on ties.
+        if active and active.id == "aq40_sentinels" then
+            local order = {}
+            for i, slot in ipairs(rows) do order[slot] = i end
+            table.sort(rows, function(a, b)
+                local ar = a.sentinelAbilities and a.sentinelAbilities.priority
+                local br = b.sentinelAbilities and b.sentinelAbilities.priority
+                ar, br = ar or 999, br or 999
+                if ar ~= br then return ar < br end
+                return order[a] < order[b]
+            end)
+        end
         for _, slot in ipairs(presentation.aura.pool) do
             if slot.used then
                 table.insert(rows, slot)
@@ -1366,6 +1379,8 @@ function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGen
         state.original = ability
     end
     state.observed[ability] = true
+    state.priority = state.original and SentinelPriority(state.original) or nil
+    LayoutPresentation("tracker")
     return true
 end
 
@@ -1425,6 +1440,7 @@ function mechanics.ObserveDefenderAbility(unit, ability, expectedGeneration)
             end
             selected[pair] = ability
             row.defenderPairs = selected
+            mechanics.UpdatePresentation()
             return true
         end
     end
@@ -2295,7 +2311,28 @@ function mechanics.UpdatePresentation(now)
             if slot.dead and slot.hideOnDeath then
                 ReleasePresentation("hp", slot.key)
             else
-                slot.frame.label:SetText(slot.label)
+                local label = slot.label
+                if session.id == "aq40_sentinels" and slot.sentinelAbilities then
+                    local seen = {}
+                    for spell in pairs(slot.sentinelAbilities.observed) do
+                        table.insert(seen, spell)
+                    end
+                    table.sort(seen)
+                    if table.getn(seen) > 0 then
+                        label = label .. " [" .. table.concat(seen, ", ") .. "]"
+                    end
+                elseif session.id == "aq40_defender" and slot.defenderPairs then
+                    local seen = {}
+                    for pair = 1, 3 do
+                        if slot.defenderPairs[pair] then
+                            table.insert(seen, slot.defenderPairs[pair])
+                        end
+                    end
+                    if table.getn(seen) > 0 then
+                        label = label .. " [" .. table.concat(seen, ", ") .. "]"
+                    end
+                end
+                slot.frame.label:SetText(label)
                 if slot.dead then
                     slot.frame.detail:SetText("DEAD")
                     slot.frame.bar:SetValue(0)
