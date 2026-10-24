@@ -3695,7 +3695,40 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "ability_lockout" then
+    if effect.type == "cthun_phase2" then
+        if active.id ~= "aq40.cthun" or active.cthunPhase == 2 then return end
+        active.cthunPhase = 2
+        -- Eye-death is a native event; do not keep the phase-one Dark Glare.
+        for _, slot in ipairs(presentation.timer.pool) do
+            if slot.used and slot.key == "ability:darkglare" then
+                mechanics.HidePresentation("timer", slot.key)
+            end
+        end
+        mechanics.SetTimerStage("giant_claw_next", {
+            label = "First Giant Claw (reference)", minDelay = 12,
+            provenance = "predicted",
+        }, active.generation)
+        mechanics.SetTimerStage("small_eye_next", {
+            label = "First Small Eyes (reference)", minDelay = 42,
+            provenance = "predicted",
+        }, active.generation)
+    elseif effect.type == "cthun_weakened" then
+        if active.id ~= "aq40.cthun" or active.cthunPhase ~= 2 then return end
+        local currentGeneration = active.generation
+        -- BigWigs schedules these relative to WeakenedOver (45s later).
+        mechanics.ScheduleTimer("cthun-after-weakened", 45, function()
+            if not active or active.generation ~= currentGeneration
+                or active.cthunPhase ~= 2 then return end
+            mechanics.SetTimerStage("giant_claw_next", {
+                label = "Giant Claw after Weakened (reference)",
+                minDelay = 8, provenance = "predicted",
+            }, currentGeneration)
+            mechanics.SetTimerStage("small_eye_next", {
+                label = "Small Eyes after Weakened (reference)",
+                minDelay = 38, provenance = "predicted",
+            }, currentGeneration)
+        end, "predicted")
+    elseif effect.type == "ability_lockout" then
         mechanics.ObserveAbilityLockout(effect.ability,
             effect.duration, active.generation)
     elseif effect.type == "dev_interval" then
