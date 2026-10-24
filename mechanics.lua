@@ -736,6 +736,16 @@ local function CreatePresentationFrame(kind, group)
         attackIcon:SetAllPoints(attackButton)
         attackIcon:SetTexture("Interface\\Icons\\Ability_Warrior_Charge")
         frame.scbAttackAllButton = attackButton
+        attackButton:SetScript("OnEnter", function()
+            if GameTooltip then
+                GameTooltip:SetOwner(attackButton, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Start Attack - All Bots")
+                GameTooltip:Show()
+            end
+        end)
+        attackButton:SetScript("OnLeave", function()
+            if GameTooltip then GameTooltip:Hide() end
+        end)
         attackButton:RegisterForClicks("LeftButtonUp")
         attackButton:SetScript("OnClick", function()
             local slot = frame.scbSlot
