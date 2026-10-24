@@ -96,6 +96,21 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertNotIn('SetRaidTarget(', AQ)
         self.assertNotIn('SetScript("OnUpdate"', AQ)
 
+    def test_recipient_action_requires_exact_live_observed_aura(self):
+        section = MECH.split('local function BoundActionAvailable(slot)', 1)[1]
+        section = section.split('local function ActionForMember', 1)[0]
+        self.assertIn('if condition.observedAura then', section)
+        self.assertIn('auraSlot.key == condition.observedAura', section)
+        self.assertIn('auraSlot.generation == active.generation', section)
+        self.assertIn('auraSlot.memberBinding == config.binding', section)
+        self.assertIn('auraSlot.target == name', section)
+        self.assertIn('Now() < auraSlot.expiresAt', section)
+        self.assertIn('if not observed then return false end', section)
+        validation = MECH.split('function mechanics.ShowBoundBotAction', 1)[1]
+        self.assertIn('type(c.observedAura) ~= "string"', validation)
+        click = MECH.split('function mechanics.HandleActionClick', 1)[1]
+        self.assertIn('if not BoundActionAvailable(slot) then', click)
+
     def test_version_is_dev(self):
         self.assertRegex(TOC, r'## Version: 0\.9\.\d+-dev')
 
