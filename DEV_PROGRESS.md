@@ -1,5 +1,11 @@
 # Development Progress
 
+## AQ40 Chunk 5 — Yauj observation-only correction (2026-10-24)
+- Verified remote dev HEAD `5b871e0fe7a9b341beaa6f39e5ecc23274157a50` matched user handoff (compare identical). `main` untouched. New TOC `0.9.68-dev`.
+- Great Heal and Fear declarations for Princess Yauj now explicitly set `observedOnly=true`. Until measured readiness/signals exist, a successful observed event must not imply next availability. This is a scoped declaration-only correction; no cooldown, cast-delay, new command sender, scheduler, or BWL alteration.
+- Commits: `4716e44` declaration correction, `17cb19b` Python source-regression method, `32e6d4f` TOC bump. Six targeted remote source assertions PASS; Python unittest runner, Lua 5.0.3 compiler, CI and in-game tests **not run**. Reference-dependent chat signatures remain unverified against Solocraft.
+- **Chunk 5 still OPEN**: the outstanding items below remain outstanding, including Yauj school-lock and actual fear/heal readiness. Continue positive-observation mechanics and regression coverage without invented cooldowns or interim client tests. Verify `dev` HEAD following this documentation commit.
+
 ## AQ40 Chunk 5 — C'Thun Eye phase guard checkpoint (2026-10-24)
 - Verified remote `dev` HEAD `2b00e32240638b09bed1474a4e2785cda7c74ceb` against user handoff before edits. `main` untouched. New TOC `0.9.67-dev`.
 - C'Thun alias detect now declares `endOnBossDeath=false` so positive Eye death does not by itself close the shared two-phase encounter; existing disengagement owner remains responsible for cleanup. Source regression checks the scoped C'Thun declaration; no new timer, invented event, cooldown, command sender or lifecycle owner.
