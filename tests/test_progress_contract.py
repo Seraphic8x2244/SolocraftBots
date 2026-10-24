@@ -70,14 +70,14 @@ class ProgressContract(unittest.TestCase):
         self.assertIn("SCB_RequestCommand(commandStep.command, commandStep.scope)", SOURCE)
         self.assertIn('mechanics.ShowTrackedAura("seen:"', SOURCE)
         self.assertIn("bwl = {", BWL)
-        self.assertNotIn("aq40 = {", BWL)
+        self.assertIn("aq40 = {", BWL)
 
-    def test_no_unrequested_encounter_or_widget_owner(self):
+    def test_no_unrequested_widget_owner(self):
         self.assertIn('AcquirePresentation("timer", "counter:" .. spec.id)', SOURCE)
         self.assertIn('AcquirePresentation("timer", "stage:" .. id)', SOURCE)
         self.assertIn('AcquirePresentation("timer", "threshold:" .. key)', SOURCE)
         self.assertNotIn("phase_timer", SOURCE)
-        self.assertNotIn("AQ40", BWL)
+        self.assertIn("AQ40", BWL)
 
 
 if __name__ == "__main__":

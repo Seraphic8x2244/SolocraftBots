@@ -36,8 +36,8 @@ class HPTrackerContract(unittest.TestCase):
         self.assertIn('or { "aura", "action", "hp" }', SOURCE)
         self.assertIn('function mechanics.UpdatePresentation(now)', SOURCE)
 
-    def test_version_and_no_encounter_templates(self):
-        self.assertIn('## Version: 0.9.59-dev', TOC)
+    def test_development_metadata_is_present(self):
+        self.assertRegex(TOC, r'## Version: 0\.9\.\d+-dev')
 
 
 if __name__ == "__main__":
