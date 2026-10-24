@@ -25,7 +25,7 @@ class DefenderAutoRecorder(unittest.TestCase):
         self.assertIn('label = "Berserk (30% HP)"', h)
         self.assertIn('threshold = 0.30', h)
         self.assertIn('(pct - state.threshold) * elapsed / loss', mechanics)
-        self.assertIn('## Version: 0.9.87-dev', toc)
+        self.assertIn('## Version: 0.9.88-dev', toc)
 
 if __name__ == "__main__":
     unittest.main()
