@@ -1630,7 +1630,7 @@ end
 
 function mechanics.RecordDefenderHit(ability, expectedGeneration)
     local db = DefenderRecorderDB()
-    if not db or db.bossModDefenderRecord ~= true
+    if not db or db.bossModDefenderRecord == false
         or not active or active.id ~= "aq40.defender" or not active.engaged
         or active.postBossCleanup
         or (expectedGeneration and expectedGeneration ~= active.generation) then
