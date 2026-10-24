@@ -5,6 +5,7 @@ import unittest
 root = Path(__file__).resolve().parents[1]
 source = (root / "encounters.lua").read_text(encoding="utf-8")
 toc = (root / "SoloCraftBots.toc").read_text(encoding="utf-8")
+mechanics = (root / "mechanics.lua").read_text(encoding="utf-8")
 vis = source.split("        viscidus = {", 1)[1].split("        huhuran = {", 1)[0]
 cthun = source.split("        cthun = {", 1)[1].split("        sentinels = {", 1)[0]
 defender = source.split("        defender = {", 1)[1]
@@ -24,7 +25,7 @@ class NativeAQ40(unittest.TestCase):
         self.assertIn("Giant Claw Tentacle begins to cast Birth.", cthun)
         self.assertIn("Giant Eye Tentacle begins to cast Birth.", cthun)
         self.assertIn('minDelay = 30, provenance = "predicted"', cthun)
-        self.assertIn('minDelay = 8, provenance = "predicted"', cthun)
+        self.assertIn('minDelay = 8, provenance = "predicted"', mechanics)
         self.assertIn('contains = "is weakened!"', cthun)
     def test_defender_reflect_evidence_no_fake_cooldown(self):
         for spell in ("Moonfire", "Fireball", "Frostbolt", "Corruption"):
