@@ -19,6 +19,13 @@ class ApprovedAQ40(unittest.TestCase):
         self.assertIn("firstDelay = 10, repeatDelay = 20", trio)
         self.assertIn('id = "greatheal"', trio)
         self.assertIn("castTime = 2", trio)
+        for spell, delay in (("Kick", 5), ("Pummel", 4),
+                             ("Shield Bash", 6), ("Counterspell", 10),
+                             ("Earth Shock", 2), ("Spell Lock", 6)):
+            self.assertIn(spell + " interrupts Princess Yauj's Great Heal", trio)
+            self.assertIn("duration = " + str(delay), trio)
+        self.assertIn("state.occurrence.observedStart", M)
+        self.assertIn("no recent observed cast to interrupt", M)
 
     def test_sartura_only_whirlwind(self):
         sartura = encounter("sartura", "fankriss")
