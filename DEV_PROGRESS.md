@@ -1,5 +1,12 @@
 # Development Progress
 
+## AQ40 native-only continuation — Huhuran and Twins (2026-10-24)
+- Continued dev-only code from preceding native AQ40 checkpoint. TOC **0.9.79-dev**, `main` untouched. Runtime commit `f7576e4`, TOC `5f53943`, regressions `fd420b9`.
+- Huhuran now has native positive self-only Noxious Poison and Wyvern Sting gain/fade aura observations, plus Frenzy gain/fade and observed Berserk notices. Twin Emperors now have native self Blizzard gain/fade and observed Twin Teleport notice. Source based on pinned Elesion BigWigs `47b5380` modules. No inferred next cooldown, target-of-target, encounter GUID, phase reset or unsupported recipient attribution. All use existing SCB event dispatcher and generic presentation.
+- **13/13 targeted remote JavaScript source assertions PASS** against committed declarations; Python unittest runner, Lua 5.0.3 compiler, CI and game runtime NOT RUN. No interim game testing until implementation chunks complete.
+- Still unresolved native-only work: Fankriss bounded Come after positively attributed fade, Viscidus first bot Toxin and scoped role commands (not safely attributable from self-only chat), Sartura verified duration/cooldown, Ouro submerge positive event (pinned BigWigs explicitly has none), C'Thun weakened duration, Twin caster targeting, Skeram split/true clone. Do not describe as fully functional. Continue native-only where evidence supports; keep any GUID-dependent module optional. `DEV_PROGRESS.md` remains sole handoff.
+
+
 ## AQ40 native-only continuation — Sartura/C'Thun observed events (2026-10-24)
 - Continued on `dev` from canonical encounter-ID fix checkpoint; `main` untouched. TOC now **0.9.78-dev**. Code commit `3015a72` with correction `3b60b75`; TOC `5f1d4e1`; regression `e782568`.
 - Added **native GUID-independent** observed alerts: Sartura Whirlwind fade and Enrage combat text, C'Thun weakened emote and Giant Eye/Claw Birth cast messages, from pinned Elesion BigWigs AQ40 modules. All use the existing encounter event owner and generic five-second `notice` presentation; they do NOT assert ability cooldowns, weaken duration, spawns' unique identity, or completed phase transitions. Preserves BWL data unchanged.
