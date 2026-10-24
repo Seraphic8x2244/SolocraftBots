@@ -527,6 +527,16 @@ LayoutPresentation = function(kind)
             frame.scbRightSlot:SetWidth(rowHeight)
             frame.scbRightSlot:SetHeight(rowHeight)
         end
+        if frame.scbAttackAllButton then
+            frame.scbAttackAllButton:SetWidth(rowHeight)
+            frame.scbAttackAllButton:SetHeight(rowHeight)
+            frame.scbAttackAllButton:SetFrameLevel(frame:GetFrameLevel() + 2)
+            if slot.attackAll and not slot.dead then
+                frame.scbAttackAllButton:Show()
+            else
+                frame.scbAttackAllButton:Hide()
+            end
+        end
         if frame.scbUseButton then
             frame.scbUseButton:SetWidth(rowHeight)
             frame.scbUseButton:SetHeight(rowHeight)
@@ -715,6 +725,23 @@ local function CreatePresentationFrame(kind, group)
     detail:SetWidth(50)
     frame.detail = detail
     if kind == "hp" then
+        -- Explicit all-bot attack button lives in the reserved right square.
+        -- The main HP row retains its separate target-only click.
+        local attackButton = CreateFrame("Button", nil, frame)
+        attackButton:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        attackButton:SetWidth(group.height)
+        attackButton:SetHeight(group.height)
+        attackButton:SetFrameLevel(frame:GetFrameLevel() + 2)
+        local attackIcon = attackButton:CreateTexture(nil, "OVERLAY")
+        attackIcon:SetAllPoints(attackButton)
+        attackIcon:SetTexture("Interface\\Icons\\Ability_Warrior_Charge")
+        frame.scbAttackAllButton = attackButton
+        attackButton:RegisterForClicks("LeftButtonUp")
+        attackButton:SetScript("OnClick", function()
+            local slot = frame.scbSlot
+            if slot and slot.used then mechanics.AttackNPCAll(slot.key) end
+        end)
+        attackButton:Hide()
         frame:RegisterForClicks("LeftButtonUp")
         frame:SetScript("OnClick", function()
             local slot = frame.scbSlot
@@ -1015,12 +1042,13 @@ local function ReleasePresentation(kind, key)
             slot.retainAfterBossDeath = nil
             slot.abilityRecord, slot.abilityHint = nil, nil
             slot.instanceID, slot.unit, slot.dead = nil, nil, nil
-            slot.clickTarget, slot.hideOnDeath = nil, nil
+            slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
             slot.timerName = nil
             slot.progressKind, slot.progressState = nil, nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
+            if slot.frame.scbAttackAllButton then slot.frame.scbAttackAllButton:Hide() end
             slot.frame:Hide()
             slot.frame.label:SetText("")
             slot.frame.detail:SetText("")
@@ -1216,6 +1244,8 @@ function mechanics.ObserveNPCHealth(key, unit, options)
             or not string.find(options.group, "^[%w_%-]+$")))
         or (options.hideOnDeath ~= nil and type(options.hideOnDeath) ~= "boolean")
         or (options.clickTarget ~= nil and type(options.clickTarget) ~= "boolean")
+        or (options.attackAll ~= nil and type(options.attackAll) ~= "boolean")
+        or (options.attackAll and options.clickTarget ~= true)
         then return false, "invalid hp row" end
     id = mechanics.NPCInstanceID(unit)
     if not id or not UnitHealth or not UnitHealthMax then
@@ -1246,6 +1276,7 @@ function mechanics.ObserveNPCHealth(key, unit, options)
     slot.group = options.group
     slot.hideOnDeath, slot.clickTarget = options.hideOnDeath == true,
         options.clickTarget == true
+    slot.attackAll = options.attackAll == true
     if options.icon then slot.frame.icon:SetTexture(options.icon) end
     slot.health, slot.maximum = health, maximum
     if health <= 0 or (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit)) then
@@ -1259,6 +1290,65 @@ function mechanics.ObserveNPCHealth(key, unit, options)
     return true, rowKey
 end
 
+
+-- Explicit button action for a GUID-bound hostile HP row. Every click
+-- revalidates the exact instance both before and after SCB's established
+-- target-propagation settle. No bot can receive an attack on a recycled token
+-- or a player-selected different target.
+function mechanics.AttackNPCAll(key)
+    if not active or not active.engaged or active.postBossCleanup
+        or type(key) ~= "string" then return false, "no active encounter" end
+    local slot
+    for _, candidate in ipairs(presentation.hp.pool) do
+        if candidate.used and candidate.key == key
+            and candidate.generation == active.generation then
+            slot = candidate
+            break
+        end
+    end
+    if not slot or not slot.attackAll or slot.dead then
+        return false, "attack widget unavailable"
+    end
+    local unit, guid = slot.unit, slot.instanceID
+    if not unit or not guid or mechanics.NPCInstanceID(unit) ~= guid
+        or not UnitExists or not UnitExists(unit)
+        or not UnitIsDeadOrGhost or UnitIsDeadOrGhost(unit)
+        or not TargetUnit or not SCB_RequestCommand
+        or not SCB_GetTargetPropagationSettle then
+        return false, "stale npc instance"
+    end
+    local command = SCB.commands and SCB.commands.attackstart
+    if not command or not command.routes or not command.routes.all then
+        return false, "attack owner unavailable"
+    end
+    TargetUnit(unit)
+    if mechanics.NPCInstanceID("target") ~= guid then
+        return false, "target selection failed"
+    end
+    local token, capturedKey = active.generation, key
+    local delay = math.max(0.10, SCB_GetTargetPropagationSettle())
+    sequenceSerial = sequenceSerial + 1
+    return mechanics.ScheduleTimer(
+        "hp-attack:" .. token .. ":" .. sequenceSerial, delay, function()
+            if not active or active.generation ~= token or not active.engaged
+                or active.postBossCleanup then return end
+            if mechanics.NPCInstanceID("target") ~= guid
+                or mechanics.NPCInstanceID(unit) ~= guid
+                or not UnitExists(unit) or not UnitExists("target")
+                or UnitIsDeadOrGhost(unit) or UnitIsDeadOrGhost("target") then
+                return
+            end
+            local valid = false
+            for _, current in ipairs(presentation.hp.pool) do
+                if current.used and not current.dead
+                    and current.generation == token
+                    and current.key == capturedKey
+                    and current.instanceID == guid
+                    and current.attackAll then valid = true; break end
+            end
+            if valid then SCB_RequestCommand("attackstart", "all") end
+        end, "fixed")
+end
 
 -- HP projection uses only positively identified, live unit observations.
 -- No valid token means retain last displayed HP but WITHHOLD the ETA.
@@ -3000,10 +3090,13 @@ local function CheckObservedUnits(d)
             if kind == "hpUnits" then
                 if (spec.hideOnDeath ~= nil and type(spec.hideOnDeath) ~= "boolean")
                     or (spec.clickTarget ~= nil and type(spec.clickTarget) ~= "boolean")
+                    or (spec.attackAll ~= nil and type(spec.attackAll) ~= "boolean")
+                    or (spec.attackAll and spec.clickTarget ~= true)
                     or spec.threshold ~= nil then return false end
             elseif not IsFiniteNumber(spec.threshold)
                 or spec.threshold <= 0 or spec.threshold >= 1
-                or spec.clickTarget ~= nil or spec.hideOnDeath ~= nil then
+                or spec.clickTarget ~= nil or spec.hideOnDeath ~= nil
+                or spec.attackAll ~= nil then
                 return false
             end
             seen[spec.id] = true
