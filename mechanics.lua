@@ -1005,7 +1005,7 @@ local function AcquirePresentation(kind, key)
     slot.retainAfterBossDeath = nil
     slot.abilityRecord, slot.abilityHint = nil, nil
     slot.instanceID, slot.unit, slot.dead = nil, nil, nil
-    slot.clickTarget, slot.hideOnDeath = nil, nil
+    slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
     slot.timerName = nil
     slot.progressKind, slot.progressState = nil, nil
     slot.startedAt = nil
@@ -1014,6 +1014,7 @@ local function AcquirePresentation(kind, key)
     slot.frame.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     slot.frame.icon:Show()
     if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
+    if slot.frame.scbAttackAllButton then slot.frame.scbAttackAllButton:Hide() end
     if slot.frame.bar then slot.frame.bar:Show() end
     if slot.frame.scbOverlay then
         slot.frame.scbOverlay:Hide()
@@ -1115,6 +1116,10 @@ function mechanics.InitializeCounters(expectedGeneration)
         slot.progressKind, slot.progressState = "counter", state
         slot.label, slot.group = spec.label, spec.group
         if spec.icon then slot.frame.icon:SetTexture(spec.icon) end
+    end
+    for _, spec in ipairs(active.definition.declarative.initialStages or {}) do
+        local ok, err = mechanics.SetTimerStage(spec.id, spec, active.generation)
+        if not ok then return false, err end
     end
     mechanics.UpdatePresentation()
     return true
@@ -2144,6 +2149,7 @@ function mechanics.ClearPresentation()
             slot.expiresAt = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
+            if slot.frame.scbAttackAllButton then slot.frame.scbAttackAllButton:Hide() end
             slot.generation = nil
             slot.timerName = nil
             slot.progressKind, slot.progressState = nil, nil
@@ -2153,7 +2159,7 @@ function mechanics.ClearPresentation()
             slot.memberBinding = nil
             slot.retainAfterBossDeath = nil
             slot.instanceID, slot.unit, slot.dead = nil, nil, nil
-            slot.clickTarget, slot.hideOnDeath = nil, nil
+            slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
             slot.frame:Hide()
         end
     end
@@ -3160,6 +3166,23 @@ local function CheckDeclaration(d)
     end
     if d.counters ~= nil and type(d.counters) ~= "table" then
         return false, "invalid counters"
+    end
+    if d.initialStages ~= nil then
+        if type(d.initialStages) ~= "table" then
+            return false, "invalid initial stages"
+        end
+        local initialIds = {}
+        for _, stage in ipairs(d.initialStages) do
+            if not CheckEffect({
+                id = stage.id, type = "timer_stage", label = stage.label,
+                minDelay = stage.minDelay, maxDelay = stage.maxDelay,
+                provenance = stage.provenance, icon = stage.icon,
+                group = stage.group }, false)
+                or initialIds[stage.id] then
+                return false, "invalid initial stage"
+            end
+            initialIds[stage.id] = true
+        end
     end
     local counterIds = {}
     for i = 1, table.getn(d.counters or {}) do
