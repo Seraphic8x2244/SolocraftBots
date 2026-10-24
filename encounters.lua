@@ -661,11 +661,10 @@ SoloCraftBots.bossModDefinitions = {
                 { id = "flesh", name = "Flesh Tentacle",
                     label = "Flesh Tentacle", hideOnDeath = true,
                     clickTarget = true, attackAll = true },
-                { id = "giant_claw", name = "Giant Claw Tentacle",
-                    label = "Giant Claw Tentacle", hideOnDeath = true,
-                    clickTarget = true },
-                { id = "giant_eye", name = "Giant Eye Tentacle",
-                    label = "Giant Eye Tentacle", hideOnDeath = true,
+                -- Shared template, separate positive per-spawn GUID rows.
+                { id = "giant", name = "Giant Claw Tentacle",
+                    aliases = { "Giant Eye Tentacle" },
+                    label = "Giant Tentacle", hideOnDeath = true,
                     clickTarget = true },
             },
             abilities = {
