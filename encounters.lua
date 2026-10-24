@@ -529,19 +529,19 @@ SoloCraftBots.bossModDefinitions = {
                 { events = { "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE" },
                     pattern = "^(.+) is afflicted by Toxin%.$",
-                    effects = { { type = "viscidus_toxin" } } },
+                    effects = { { type = "viscidus_toxin", id = "toxin_other" } } },
                 { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
                     contains = "You are afflicted by Toxin.",
-                    effects = { { type = "viscidus_toxin", target = "player" } } },
+                    effects = { { type = "viscidus_toxin", id = "toxin_self", target = "player" } } },
                 -- BigWigs' native emote boundaries: frost hits count until
                 -- frozen, then melee hits count. A later slow emote resets
                 -- the next frost cycle without inventing a glob duration.
                 { event = "CHAT_MSG_RAID_BOSS_EMOTE",
                     contains = " is frozen solid!",
-                    effects = { { type = "viscidus_phase", phase = "melee" } } },
+                    effects = { { type = "viscidus_phase", id = "frozen", phase = "melee" } } },
                 { event = "CHAT_MSG_RAID_BOSS_EMOTE",
                     contains = " begins to slow!",
-                    effects = { { type = "viscidus_phase", phase = "frost" } } },
+                    effects = { { type = "viscidus_phase", id = "slow", phase = "frost" } } },
                 -- Confirmed creature buff applications; these are only a
                 -- subset of frost damage hits, not a complete frost count.
                 {
@@ -686,10 +686,10 @@ SoloCraftBots.bossModDefinitions = {
             triggers = {
                 { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
                     contains = "Eye of C'Thun begins to cast Dark Glare.",
-                    effects = { { type = "cthun_glare" } } },
+                    effects = { { type = "cthun_glare", id = "glare_active" } } },
                 { event = "CHAT_MSG_COMBAT_HOSTILE_DEATH",
                     contains = "Eye of C'Thun dies.",
-                    effects = { { type = "cthun_phase2" } } },
+                    effects = { { type = "cthun_phase2", id = "phase2" } } },
                 -- These Birth messages identify a *spawn already occurring*.
                 -- A reference next-spawn window is not a claimed unique unit.
                 { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
@@ -706,7 +706,7 @@ SoloCraftBots.bossModDefinitions = {
                 -- not at the initial weakened emote.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
                     contains = "is weakened!",
-                    effects = { { type = "cthun_weakened" } } },
+                    effects = { { type = "cthun_weakened", id = "weaken_recovery" } } },
                 -- Native emote positively establishes the start of Weakened.
                 -- This 45s bar is an Elesion reference, not a phase detector.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
