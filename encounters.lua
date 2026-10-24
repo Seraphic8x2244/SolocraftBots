@@ -330,6 +330,7 @@ SoloCraftBots.bossModDefinitions = {
             abilities = {
                 {
                     id = "poison", caster = "Lord Kri", label = "Poison Volley",
+                    observedOnly = true,
                     mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Nature_CorrosiveBreath",
                     finishRule = {
@@ -373,7 +374,8 @@ SoloCraftBots.bossModDefinitions = {
             abilities = {
                 {
                     id = "whirlwind", caster = "Battleguard Sartura",
-                    label = "Whirlwind", mode = "opportunistic",
+                    label = "Whirlwind", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Ability_Whirlwind",
                     -- Aura gain is observed activation, not a cast start or
                     -- proof of when the next Whirlwind will become available.
@@ -531,7 +533,8 @@ SoloCraftBots.bossModDefinitions = {
             abilities = {
                 {
                     id = "meteor", caster = "Anubisath Defender",
-                    label = "Meteor observed", mode = "opportunistic",
+                    label = "Meteor observed", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Fire_Fireball02",
                     finishRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
@@ -542,7 +545,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "plague", caster = "Anubisath Defender",
-                    label = "Plague observed", mode = "opportunistic",
+                    label = "Plague observed", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
                     finishRule = {
                         event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
@@ -551,7 +555,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "shadowstorm", caster = "Anubisath Defender",
-                    label = "Shadow Storm observed", mode = "opportunistic",
+                    label = "Shadow Storm observed", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt",
                     finishRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
@@ -562,7 +567,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "thunderclap", caster = "Anubisath Defender",
-                    label = "Thunderclap observed", mode = "opportunistic",
+                    label = "Thunderclap observed", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Ability_ThunderClap",
                     finishRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",

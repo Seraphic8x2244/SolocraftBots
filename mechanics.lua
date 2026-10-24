@@ -2201,8 +2201,12 @@ end
 local function BeginAbilityCooldown(state, at)
     local spec = state.spec
     if not spec.repeatDelay then
-        state.phase, state.readyAt = "ready", at
-        state.startedAt = at
+        state.readyAt, state.startedAt = nil, at
+        if spec.observedOnly then
+            state.phase, state.uncertainty = "observed", "cooldown not established"
+        else
+            state.phase = "ready" -- preserve BWL baseline
+        end
         return
     end
     state.startedAt = at
@@ -2428,6 +2432,10 @@ RenderAbilityBar = function(slot, now)
         frame.bar:SetValue(progress)
         frame.bar:SetStatusBarColor(0.12, 0.96, 0.20)
         frame.detail:SetText(SCB_L("BOSSMODS_CAST"))
+    elseif phase == "observed" then
+        frame.bar:SetValue(1)
+        frame.bar:SetStatusBarColor(0.45, 0.45, 0.45)
+        frame.detail:SetText("Observed")
     elseif phase == "unresolved" then
         frame.bar:SetValue(1)
         frame.bar:SetStatusBarColor(0.94, 0.56, 0.12)
@@ -2593,6 +2601,8 @@ local function CheckAbility(a, seen, isGroup)
         or (a.resetOn ~= nil and a.resetOn ~= "start" and a.resetOn ~= "finish")
         or (a.repeatDelay ~= nil and a.resetOn == nil)
         or (a.ordinary ~= nil and type(a.ordinary) ~= "boolean")
+        or (a.observedOnly ~= nil and type(a.observedOnly) ~= "boolean")
+        or (a.observedOnly and a.repeatDelay ~= nil)
         or (a.icon ~= nil and (type(a.icon) ~= "string" or a.icon == ""))
         or (a.icons ~= nil and (not isGroup or type(a.icons) ~= "table"))
         or not CheckObservation(a.startRule)
