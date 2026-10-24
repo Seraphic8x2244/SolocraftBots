@@ -1333,7 +1333,7 @@ local function BoundActionAvailable(slot)
     local condition = config and config.condition
     if not condition then return true end
     local name, member = mechanics.GetBoundMember(config.binding, slot.generation, false)
-    if not member then return false end
+    if not member then return config.assignable == true and not name end
     local bot = member.isBot and SCB_IsBotName and SCB_IsBotName(name)
     if condition.recipient == "bot" and not bot then return false end
     if condition.recipient == "human" and bot then return false end
