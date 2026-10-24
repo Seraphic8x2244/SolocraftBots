@@ -566,7 +566,7 @@ SoloCraftBots.bossModDefinitions = {
             detect = { zone = "Ahn'Qiraj", boss = "C'Thun",
                 aliases = { "Eye of C'Thun" },
                 endOnBossDeath = false },
-            mechanics = {}, triggers = {},
+            mechanics = {},
             hpUnits = {
                 { id = "flesh", name = "Flesh Tentacle",
                     label = "Flesh Tentacle", hideOnDeath = true,
