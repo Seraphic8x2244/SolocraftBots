@@ -673,6 +673,13 @@ SoloCraftBots.bossModDefinitions = {
                     effects = { { type = "timer_stage", id = "giant_claw_next",
                         label = "Next Giant Claw (reference)",
                         minDelay = 30, provenance = "predicted" } } },
+                -- Elesion's first Giant Claw after a positive weakened
+                -- emote uses an 8s reference; do not fabricate the spawn.
+                { event = "CHAT_MSG_MONSTER_EMOTE",
+                    contains = "is weakened!",
+                    effects = { { type = "timer_stage", id = "giant_claw_next",
+                        label = "Giant Claw after Weakened (reference)",
+                        minDelay = 8, provenance = "predicted" } } },
                 -- Native emote positively establishes the start of Weakened.
                 -- This 45s bar is an Elesion reference, not a phase detector.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
