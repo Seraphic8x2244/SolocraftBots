@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Chunk 5 — positive occurrence-ID dedup checkpoint (2026-10-24)
+- Starting `dev` HEAD `fbf9797fd8e4d2eb0e762f31ec9dd777d768616d` verified, TOC advanced to **0.9.71-dev**, `main` unchanged.
+- Implemented a narrow **observed ability finish** deduplication gate using an *optional, supplied* `details.observationId`: identical positive identities on the same ability collapse before changing occurrence/cast state. Missing identities retain old behaviour; invalid identity types fail closed. No inferred time window, spell cooldown, NPC GUID attribution, new event owner or SCB command path. Code commit `4a39ddf`, regression commit `3c90eb0`, version commit `af29acf`.
+- Added static source regression for exact positive-ID gating and event forwarding. The Python unittest runner, Lua 5.0.3 compiler, CI, and game runtime have **not been executed** in this session. Source inspection does not establish validated behaviour.
+- **Chunk 5 still OPEN:** Fankriss Entangle positive recipient gain/fade and scoped 8-second Come action, Viscidus Toxin first-hit provenance/action, Sentinel per-GUID original/inherited ability observations and ranking, Defender mutually exclusive pairs/reflect icons remain unimplemented. Native event signatures, recipient/GUID attribution and safe command scope require real evidence; no speculative cooldowns or interim game tests. Maintain BWL/SCB safety and no `main` changes.
+- **Next:** confirm exact client combat-event payloads and owned command recipe for Entangle and Toxin before wiring actions; implement per-GUID Sentinel evidence and GUID-safe Defender pair/reflect rules. Use `DEV_PROGRESS.md` and verify latest `dev` head before further writes.
+
+
 ## AQ40 Chunk 5 — exact recipient action evidence gate (2026-10-24)
 - Starting remote `dev` HEAD `f69afea22e2f849d8d3775a242cbf94c6dec76f6` confirmed; `main` untouched. TOC bumped to **0.9.70-dev**.
 - Added optional `condition.observedAura` to the **existing** bound-action guard. The required aura must be positively displayed with the **exact key, active generation, member binding and recipient name**, and must not have expired. Missing/stale/mismatched evidence disables the action both during presentation refresh and again on click; no new sender, scheduler, encounter event, guessed recipient or ability readiness.
