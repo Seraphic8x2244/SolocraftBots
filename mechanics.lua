@@ -1282,6 +1282,13 @@ function mechanics.ObserveNPCHealth(key, unit, options)
     slot.hideOnDeath, slot.clickTarget = options.hideOnDeath == true,
         options.clickTarget == true
     slot.attackAll = options.attackAll == true
+    if slot.frame.scbAttackAllButton then
+        if slot.attackAll and not slot.dead then
+            slot.frame.scbAttackAllButton:Show()
+        else
+            slot.frame.scbAttackAllButton:Hide()
+        end
+    end
     if options.icon then slot.frame.icon:SetTexture(options.icon) end
     slot.health, slot.maximum = health, maximum
     if health <= 0 or (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit)) then
@@ -3173,6 +3180,9 @@ local function CheckDeclaration(d)
         end
         local initialIds = {}
         for _, stage in ipairs(d.initialStages) do
+            if type(stage) ~= "table" then
+                return false, "invalid initial stage"
+            end
             if not CheckEffect({
                 id = stage.id, type = "timer_stage", label = stage.label,
                 minDelay = stage.minDelay, maxDelay = stage.maxDelay,
