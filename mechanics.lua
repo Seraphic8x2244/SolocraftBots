@@ -293,6 +293,7 @@ local presentation = {
     timer = { pool = {}, position = { "TOPLEFT", "TOP", -312, -150 }, width = 220, height = 20 },
     aura = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 220, height = 20 },
     action = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 220, height = 20 },
+    hp = { pool = {}, position = { "TOPLEFT", "TOP", -80, -150 }, width = 220, height = 20 },
 }
 local panelSpecs = {
     timer = { width = 220, height = 20, position = { "TOP", -312, -128 } },
@@ -434,6 +435,9 @@ LayoutPresentation = function(kind)
             if slot.used then table.insert(rows, slot) end
         end
     else
+        for _, slot in ipairs(presentation.hp.pool) do
+            if slot.used then table.insert(rows, slot) end
+        end
         for _, slot in ipairs(presentation.aura.pool) do
             if slot.used then
                 table.insert(rows, slot)
@@ -558,7 +562,7 @@ local function ApplyPanelSize(kind, width, height)
     local panel = panelSpecs[kind]
     if not panel or not ValidPanelDimension(width, height) then return false end
     panel.width, panel.height = width, height
-    local kinds = kind == "timer" and { "timer" } or { "aura", "action" }
+    local kinds = kind == "timer" and { "timer" } or { "aura", "action", "hp" }
     for _, poolKind in ipairs(kinds) do
         presentation[poolKind].width = width
         presentation[poolKind].height = height
@@ -646,7 +650,7 @@ function mechanics.SetPanelSize(kind, width, height)
 end
 
 local function CreatePresentationFrame(kind, group)
-    local frame = CreateFrame(kind == "action" and "Button" or "Frame", nil, UIParent)
+    local frame = CreateFrame((kind == "action" or kind == "hp") and "Button" or "Frame", nil, UIParent)
     frame.scbKind = kind
     frame:SetWidth(group.width)
     frame:SetHeight(group.height)
@@ -662,7 +666,7 @@ local function CreatePresentationFrame(kind, group)
     icon:SetHeight(group.height)
     icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     frame.icon = icon
-    if kind == "timer" or kind == "aura" or kind == "action" then
+    if kind == "timer" or kind == "aura" or kind == "action" or kind == "hp" then
         local bar = CreateFrame("StatusBar", nil, frame)
         bar:SetPoint("TOPLEFT", frame, "TOPLEFT", group.height + 2, 0)
         bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
@@ -676,7 +680,7 @@ local function CreatePresentationFrame(kind, group)
         bar:SetFrameLevel(frame:GetFrameLevel())
         frame.bar = bar
     end
-    if kind == "aura" or kind == "action" then
+    if kind == "aura" or kind == "action" or kind == "hp" then
         -- Only tracker rows keep the fixed action-icon background.
         local slotBackground = frame:CreateTexture(nil, "ARTWORK")
         slotBackground:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
@@ -695,6 +699,20 @@ local function CreatePresentationFrame(kind, group)
     detail:SetJustifyH("RIGHT")
     detail:SetWidth(50)
     frame.detail = detail
+    if kind == "hp" then
+        frame:RegisterForClicks("LeftButtonUp")
+        frame:SetScript("OnClick", function()
+            local slot = frame.scbSlot
+            if not slot or not slot.used or not slot.clickTarget or not active
+                or slot.generation ~= active.generation then return end
+            -- Never target a recycled token or a same-name replacement.
+            local unit = slot.unit
+            if unit and mechanics.NPCInstanceID(unit) == slot.instanceID
+                and UnitExists and UnitExists(unit)
+                and UnitIsDeadOrGhost and not UnitIsDeadOrGhost(unit)
+                and TargetUnit then TargetUnit(unit) end
+        end)
+    end
     if kind == "action" then
         local overlay = frame:CreateTexture(nil, "OVERLAY")
         overlay:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
@@ -944,6 +962,8 @@ local function AcquirePresentation(kind, key)
     slot.memberBinding = nil
     slot.retainAfterBossDeath = nil
     slot.abilityRecord, slot.abilityHint = nil, nil
+    slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+    slot.clickTarget, slot.hideOnDeath = nil, nil
     slot.timerName = nil
     slot.startedAt = nil
     slot.frame.label:Show()
@@ -978,6 +998,8 @@ local function ReleasePresentation(kind, key)
             slot.memberBinding = nil
             slot.retainAfterBossDeath = nil
             slot.abilityRecord, slot.abilityHint = nil, nil
+            slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+            slot.clickTarget, slot.hideOnDeath = nil, nil
             slot.timerName = nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
@@ -1028,6 +1050,77 @@ function mechanics.ShowTimer(key, timerName, label)
     slot.label = label or timerName
     mechanics.UpdatePresentation()
     return true
+end
+
+-- SuperWoW exposes a per-spawn GUID as UnitExists' second result;
+-- some clients also expose UnitGUID. A creature name or NPC type ID is
+-- never an adequate key for simultaneous instances. Fail closed if neither
+-- interface provides an individual identity.
+function mechanics.NPCInstanceID(unit)
+    local exists, id
+    if type(unit) ~= "string" or unit == "" or not UnitExists then return nil end
+    exists, id = UnitExists(unit)
+    if not exists then return nil end
+    if (type(id) ~= "string" or id == "") and type(UnitGUID) == "function" then
+        id = UnitGUID(unit)
+    end
+    if type(id) ~= "string" or id == "" then return nil end
+    return id
+end
+
+-- Generic per-instance HP template. Calling code supplies only positively
+-- observed unit tokens, never guessed creatures. No new event/tick owner.
+-- Rows survive temporary sight loss with last OBSERVED health, not invented
+-- death; a positive death observation determines DEAD versus retirement.
+function mechanics.ObserveNPCHealth(key, unit, options)
+    local id, health, maximum, slot, err
+    if type(key) ~= "string" or key == "" or type(options) ~= "table"
+        or type(options.label) ~= "string" or options.label == ""
+        or (options.group ~= nil and (type(options.group) ~= "string"
+            or not string.find(options.group, "^[%w_%-]+$")))
+        or (options.hideOnDeath ~= nil and type(options.hideOnDeath) ~= "boolean")
+        or (options.clickTarget ~= nil and type(options.clickTarget) ~= "boolean")
+        then return false, "invalid hp row" end
+    id = mechanics.NPCInstanceID(unit)
+    if not id or not UnitHealth or not UnitHealthMax then
+        return false, "unidentified npc instance"
+    end
+    -- Keys represent a template plus a unique instance; a replaced spawn
+    -- never inherits the DEAD state of a prior GUID.
+    health, maximum = UnitHealth(unit), UnitHealthMax(unit)
+    if type(health) ~= "number" or type(maximum) ~= "number"
+        or maximum <= 0 or health ~= health then return false, "invalid hp" end
+    local rowKey = key .. ":" .. id
+    for _, other in ipairs(presentation.hp.pool) do
+        if other.used and other.instanceID == id and other.key ~= rowKey then
+            return false, "instance already tracked"
+        end
+    end
+    for _, other in ipairs(presentation.hp.pool) do
+        if other.used and other.key == rowKey then
+            slot = other
+            break
+        end
+    end
+    if not slot then
+        slot, err = AcquirePresentation("hp", rowKey)
+        if not slot then return false, err end
+    end
+    slot.instanceID, slot.unit, slot.label = id, unit, options.label
+    slot.group = options.group
+    slot.hideOnDeath, slot.clickTarget = options.hideOnDeath == true,
+        options.clickTarget == true
+    if options.icon then slot.frame.icon:SetTexture(options.icon) end
+    slot.health, slot.maximum = health, maximum
+    if health <= 0 or (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit)) then
+        slot.dead = true
+    end
+    if slot.dead and slot.hideOnDeath then
+        ReleasePresentation("hp", rowKey)
+        return true, rowKey
+    end
+    mechanics.UpdatePresentation()
+    return true, rowKey
 end
 
 -- Aura rows display caller-observed state. Only recipient/member auras have
@@ -1407,6 +1500,8 @@ function mechanics.ClearPresentation()
             slot.expiresAt = nil
             slot.memberBinding = nil
             slot.retainAfterBossDeath = nil
+            slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+            slot.clickTarget, slot.hideOnDeath = nil, nil
             slot.frame:Hide()
         end
     end
@@ -1559,6 +1654,39 @@ function mechanics.UpdatePresentation(now)
                         slot.frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
                     end
                     slot.frame:Show()
+                end
+            end
+        end
+    end
+    for _, slot in ipairs(presentation.hp.pool) do
+        if slot.used and slot.generation == session.generation then
+            local unit = slot.unit
+            if not slot.dead and unit
+                and mechanics.NPCInstanceID(unit) == slot.instanceID
+                and UnitHealth and UnitHealthMax then
+                local health, maximum = UnitHealth(unit), UnitHealthMax(unit)
+                if type(health) == "number" and type(maximum) == "number"
+                    and maximum > 0 and health == health then
+                    slot.health, slot.maximum = health, maximum
+                    if health <= 0 or (UnitIsDeadOrGhost
+                        and UnitIsDeadOrGhost(unit)) then slot.dead = true end
+                end
+            end
+            if slot.dead and slot.hideOnDeath then
+                ReleasePresentation("hp", slot.key)
+            else
+                slot.frame.label:SetText(slot.label)
+                if slot.dead then
+                    slot.frame.detail:SetText("DEAD")
+                    slot.frame.bar:SetValue(0)
+                    slot.frame.bar:SetStatusBarColor(0.35, 0.35, 0.35)
+                else
+                    slot.frame.detail:SetText(string.format("%.0f%%",
+                        100 * math.max(0, math.min(1,
+                            (slot.health or 0) / math.max(1, slot.maximum or 1)))))
+                    slot.frame.bar:SetValue(math.max(0, math.min(1,
+                        (slot.health or 0) / math.max(1, slot.maximum or 1))))
+                    slot.frame.bar:SetStatusBarColor(0.12, 0.55, 0.20)
                 end
             end
         end
