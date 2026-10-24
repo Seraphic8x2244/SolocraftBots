@@ -387,7 +387,16 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
             },
-            triggers = {},
+            triggers = {
+                { event = "CHAT_MSG_SPELL_AURA_GONE_OTHER",
+                    contains = "Whirlwind fades from Battleguard Sartura.",
+                    effects = { { type = "notice", id = "whirlwindfade",
+                        label = "Sartura Whirlwind ended", lifespan = 5 } } },
+                { event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
+                    contains = "Battleguard Sartura gains Enrage",
+                    effects = { { type = "notice", id = "enrage",
+                        label = "Sartura Enrage observed", lifespan = 5 } } },
+            },
         },
         fankriss = {
             detect = { zone = "Ahn'Qiraj", boss = "Fankriss the Unyielding" },
@@ -574,8 +583,22 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
             },
-            -- Additional source evidence required for a shared Giant
-            -- Tentacle row and positively signalled Weakened interval.
+            triggers = {
+                { event = "CHAT_MSG_MONSTER_EMOTE",
+                    contains = "is weakened!",
+                    effects = { { type = "notice", id = "weakened",
+                        label = "C'Thun Weakened observed", lifespan = 5 } } },
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                    contains = "Giant Claw Tentacle begins to cast Birth.",
+                    effects = { { type = "notice", id = "giantclaw",
+                        label = "Giant Claw spawn observed", lifespan = 5 } } },
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                    contains = "Giant Eye Tentacle begins to cast Birth.",
+                    effects = { { type = "notice", id = "gianteye",
+                        label = "Giant Eye spawn observed", lifespan = 5 } } },
+            },
+            -- Timing and GUID-specific giant tentacle bars still require
+            -- positive source and instance evidence.
         },
         sentinels = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Sentinel",
