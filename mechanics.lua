@@ -86,7 +86,9 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if active.engaged then return true end
     active.engaged = true
     if not active.definition.declarative then return true end
-    return mechanics.InitializeAbilities(active.generation)
+    local ok, why = mechanics.InitializeAbilities(active.generation)
+    if not ok then return false, why end
+    return mechanics.InitializeCounters(active.generation)
 end
 
 function mechanics.GetEncounterState()
@@ -965,6 +967,7 @@ local function AcquirePresentation(kind, key)
     slot.instanceID, slot.unit, slot.dead = nil, nil, nil
     slot.clickTarget, slot.hideOnDeath = nil, nil
     slot.timerName = nil
+    slot.progressKind, slot.progressState = nil, nil
     slot.startedAt = nil
     slot.frame.label:Show()
     slot.frame.detail:Show()
@@ -1001,6 +1004,7 @@ local function ReleasePresentation(kind, key)
             slot.instanceID, slot.unit, slot.dead = nil, nil, nil
             slot.clickTarget, slot.hideOnDeath = nil, nil
             slot.timerName = nil
+            slot.progressKind, slot.progressState = nil, nil
             slot.generation = nil
             if slot.frame.scbOverlay then slot.frame.scbOverlay:Hide() end
             if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
@@ -1050,6 +1054,112 @@ function mechanics.ShowTimer(key, timerName, label)
     slot.label = label or timerName
     mechanics.UpdatePresentation()
     return true
+end
+
+
+-- Hit counts are POSITIVELY OBSERVED messages only; reference maxima are
+-- presentation scales and must not assert full combat-log coverage.
+function mechanics.InitializeCounters(expectedGeneration)
+    if not active or not active.engaged or not active.definition.declarative
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if active.counters then return true end
+    active.counters = {}
+    for _, spec in ipairs(active.definition.declarative.counters or {}) do
+        local state = { count = 0, seen = {}, spec = spec, generation = active.generation }
+        active.counters[spec.id] = state
+        local slot, err = AcquirePresentation("timer", "counter:" .. spec.id)
+        if not slot then return false, err end
+        slot.progressKind, slot.progressState = "counter", state
+        slot.label, slot.group = spec.label, spec.group
+        if spec.icon then slot.frame.icon:SetTexture(spec.icon) end
+    end
+    mechanics.UpdatePresentation()
+    return true
+end
+
+function mechanics.ObserveCounterHit(id, occurrenceId, expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    local state = active.counters and active.counters[id]
+    if not state then return false, "unknown counter" end
+    if occurrenceId ~= nil and (type(occurrenceId) ~= "string" or occurrenceId == "")
+        then return false, "invalid occurrence" end
+    if occurrenceId and state.seen[occurrenceId] then return false, "duplicate observation" end
+    if occurrenceId then state.seen[occurrenceId] = true end
+    state.count = state.count + 1
+    return true
+end
+
+function mechanics.GetCounter(id, expectedGeneration)
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation)
+        then return nil end
+    local state = active.counters and active.counters[id]
+    if not state then return nil end
+    return { count = state.count, maximum = state.spec.maximum,
+        maximumKind = state.spec.maximumKind or "reference",
+        generation = state.generation }
+end
+
+-- A named encounter timer only marks the earliest readiness boundary.
+-- A new stage requires a POSITIVE event; readiness never implies phase change.
+function mechanics.SetTimerStage(id, spec, expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if type(id) ~= "string" or id == "" or type(spec) ~= "table"
+        or type(spec.label) ~= "string" or spec.label == ""
+        or type(spec.minDelay) ~= "number" or spec.minDelay < 0
+        or spec.minDelay ~= spec.minDelay or spec.minDelay == math.huge
+        or (spec.maxDelay ~= nil and (type(spec.maxDelay) ~= "number"
+            or spec.maxDelay < spec.minDelay or spec.maxDelay == math.huge
+            or spec.maxDelay ~= spec.maxDelay))
+        or (spec.provenance ~= nil and spec.provenance ~= "fixed"
+            and spec.provenance ~= "predicted")
+        or (spec.icon ~= nil and (type(spec.icon) ~= "string" or spec.icon == ""))
+        or (spec.group ~= nil and (type(spec.group) ~= "string"
+            or not string.find(spec.group, "^[%w_]+$"))) then
+        return false, "invalid timer stage"
+    end
+    local now = Now()
+    local stage = { label = spec.label, group = spec.group,
+        startedAt = now, minimumAt = now + spec.minDelay,
+        maximumAt = now + (spec.maxDelay or spec.minDelay),
+        provenance = spec.provenance or "predicted",
+        generation = active.generation }
+    local slot, err = AcquirePresentation("timer", "stage:" .. id)
+    if not slot then return false, err end
+    mechanics.CancelTimer("stage-ready:" .. id)
+    active.stageTimers = active.stageTimers or {}
+    active.stageTimers[id] = stage
+    slot.progressKind, slot.progressState = "stage", stage
+    slot.label, slot.group = spec.label, spec.group
+    if spec.icon then slot.frame.icon:SetTexture(spec.icon) end
+    local token = active.generation
+    local ok = mechanics.ScheduleTimer("stage-ready:" .. id, spec.minDelay, function()
+        if active and active.generation == token
+            and active.stageTimers and active.stageTimers[id] == stage then
+            stage.ready = true
+        end
+    end, stage.provenance)
+    if not ok then return false, "timer unavailable" end
+    mechanics.UpdatePresentation()
+    return true
+end
+
+function mechanics.GetTimerStage(id, expectedGeneration)
+    if not active or (expectedGeneration and expectedGeneration ~= active.generation)
+        then return nil end
+    local stage = active.stageTimers and active.stageTimers[id]
+    if not stage then return nil end
+    return { label = stage.label, startedAt = stage.startedAt,
+        minimumAt = stage.minimumAt, maximumAt = stage.maximumAt,
+        provenance = stage.provenance, ready = stage.ready == true
+            or Now() >= stage.minimumAt, generation = stage.generation }
 end
 
 -- SuperWoW exposes a per-spawn GUID as UnitExists' second result;
@@ -1121,6 +1231,51 @@ function mechanics.ObserveNPCHealth(key, unit, options)
     end
     mechanics.UpdatePresentation()
     return true, rowKey
+end
+
+
+-- HP projection uses only positively identified, live unit observations.
+-- No valid token means retain last displayed HP but WITHHOLD the ETA.
+function mechanics.ObserveHPThreshold(key, unit, options, expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    if type(key) ~= "string" or key == "" or type(options) ~= "table"
+        or type(options.label) ~= "string" or options.label == ""
+        or type(options.threshold) ~= "number" or options.threshold <= 0
+        or options.threshold >= 1 or options.threshold ~= options.threshold
+        or (options.icon ~= nil and (type(options.icon) ~= "string"
+            or options.icon == "")) then return false, "invalid threshold" end
+    local id = mechanics.NPCInstanceID(unit)
+    if not id or not UnitHealth or not UnitHealthMax then
+        return false, "unidentified npc instance"
+    end
+    local health, maximum = UnitHealth(unit), UnitHealthMax(unit)
+    if type(health) ~= "number" or type(maximum) ~= "number"
+        or maximum <= 0 or health ~= health or health < 0 then
+        return false, "invalid hp"
+    end
+    local slot, err = AcquirePresentation("timer", "threshold:" .. key)
+    if not slot then return false, err end
+    if slot.progressKind == "threshold" and slot.progressState
+        and slot.progressState.instanceID ~= id then
+        return false, "different npc instance"
+    end
+    local state = slot.progressState
+    if not state then
+        state = { instanceID = id, threshold = options.threshold,
+            baselineAt = Now(), baselinePct = health / maximum }
+    elseif state.threshold ~= options.threshold then
+        return false, "threshold changed"
+    end
+    state.unit, state.currentPct, state.lastPct = unit,
+        health / maximum, health / maximum
+    slot.progressKind, slot.progressState = "threshold", state
+    slot.label, slot.group = options.label, options.group
+    if options.icon then slot.frame.icon:SetTexture(options.icon) end
+    mechanics.UpdatePresentation()
+    return true
 end
 
 -- Aura rows display caller-observed state. Only recipient/member auras have
@@ -1585,6 +1740,7 @@ function mechanics.ClearPresentation()
             if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
             slot.generation = nil
             slot.timerName = nil
+            slot.progressKind, slot.progressState = nil, nil
             slot.label = nil
             slot.target = nil
             slot.expiresAt = nil
@@ -1724,7 +1880,76 @@ function mechanics.UpdatePresentation(now)
     group = presentation.timer
     for _, slot in ipairs(group.pool) do
         if slot.used and slot.generation == session.generation then
-            if slot.abilityRecord or slot.abilityHint then
+            if slot.progressKind then
+                local state, frame = slot.progressState, slot.frame
+                if slot.progressKind == "counter" then
+                    frame.label:SetText(slot.label)
+                    frame.detail:SetText(tostring(state.count) .. "/" ..
+                        (state.spec.maximumKind == "observed" and "" or "~") ..
+                        tostring(state.spec.maximum))
+                    frame.bar:SetValue(math.max(0, math.min(1,
+                        state.count / state.spec.maximum)))
+                    frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                elseif slot.progressKind == "stage" then
+                    frame.label:SetText(state.label)
+                    local earliest = math.max(0, state.minimumAt - now)
+                    local latest = math.max(0, state.maximumAt - now)
+                    local total = math.max(0.001, state.minimumAt - state.startedAt)
+                    frame.bar:SetValue(math.max(0, math.min(1, earliest / total)))
+                    if now >= state.minimumAt then
+                        frame.detail:SetText(SCB_L("BOSSMODS_READY"))
+                        frame.bar:SetStatusBarColor(0.05, 0.38, 0.14)
+                    else
+                        if state.maximumAt > state.minimumAt then
+                            frame.detail:SetText(string.format("~%.0f-%.0fs",
+                                earliest, latest))
+                        elseif state.provenance == "fixed" then
+                            frame.detail:SetText(string.format("%.0fs", earliest))
+                        else
+                            frame.detail:SetText(string.format("~%.0fs", earliest))
+                        end
+                        frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                    end
+                elseif slot.progressKind == "threshold" then
+                    frame.label:SetText(slot.label)
+                    local unit = state.unit
+                    local observed = unit and mechanics.NPCInstanceID(unit)
+                        == state.instanceID and UnitHealth and UnitHealthMax
+                    local health, maximum
+                    if observed then
+                        health, maximum = UnitHealth(unit), UnitHealthMax(unit)
+                        observed = type(health) == "number"
+                            and type(maximum) == "number" and maximum > 0
+                            and health == health and health >= 0
+                    end
+                    if observed then
+                        local pct = math.max(0, math.min(1, health / maximum))
+                        if state.lastPct and pct > state.lastPct then
+                            -- Healing invalidates the measured loss baseline.
+                            state.baselinePct, state.baselineAt = pct, now
+                        end
+                        state.currentPct, state.lastPct = pct, pct
+                    end
+                    local pct = state.currentPct or 1
+                    frame.bar:SetValue(math.max(0, math.min(1,
+                        (pct - state.threshold) / (1 - state.threshold))))
+                    frame.bar:SetStatusBarColor(0.96, 0.61, 0.10)
+                    local elapsed = now - (state.baselineAt or now)
+                    local loss = (state.baselinePct or pct) - pct
+                    if not observed then
+                        frame.detail:SetText("?")
+                    elseif pct <= state.threshold then
+                        -- Reaching HP percentage does not prove a boss ability.
+                        frame.detail:SetText("HP threshold")
+                    elseif elapsed > 0 and loss > 0 then
+                        frame.detail:SetText(string.format("~%.0fs",
+                            (pct - state.threshold) * elapsed / loss))
+                    else
+                        frame.detail:SetText("?")
+                    end
+                end
+                frame:Show()
+            elseif slot.abilityRecord or slot.abilityHint then
                 RenderAbilityBar(slot, now)
             else
                 timer = mechanics.GetTimer(slot.timerName)
@@ -2183,10 +2408,26 @@ local function IsDuration(v)
     return type(v) == "number" and v > 0 and v == v and v < math.huge
 end
 
+local function IsFiniteNumber(value)
+    return type(value) == "number" and value == value
+        and math.abs(value) < math.huge
+end
+
 local function CheckEffect(e, hasPattern)
     local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
-    if e.type == "timer" then
+    if e.type == "counter_hit" then
+        return e.label == nil and e.duration == nil
+    elseif e.type == "timer_stage" then
+        return type(e.label) == "string" and e.label ~= ""
+            and IsFiniteNumber(e.minDelay) and e.minDelay >= 0
+            and (e.maxDelay == nil or (IsFiniteNumber(e.maxDelay)
+                and e.maxDelay >= e.minDelay))
+            and (e.provenance == nil or e.provenance == "fixed"
+                or e.provenance == "predicted")
+            and (e.group == nil or (type(e.group) == "string"
+                and string.find(e.group, "^[%w_]+$") ~= nil))
+    elseif e.type == "timer" then
         return type(e.label) == "string" and e.label ~= ""
             and IsDuration(e.duration)
             and (e.provenance == "predicted" or e.provenance == "fixed"
@@ -2227,11 +2468,6 @@ local function CheckEffect(e, hasPattern)
             and (e.kickLabel == nil or (type(e.kickLabel) == "string" and e.kickLabel ~= ""))
     end
     return false
-end
-
-local function IsFiniteNumber(value)
-    return type(value) == "number" and value == value
-        and math.abs(value) < math.huge
 end
 
 local function CheckWidgetAppearance(w)
@@ -2368,6 +2604,20 @@ local function CheckAbility(a, seen, isGroup)
     return true
 end
 
+local function CheckCounter(c, seen)
+    if type(c) ~= "table" or not IsId(c.id) or seen[c.id]
+        or type(c.label) ~= "string" or c.label == ""
+        or not IsFiniteNumber(c.maximum) or c.maximum < 1
+        or c.maximum ~= math.floor(c.maximum)
+        or (c.maximumKind ~= nil and c.maximumKind ~= "reference"
+            and c.maximumKind ~= "observed")
+        or not CheckRowGroup(c.group)
+        or (c.icon ~= nil and (type(c.icon) ~= "string" or c.icon == ""))
+        then return false end
+    seen[c.id] = true
+    return true
+end
+
 local function CheckDeclaration(d)
     local i, j, w, rule, step, seen = 0, 0, nil, nil, nil, {}
     if type(d) ~= "table" or type(d.detect) ~= "table"
@@ -2404,6 +2654,16 @@ local function CheckDeclaration(d)
                 return false, "invalid command step"
             end
         end
+    end
+    if d.counters ~= nil and type(d.counters) ~= "table" then
+        return false, "invalid counters"
+    end
+    local counterIds = {}
+    for i = 1, table.getn(d.counters or {}) do
+        if not CheckCounter(d.counters[i], seen) then
+            return false, "invalid counter"
+        end
+        counterIds[d.counters[i].id] = true
     end
     if d.abilities ~= nil and type(d.abilities) ~= "table" then
         return false, "invalid abilities"
@@ -2449,6 +2709,10 @@ local function CheckDeclaration(d)
         for j = 1, table.getn(rule.effects) do
             if not CheckEffect(rule.effects[j], rule.pattern ~= nil) then
                 return false, "invalid effect"
+            end
+            if rule.effects[j].type == "counter_hit"
+                and not counterIds[rule.effects[j].id] then
+                return false, "counter not declared"
             end
         end
     end
@@ -2746,11 +3010,16 @@ local function Recipient(effect, captured)
     return captured
 end
 
-local function RunDeclaredEffect(effect, captured)
+local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "timer" then
+    if effect.type == "counter_hit" then
+        mechanics.ObserveCounterHit(effect.id,
+            details and details.observationId, active.generation)
+    elseif effect.type == "timer_stage" then
+        mechanics.SetTimerStage(effect.id, effect, active.generation)
+    elseif effect.type == "timer" then
         if mechanics.ScheduleTimer(key, effect.duration, nil, effect.provenance) then
             mechanics.ShowTimer(key, key, effect.label)
         end
@@ -2979,7 +3248,7 @@ function mechanics.DispatchDeclarativeEvent(session, eventName, message, details
             if matched then
                 for j = 1, table.getn(rule.effects) do
                     if active ~= session then break end
-                    RunDeclaredEffect(rule.effects[j], captured)
+                    RunDeclaredEffect(rule.effects[j], captured, details)
                 end
                 count = count + 1
             end
