@@ -533,6 +533,15 @@ SoloCraftBots.bossModDefinitions = {
                 { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
                     contains = "You are afflicted by Toxin.",
                     effects = { { type = "viscidus_toxin", target = "player" } } },
+                -- BigWigs' native emote boundaries: frost hits count until
+                -- frozen, then melee hits count. A later slow emote resets
+                -- the next frost cycle without inventing a glob duration.
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " is frozen solid!",
+                    effects = { { type = "viscidus_phase", phase = "melee" } } },
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " begins to slow!",
+                    effects = { { type = "viscidus_phase", phase = "frost" } } },
                 -- Confirmed creature buff applications; these are only a
                 -- subset of frost damage hits, not a complete frost count.
                 {
