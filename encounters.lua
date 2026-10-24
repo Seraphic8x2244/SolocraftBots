@@ -345,8 +345,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "greatheal", caster = "Princess Yauj",
-                    label = "Great Heal", mode = "opportunistic",
-                    castTime = 2,
+                    label = "Great Heal", readyLabel = "Heal Ready",
+                    mode = "opportunistic", castTime = 2,
                     icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
                     startRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
@@ -367,7 +367,65 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
             },
-            triggers = {},
+            -- School lockout is counted only when the native log explicitly
+            -- names the interrupt spell AND its Great Heal target. Durations
+            -- are per interrupt type; absent evidence remains unresolved.
+            triggers = {
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Kick interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_kick",
+                        ability = "greatheal", duration = 5 } },
+                },
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Pummel interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_pummel",
+                        ability = "greatheal", duration = 4 } },
+                },
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Shield Bash interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_shieldbash",
+                        ability = "greatheal", duration = 6 } },
+                },
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Counterspell interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_counterspell",
+                        ability = "greatheal", duration = 10 } },
+                },
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Earth Shock interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_earthshock",
+                        ability = "greatheal", duration = 2 } },
+                },
+                {
+                    events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Spell Lock interrupts Princess Yauj's Great Heal",
+                    effects = { { type = "ability_lockout",
+                        id = "lockout_spelllock",
+                        ability = "greatheal", duration = 6 } },
+                },
+            },
         },
         sartura = {
             detect = { zone = "Ahn'Qiraj", boss = "Battleguard Sartura" },
