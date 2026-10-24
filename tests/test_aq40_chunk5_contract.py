@@ -35,17 +35,14 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertIn('endOnBossDeath = false', cthun)
         self.assertIn('aliases = { "Eye of C\'Thun" },', cthun)
 
-    def test_yauj_unmeasured_abilities_are_observation_only(self):
+    def test_yauj_ready_requires_observed_interrupt(self):
         trio = AQ.split('        bugtrio = {', 1)[1].split('        sartura = {', 1)[0]
-        for ability, next_id in (('greatheal', 'fear'), ('fear', None)):
-            section = trio.split('id = "' + ability + '"', 1)[1]
-            if next_id is not None:
-                section = section.split('id = "' + next_id + '"', 1)[0]
-            else:
-                section = section.split('            triggers =', 1)[0]
-            self.assertIn('observedOnly = true', section)
-            self.assertNotIn('repeatDelay =', section)
-            self.assertNotIn('firstDelay =', section)
+        self.assertIn('readyLabel = "Heal Ready"', trio)
+        self.assertIn('type = "ability_lockout"', trio)
+        self.assertIn('ability = "greatheal"', trio)
+        self.assertIn('firstDelay = 10, repeatDelay = 20', trio)
+        self.assertIn('castTime = 2', trio)
+        self.assertNotIn('id = "greatheal", caster = "Princess Yauj",\n                    label = "Great Heal", mode = "opportunistic",\n                    castTime = 2, repeatDelay', trio)
 
     def test_individual_hp_death_and_target_guards(self):
         for creature in ("Anubisath Sentinel", "Sartura's Royal Guard",
@@ -74,7 +71,7 @@ class AQ40Chunk5Contract(unittest.TestCase):
 
     def test_defender_dev_only_recorder_is_opt_in(self):
         self.assertIn('function mechanics.RecordDefenderHit(', MECH)
-        self.assertIn('active.id ~= "aq40_defender"', MECH)
+        self.assertIn('active.id ~= "aq40.defender"', MECH)
         self.assertIn('db.bossModDefenderRecord ~= true', MECH)
         self.assertIn('string.find(version, "%-dev$")', MECH)
         self.assertIn('if id and id ~= slot.instanceID then', MECH)
