@@ -27,8 +27,8 @@ class DefenderPairContract(unittest.TestCase):
     def test_readout_returns_copy(self):
         block = SOURCE.split("function mechanics.GetDefenderAbilities(", 1)[1].split(
             "-- Dev-only Defender interval sampler.", 1)[0]
-        self.assertIn("local pairs = {}", block)
-        self.assertIn("pairs[pair] = ability", block)
+        self.assertIn("local observedPairs = {}", block)
+        self.assertIn("observedPairs[pair] = ability", block)
 
 
 if __name__ == "__main__":
