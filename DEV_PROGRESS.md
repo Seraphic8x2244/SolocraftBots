@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Chunk 5 — Defender positive pair-state checkpoint (2026-10-24)
+- Verified remote starting `dev` HEAD `6a2758c6157032156a48ac6ab1f685c09d6c8ccb`, rulebook and handoff. Current TOC **0.9.74-dev**; `main` untouched.
+- Implemented **explicit GUID-bound Defender ability-pair recording only**: `ObserveDefenderAbility(unit,ability,generation)` requires engaged `aq40_defender`, positively identified live named unit/GUID with tracked HP row and one of the six allowed abilities. Pair 1 Meteor/Plague, pair 2 Shadow Storm/Thunderclap, pair 3 Fire+Arcane/Frost+Shadow reflect are mutually exclusive, and a contradiction fails closed. `GetDefenderAbilities` returns a defensive copy. No invented observed event signature, cooldown, inferred pair, or independent command source.
+- Commits: `1533528` runtime state, `3ee6894` TOC, `db7b39a` regression, `9edad64` fix `pairs` built-in shadowing, `b90c1cb` adjusted regression. **11/11 scoped remote JavaScript source assertions PASS**. Python unittest, Lua 5.0.3 compiler, CI and game runtime NOT run; source assertions are NOT execution.
+- **NOT YET IMPLEMENTED:** Defender automatic observed events, pair 1–2 visible bars tied to each Defender GUID, pair 3 reflect icons; Sentinel original/inherited evidence feed, visible icons and sorted HP; Fankriss Entangle 8s safe action; Viscidus Toxin first-hit scoped action. All require trustworthy recipient/GUID/event evidence and safe command owner integration. Continue Chunk 5 without interim in-game testing; never guess native event signatures or timing. Do not touch `main`.
+- **Next:** connect verified positive per-GUID evidence sources to existing HP/action presentation without loosening guards, and implement visible evidence-driven icons/priority where existing render architecture permits. Check `dev` head before writes.
+
+
 ## AQ40 Chunk 5 — Sentinel GUID-bound observation state (2026-10-24)
 - Started from verified dev HEAD `2f470824d970fec308131ecdf1eb1cfe1d3e223f`. Code commit `2ba5366`, TOC `e9791cd`, regression file `fd3b4d5`. Current version **0.9.73-dev**, `main` not modified.
 - Implemented generic, explicitly called `ObserveSentinelAbility(unit, ability, provenance, generation)` and readout `GetSentinelAbilities(unit, generation)`: require engaged canonical Sentinel encounter, positively identified SuperWoW individual GUID, already tracked live HP row, approved ability name and explicit original/inherited provenance. The original attribute is immutable after first observation; inherited abilities append to a separate observed set. A copied readout exposes original-based priority and names. No combat-log caller presently supplies this evidence, and no sorting/icons are rendered: NOT feature-complete.
