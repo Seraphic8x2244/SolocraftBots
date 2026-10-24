@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Chunk 5 — Sentinel priority declaration checkpoint (2026-10-24)
+- Verified remote `dev` starting HEAD `2f4a0b9e2c5efd2ea9de63a23789b0a25458c06a`. No `main` writes. TOC now **0.9.72-dev**.
+- Added **declarative data only** for approved nine-step Sentinel easiest-first priority, with mutually ranked alternative names at ranks 3, 4 and 5. Ranking explicitly pertains to the **original distinguishing ability**, not inherited unions. Code commit `5b6b59b`, version `15faf3d`, regression file `24b5925`.
+- Added `tests/test_aq40_sentinel_priority.py` to guard ordering and absence of fabricated Sentinel event/cooldown rules. Executed **5/5 focused JavaScript source assertions against fetched remote files: PASS**. Python unittest, canonical Lua 5.0.3 compiler, CI and in-game runtime **not run**. The priorities are not yet consumed by a GUID-bound observer or renderer; **no visible Sentinel sorting or icons are implemented**.
+- **Chunk 5 remains OPEN:** implement positive-GUID Sentinel original/inherited ability provenance, renderer icons and live sorting; Fankriss Entangle recipient gain/fade and precisely bounded 8-second Come action; Viscidus first-hit Toxin recipient provenance and scoped action; Defender exclusive ability-pair attribution and reflect icons while retaining dev-only interval sampler. Current native event/recipient/GUID/command scope evidence is insufficient to wire these safely; never infer identity, action recipient, cooldown or reflect from an unbound chat hit. No interim in-game testing until all implementation chunks complete.
+- **Next:** inspect the existing HP row and event payload APIs to establish an exact positive GUID-to-spell observation interface, then connect only reliable supported evidence. Preserve BWL, SCB command owner, and `main`.
+
+
 ## AQ40 Chunk 5 — positive occurrence-ID dedup checkpoint (2026-10-24)
 - Starting `dev` HEAD `fbf9797fd8e4d2eb0e762f31ec9dd777d768616d` verified, TOC advanced to **0.9.71-dev**, `main` unchanged.
 - Implemented a narrow **observed ability finish** deduplication gate using an *optional, supplied* `details.observationId`: identical positive identities on the same ability collapse before changing occurrence/cast state. Missing identities retain old behaviour; invalid identity types fail closed. No inferred time window, spell cooldown, NPC GUID attribution, new event owner or SCB command path. Code commit `4a39ddf`, regression commit `3c90eb0`, version commit `af29acf`.
