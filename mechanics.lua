@@ -1719,7 +1719,7 @@ if type(GetAddOnMetadata) == "function"
         end
         if message ~= "export" then
             DEFAULT_CHAT_FRAME:AddMessage("SCB Defender recorder: " ..
-                (db.bossModDefenderRecord and "ON" or "OFF"))
+                (db.bossModDefenderRecord ~= false and "ON" or "OFF"))
             return
         end
         for _, name in ipairs(defenderSampleNames) do
