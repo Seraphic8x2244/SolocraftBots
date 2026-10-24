@@ -35,6 +35,18 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertIn('endOnBossDeath = false', cthun)
         self.assertIn('aliases = { "Eye of C\'Thun" },', cthun)
 
+    def test_yauj_unmeasured_abilities_are_observation_only(self):
+        trio = AQ.split('        bugtrio = {', 1)[1].split('        sartura = {', 1)[0]
+        for ability, next_id in (('greatheal', 'fear'), ('fear', None)):
+            section = trio.split('id = "' + ability + '"', 1)[1]
+            if next_id is not None:
+                section = section.split('id = "' + next_id + '"', 1)[0]
+            else:
+                section = section.split('            triggers =', 1)[0]
+            self.assertIn('observedOnly = true', section)
+            self.assertNotIn('repeatDelay =', section)
+            self.assertNotIn('firstDelay =', section)
+
     def test_individual_hp_death_and_target_guards(self):
         for creature in ("Anubisath Sentinel", "Sartura's Royal Guard",
                          "Princess Yauj", "Flesh Tentacle"):
