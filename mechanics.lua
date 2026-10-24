@@ -1443,11 +1443,11 @@ function mechanics.GetDefenderAbilities(unit, expectedGeneration)
     for _, row in ipairs(presentation.hp.pool) do
         if row.used and not row.dead and row.instanceID == guid
             and row.key == "defender:" .. guid then
-            local pairs = {}
+            local observedPairs = {}
             for pair, ability in pairs(row.defenderPairs or {}) do
-                pairs[pair] = ability
+                observedPairs[pair] = ability
             end
-            return { guid = guid, pairs = pairs }
+            return { guid = guid, pairs = observedPairs }
         end
     end
     return nil
