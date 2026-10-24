@@ -763,8 +763,11 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "plague", caster = "Anubisath Defender",
-                    label = "Plague observed", observedOnly = true,
+                    label = "Plague (40s reference)", observedOnly = true,
                     mode = "opportunistic",
+                    -- Pinned BigWigs supplies this one actual 40s reference;
+                    -- the 600s meteor/storm/clap placeholders are NOT CDs.
+                    repeatDelay = 40, resetOn = "finish",
                     icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
                     finishRule = {
                         event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
