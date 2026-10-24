@@ -331,8 +331,10 @@ SoloCraftBots.bossModDefinitions = {
             abilities = {
                 {
                     id = "poison", caster = "Lord Kri", label = "Poison Volley",
-                    observedOnly = true,
                     mode = "opportunistic",
+                    -- Pinned BigWigs: first 8-10s, subsequent 8-14s.
+                    -- Earliest readiness is estimated, not a confirmed cast.
+                    firstDelay = 8, repeatDelay = 8, resetOn = "finish",
                     icon = "Interface\\Icons\\Spell_Nature_CorrosiveBreath",
                     finishRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
@@ -343,8 +345,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "greatheal", caster = "Princess Yauj",
-                    label = "Great Heal", observedOnly = true,
-                    mode = "opportunistic",
+                    label = "Great Heal", mode = "opportunistic",
+                    castTime = 2,
                     icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
                     startRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
@@ -354,7 +356,10 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "fear", caster = "Princess Yauj", label = "Fear",
-                    observedOnly = true, mode = "opportunistic",
+                    mode = "opportunistic",
+                    -- Pinned BugFamily: initial 10-20s, later 20s.
+                    firstDelay = 10, repeatDelay = 20, resetOn = "start",
+                    castTime = 1,
                     icon = "Interface\\Icons\\Spell_Shadow_Possession",
                     startRule = {
                         event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
@@ -376,14 +381,22 @@ SoloCraftBots.bossModDefinitions = {
             abilities = {
                 {
                     id = "whirlwind", caster = "Battleguard Sartura",
-                    label = "Whirlwind", observedOnly = true,
+                    label = "Whirlwind",
                     mode = "opportunistic",
+                    -- Sartura only. Positive aura gain is active start,
+                    -- positive fade is end. Earliest cooldown 5s after fade.
+                    firstDelay = 8, repeatDelay = 5,
+                    resetOn = "finish", castTime = 15,
                     icon = "Interface\\Icons\\Ability_Whirlwind",
                     -- Aura gain is observed activation, not a cast start or
                     -- proof of when the next Whirlwind will become available.
-                    finishRule = {
+                    startRule = {
                         event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
                         contains = "Battleguard Sartura gains Whirlwind.",
+                    },
+                    finishRule = {
+                        event = "CHAT_MSG_SPELL_AURA_GONE_OTHER",
+                        contains = "Whirlwind fades from Battleguard Sartura.",
                     },
                 },
             },
@@ -504,6 +517,8 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "sweep", caster = "Ouro", label = "Sweep",
                     mode = "opportunistic",
+                    firstDelay = 20.5, repeatDelay = 20.5,
+                    resetOn = "start", castTime = 1.5,
                     icon = "Interface\\Icons\\Spell_Nature_Thorns",
                     startRule = {
                         event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
@@ -513,6 +528,8 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     id = "sandblast", caster = "Ouro", label = "Sand Blast",
                     mode = "opportunistic",
+                    firstDelay = 20, repeatDelay = 20,
+                    resetOn = "start", castTime = 2,
                     icon = "Interface\\Icons\\Spell_Nature_Cyclone",
                     startRule = {
                         event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
@@ -524,8 +541,10 @@ SoloCraftBots.bossModDefinitions = {
                 {
                     event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
                     contains = "Ground Rupture",
-                    effects = { { type = "notice", id = "emerge",
-                        label = "Ouro emerge observed", lifespan = 5 } },
+                    effects = { { type = "timer_stage", id = "ourocycle",
+                        label = "Next Submerge (estimated)",
+                        minDelay = 89, provenance = "predicted",
+                        icon = "Interface\\Icons\\INV_Misc_Shovel_01" } },
                 },
             },
             -- Submerge lacks a confirmed native signal: do not infer it from
