@@ -1,5 +1,12 @@
 # Development Progress
 
+## AQ40 Chunk 5 — Defender attribution ambiguity guard (2026-10-24)
+- Verified `dev` HEAD `a14aaba2d029eb98497eed0041e8fe079fcc2824` matched user handoff exactly before modifying; `main` not edited. Addon TOC bumped from `0.9.68-dev` to `0.9.69-dev`.
+- Narrow positive-observation correction: the dev-only Defender interval recorder now fails closed if **any second tracked living Defender GUID** remains, even when that second Defender's unit token is no longer valid. It also revalidates the sole candidate's current name and GUID before attributing a self hit. This prevents silently treating a temporary token loss as evidence that only one Defender exists. Existing account settings, per-GUID samples, single encounter owner, SCB command path and BWL declarations are unchanged.
+- Commits: `bad5a72` recorder guard; `c484f4f` new source-regression method; `9260118` TOC version bump. Six targeted GitHub-fetched source assertions PASS. Python unittest runner, canonical Lua 5.0.3 compiler, CI and in-game tests **not run**; source checks are not runtime confirmation.
+- **Chunk 5 remains OPEN**. This is only a recorder attribution safety step, **not** Sentinel initial/inherited ability evidence, Defender pair selection/reflect icons or cooldown readiness, nor Fankriss Entangle or Viscidus Toxin action binding. Those remain unresolved as detailed in the Chunk 5 handoff below, alongside remaining boss mechanics. No fabricated timing or command mapping; no interim in-game tests.
+- **Next:** add positive-observation source/recipient provenance to generic mechanics for Fankriss Entangle and Viscidus Toxin, with disabled/retention-bound action state and exact recipient safety. Resolve actual observed event signatures and command scope before dispatching. Then handle GUID-scoped Sentinel initial-vs-inherited icons/priority and Defender pair/reflect observations without inferred readiness. Verify `dev` HEAD after this documentation-only checkpoint. Do not modify `main`.
+
 ## AQ40 Chunk 5 — Yauj observation-only correction (2026-10-24)
 - Verified remote dev HEAD `5b871e0fe7a9b341beaa6f39e5ecc23274157a50` matched user handoff (compare identical). `main` untouched. New TOC `0.9.68-dev`.
 - Great Heal and Fear declarations for Princess Yauj now explicitly set `observedOnly=true`. Until measured readiness/signals exist, a successful observed event must not imply next availability. This is a scoped declaration-only correction; no cooldown, cast-delay, new command sender, scheduler, or BWL alteration.
