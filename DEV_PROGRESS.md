@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 user correction — remove false blockers (2026-10-24)
+- **Viscidus:** Come controls are simple role-group commands, NOT per-poisoned-bot actions. Existing SCB Come scopes are `melee` (`comemelee`), `ranged` (`comerange`), `healer` (`comeheal`) and combined scopes; issue requested commands via existing SCB command owner. No poisoned recipient lookup, GUID, or target selection required for these buttons.
+- **Defenders:** Port pinned Elesion BigWigs' native ability detection and useful presentation rather than demanding additional GUID proof for a single Defender. Its `600s` bars are identification placeholders **not genuine cooldowns**. Reuse reference Plague 40s where applicable and observation-based interval/cast presentation without falsely turning 600s into cooldowns. Reflect is icon only; abilities 4–5 ignored.
+- **C'Thun:** Pinned Elesion BigWigs is accepted implementation evidence for native combat text, Eye-death phase 2 transition, Dark Glare 45/87/3/39 cycle and Giant Claw/Eye Birth-driven 12s/30s/8s schedules. Reuse its known phase/event handling, no extra DLL requirement for these. Shared Giant Tentacle HP remains a distinct request; check BigWigs implementation before claiming identity impossible.
+- These decisions override any older `DEV_PROGRESS.md` statements declaring role Come commands or native C'Thun phase timing blocked absent separate verification. **Code still needs completing** for role buttons and missing C'Thun/Defender states; this entry is a corrected implementation contract, not a claim of implementation or runtime PASS.
+- **Next:** finish the requested code chunk on `dev`, including existing-command-role controls and reference-derived phase/timer states, add regression checks, bump TOC and test. Keep `main` untouched.
+
+
 ## AQ40 native-client multi-encounter implementation pass (2026-10-24)
 - Resumed from verified `dev` HEAD `27e0cec` after reading `dev_rulebook.md` and corrected source audit. All writes confined to `dev`, `main` untouched. TOC **0.9.85-dev**.
 - **Viscidus:** Added explicitly native frost-school damage observations on self/party/friendly-player spell combat lines mentioning Viscidus; split physical self and party/friendly hit/crit observations to cover native grammar. Existing Chilled/Winter's Chill and stage emotes preserved. Counters remain *observed local combat text*, not authoritative global hit totals; no invented berserk.
