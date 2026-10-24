@@ -316,7 +316,7 @@ SoloCraftBots.bossModDefinitions = {
             detect = { zone = "Ahn'Qiraj", boss = "The Prophet Skeram",
                 endOnBossDeath = false },
             mechanics = {}, abilities = {}, triggers = {},
-            -- True-copy identification/remark requires server-specific proof.
+            -- Real-boss raid marker 6 uses native maximum-health comparison\n            -- in the encounter owner; no clone or MC mechanics requested.
         },
         bugtrio = {
             detect = { zone = "Ahn'Qiraj", boss = "Lord Kri",
