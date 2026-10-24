@@ -453,6 +453,28 @@ SoloCraftBots.bossModDefinitions = {
                     icon = "Interface\\Icons\\INV_Sword_04" },
             },
             triggers = {
+                -- Native boss emotes are direct observations, not inferred
+                -- transitions from incomplete frost/melee hit counters.
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " begins to slow!",
+                    effects = { { type = "notice", id = "slow",
+                        label = "Viscidus begins to slow", lifespan = 5 } } },
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " is freezing up!",
+                    effects = { { type = "notice", id = "freezing",
+                        label = "Viscidus is freezing", lifespan = 5 } } },
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " is frozen solid!",
+                    effects = { { type = "notice", id = "frozen",
+                        label = "Viscidus frozen solid", lifespan = 5 } } },
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " begins to crack!",
+                    effects = { { type = "notice", id = "crack",
+                        label = "Viscidus begins to crack", lifespan = 5 } } },
+                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                    contains = " looks ready to shatter!",
+                    effects = { { type = "notice", id = "shatter",
+                        label = "Viscidus ready to shatter", lifespan = 5 } } },
                 -- Confirmed creature buff applications; these are only a
                 -- subset of frost damage hits, not a complete frost count.
                 {
