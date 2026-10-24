@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Skeram/Ouro native mechanics — 0.9.88-dev (2026-10-25)
+- Verified `dev` start HEAD `bfa287ac583870525ba2f44c8bf2cb28ed386c4d`. Only `dev` changed; stable `main` untouched. TOC now `0.9.88-dev`. The handoff HEAD is this documentation commit.
+- **Skeram scope strictly real boss marking ONLY.** Existing SCB 0.10s presentation owner checks positive `target`/`raidNtarget` native tokens; while engaged and permitted as raid leader/officer, marker 6 goes only to a Skeram with max HP above pinned Elesion BigWigs' raid-size threshold (20–40: raid size × 10,000; under 20: 200,000). At most one mark attempt/session. No split, MC, clone actions added.
+- **Ouro:** BigWigs-style native `target`/`raidNtarget` visibility check on the existing 0.10s state update. After previously observing Ouro, its disappearance starts a 27s predicted/reference Emerge timer. Native `Ground Rupture` marks emerged and refreshes the existing 89s next-Submerge timer. Existing Sweep, Sand Blast and 20% threshold remain. No extra DLL or independent polling owner. This is the specific BigWigs detection method, not a claim of a positive explicit submerge cast; no more blockers or refusal to implement this.
+- Added `tests/test_aq40_skeram_ouro_native.py`, updated prior version assertions. **In-game NOT TESTED.** Python tests and Lua 5.0.3 compilation NOT RUN; must not claim pass until tools execute. Source contracts established by inspection, not test-run verification.
+- **Next runtime checks:** (1) on Skeram verify only high-max-HP real boss gets icon 6 when raid leader/officer; (2) Ouro on initial appearance confirm next Submerge 89s, then disappearance starts Emerge 27s, and Ground Rupture re-arms Submerge 89s; (3) verify no repeated submerge timer starts after first disappearance. Provide exact observations if failures.
+
+
 ## AQ40 logging correction — 0.9.87-dev (2026-10-24)
 - Verified dev from `d459fa50f9dcf0bc017559cd71d83702cac93072`; only `dev` modified. Version now `0.9.87-dev`.
 - **Defender recording automatically ON by default in dev builds**: `RecordDefenderHit` now accepts an unset `SoloCraftBotsDB.bossModDefenderRecord`; explicit `/scbdefender off` saves false and suppresses recording; `/scbdefender on` resumes; `/scbdefender export` unchanged. The displayed ON/OFF status now reflects default-on correctly. No release-branch logging. Existing live GUID/engagement and one-self-hit sampling guards and 200-sample-per-ability bound preserved. Existing saved `false` remains respected until `/scbdefender on` is run.
