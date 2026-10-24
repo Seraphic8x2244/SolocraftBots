@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Chunk 5 — observed HP display and Sentinel sorting (2026-10-24)
+- Verified `dev` starting HEAD `f0215178aabee86e9c909fbbb16d62ba82d6c62f`; `main` untouched. TOC now **0.9.75-dev**. Changes `aa0c2d7` (runtime presentation), `5ef46c4` (TOC), `1a8f3e1` (regression).
+- **Implemented display consumption of positively supplied observations:** Sentinel HP rows sort by original ability priority, unobserved originals last, stable acquisition-order tie breaks; Sentinel and Defender HP labels display all supplied observed ability names (Defender pairs in pair order). Changes are confined to existing tracker layout and HP presentation. No name-only NPC inference, fabricated observations, cooldowns, command transport or BWL data modifications.
+- **Important limitation:** automatic combat-event sources still do not positively provide GUID+original/inherited provenance or Defender reflect pair attribution. The current APIs have no verified producer, so visual labels/sorting only activate on valid explicit positive observations. Requested per-ability icon squares are NOT implemented (currently text labels, existing main row icon). Fankriss Entangle fade/8s Come and Viscidus first-hit Toxin/actions remain NOT implemented. Do not call Chunk 5 complete.
+- Added `tests/test_aq40_hp_ability_presentation.py`. **10/10 remote-source JavaScript assertions PASS**; Python runner, canonical Lua 5.0.3 compiler, CI, in-game runtime NOT RUN. No interim game tests per user request.
+- **Next:** identify a demonstrably available event source carrying exact GUID, ability, source/recipient and original/inherited identity; wire observations through existing SCB owner, then implement icon strip and recipient-scoped safe actions. If the client lacks such evidence, preserve fail-closed state and record the specific signal limitation instead of simulating a successful feature.
+
+
 ## AQ40 Chunk 5 — Defender positive pair-state checkpoint (2026-10-24)
 - Verified remote starting `dev` HEAD `6a2758c6157032156a48ac6ab1f685c09d6c8ccb`, rulebook and handoff. Current TOC **0.9.74-dev**; `main` untouched.
 - Implemented **explicit GUID-bound Defender ability-pair recording only**: `ObserveDefenderAbility(unit,ability,generation)` requires engaged `aq40_defender`, positively identified live named unit/GUID with tracked HP row and one of the six allowed abilities. Pair 1 Meteor/Plague, pair 2 Shadow Storm/Thunderclap, pair 3 Fire+Arcane/Frost+Shadow reflect are mutually exclusive, and a contradiction fails closed. `GetDefenderAbilities` returns a defensive copy. No invented observed event signature, cooldown, inferred pair, or independent command source.
