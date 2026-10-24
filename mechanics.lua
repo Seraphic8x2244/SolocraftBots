@@ -1298,6 +1298,34 @@ function mechanics.ObserveHPThreshold(key, unit, options, expectedGeneration)
     return true
 end
 
+-- SCB's existing positive-unit scan owns these observations. No name-only
+-- identity or alternate scan/tick/command path is introduced.
+function mechanics.ObserveDeclaredUnits(tokens, expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and active.generation ~= expectedGeneration)
+        or type(tokens) ~= "table" then return false, "stale encounter" end
+    local d = active.definition.declarative
+    if not d then return false, "no declaration" end
+    local unit, name, spec, i
+    for i = 1, table.getn(tokens) do
+        unit = tokens[i]
+        if type(unit) == "string" and UnitExists and UnitExists(unit) and UnitName then
+            name = UnitName(unit)
+            for _, spec in ipairs(d.hpUnits or {}) do
+                if name == spec.name then
+                    mechanics.ObserveNPCHealth(spec.id, unit, spec)
+                end
+            end
+            for _, spec in ipairs(d.thresholds or {}) do
+                if name == spec.name then
+                    mechanics.ObserveHPThreshold(spec.id, unit, spec, active.generation)
+                end
+            end
+        end
+    end
+    return true
+end
+
 -- Aura rows display caller-observed state. Only recipient/member auras have
 -- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
 -- Member auras are retired when the target is dead or leaves the live roster.
@@ -2646,6 +2674,34 @@ local function CheckCounter(c, seen)
     return true
 end
 
+local function CheckObservedUnits(d)
+    local seen, spec, i
+    for _, kind in ipairs({ "hpUnits", "thresholds" }) do
+        if d[kind] ~= nil and type(d[kind]) ~= "table" then return false end
+        seen = {}
+        for i, spec in ipairs(d[kind] or {}) do
+            if type(spec) ~= "table" or not IsId(spec.id) or seen[spec.id]
+                or type(spec.name) ~= "string" or spec.name == ""
+                or type(spec.label) ~= "string" or spec.label == ""
+                or not CheckRowGroup(spec.group)
+                or (spec.icon ~= nil and (type(spec.icon) ~= "string" or spec.icon == "")) then
+                return false
+            end
+            if kind == "hpUnits" then
+                if (spec.hideOnDeath ~= nil and type(spec.hideOnDeath) ~= "boolean")
+                    or (spec.clickTarget ~= nil and type(spec.clickTarget) ~= "boolean")
+                    or spec.threshold ~= nil then return false end
+            elseif not IsFiniteNumber(spec.threshold)
+                or spec.threshold <= 0 or spec.threshold >= 1
+                or spec.clickTarget ~= nil or spec.hideOnDeath ~= nil then
+                return false
+            end
+            seen[spec.id] = true
+        end
+    end
+    return true
+end
+
 local function CheckDeclaration(d)
     local i, j, w, rule, step, seen = 0, 0, nil, nil, nil, {}
     if type(d) ~= "table" or type(d.detect) ~= "table"
@@ -2653,7 +2709,10 @@ local function CheckDeclaration(d)
         or type(d.detect.boss) ~= "string" or d.detect.boss == ""
         or (d.detect.prepareInZone ~= nil
             and type(d.detect.prepareInZone) ~= "boolean")
-        or type(d.mechanics) ~= "table" or type(d.triggers) ~= "table" then
+        or type(d.mechanics) ~= "table" or type(d.triggers) ~= "table"
+        or not CheckObservedUnits(d)
+        or (d.detect.endOnBossDeath ~= nil
+            and type(d.detect.endOnBossDeath) ~= "boolean") then
         return false, "missing detect, mechanics or triggers"
     end
     for i = 1, table.getn(d.mechanics) do
@@ -2937,8 +2996,9 @@ function mechanics.ObserveBossDeathMessage(zone, eventName, message)
         d = entry.declarative
         if d and d.detect.zone == zone then
             boss = d.detect.boss
-            if message == boss .. " dies."
-                or message == "You have slain " .. boss .. "!" then
+            if (message == boss .. " dies."
+                or message == "You have slain " .. boss .. "!")
+                and d.detect.endOnBossDeath ~= false then
                 return mechanics.ObserveBoss(zone, boss, "dead")
             end
         end
@@ -2980,6 +3040,10 @@ function mechanics.ObserveBoss(zone, boss, state)
                 return true
             end
             if state == "dead" then
+                if d.detect.endOnBossDeath == false then
+                    active.bossVisible = false
+                    return true
+                end
                 if BeginPostBossCleanup and BeginPostBossCleanup() then return true end
                 mechanics.StopEncounter("confirmed boss death")
                 return true

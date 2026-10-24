@@ -2169,7 +2169,10 @@ end
 
 -- Boss Mods is an optional consumer of THIS SCB lifecycle/event owner.
 -- No companion event frame, chat filter, command sender, roster or scheduler.
-local SCB_BOSSMODS_ZONE = "Blackwing Lair"
+local SCB_BOSSMODS_ZONES = {
+    ["Blackwing Lair"] = true, ["Ahn'Qiraj"] = true,
+}
+local bossModsZone = nil
 local bossModsZoneActive = false
 local bossModsElapsed = 0
 local bossModsVisualElapsed = 0
@@ -2190,9 +2193,12 @@ local function SCB_BossModsInitialize()
         return
     end
     SCB.bossModsInitialised = true
-    eventNames = engine.GetRequiredEvents(SCB_BOSSMODS_ZONE)
-    for i = 1, table.getn(eventNames) do
-        bossModsEvents[eventNames[i]] = true
+    for zoneName in pairs(SCB_BOSSMODS_ZONES) do
+        eventNames = engine.GetRequiredEvents(zoneName)
+        bossModsEvents[zoneName] = {}
+        for i = 1, table.getn(eventNames) do
+            bossModsEvents[zoneName][eventNames[i]] = true
+        end
     end
 end
 
@@ -2201,16 +2207,23 @@ local function SCB_BossModsRefreshZone()
     engine = SCB.mechanics
     if not SCB.bossModsInitialised or not engine then return end
     zone = GetRealZoneText and GetRealZoneText() or ""
-    enabled = zone == SCB_BOSSMODS_ZONE
-    if enabled == bossModsZoneActive then return end
+    enabled = SCB_BOSSMODS_ZONES[zone] == true
+    if (enabled and bossModsZone == zone)
+        or (not enabled and not bossModsZone) then return end
+    if bossModsZone then
+        for eventName in pairs(bossModsEvents[bossModsZone] or {}) do
+            eventFrame:UnregisterEvent(eventName)
+        end
+        engine.Reset("zone exit")
+    end
+    bossModsZone = enabled and zone or nil
     bossModsZoneActive = enabled
     if enabled then
-        for eventName in pairs(bossModsEvents) do eventFrame:RegisterEvent(eventName) end
+        for eventName in pairs(bossModsEvents[zone] or {}) do
+            eventFrame:RegisterEvent(eventName)
+        end
         -- Register observations only; entering the zone does not prove
         -- a boss is alive or authorize an encounter action.
-    else
-        for eventName in pairs(bossModsEvents) do eventFrame:UnregisterEvent(eventName) end
-        engine.Reset("zone exit")
     end
     bossModsPollElapsed = 0
     bossModsElapsed = 0
@@ -2246,7 +2259,7 @@ local function SCB_BossModsObserveTargets()
     local tokens, name, token, i
     if not bossModsZoneActive or not SCB.mechanics then return end
     engine = SCB.mechanics
-    names = engine.GetDetectableBosses(SCB_BOSSMODS_ZONE)
+    names = engine.GetDetectableBosses(bossModsZone)
     lookup = {}
     for i = 1, table.getn(names) do lookup[names[i]] = true end
     tokens = { "mouseover", "target", "targettarget" }
@@ -2281,6 +2294,9 @@ local function SCB_BossModsObserveTargets()
         end
     end
     state = engine.GetEncounterState()
+    if state and state.engaged and not state.postBossCleanup then
+        engine.ObserveDeclaredUnits(tokens, state.generation)
+    end
     -- Once the raid actually entered combat, require two consecutive complete
     -- group-out-of-combat scans before declaring a reset. Do not infer a wipe
     -- from missing targets, death of one player or another boss's presence.
@@ -2314,21 +2330,21 @@ local function SCB_BossModsObserveTargets()
         selected = observed[state.boss]
         if selected then
             if selected.dead then
-                engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "dead")
+                engine.ObserveBoss(bossModsZone, state.boss, "dead")
             else
-                engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "alive")
+                engine.ObserveBoss(bossModsZone, state.boss, "alive")
                 if selected.combat then engine.MarkEncounterEngaged(state.generation) end
                 return
             end
         else
-            engine.ObserveBoss(SCB_BOSSMODS_ZONE, state.boss, "absent")
+            engine.ObserveBoss(bossModsZone, state.boss, "absent")
         end
     end
     for i = 1, table.getn(names) do
         name = names[i]
         selected = observed[name]
         if selected and not selected.dead then
-            engine.ObserveBoss(SCB_BOSSMODS_ZONE, name, "alive")
+            engine.ObserveBoss(bossModsZone, name, "alive")
             state = engine.GetEncounterState()
             if state and state.boss == name then
                 if selected.combat then
@@ -2342,21 +2358,22 @@ end
 
 local function SCB_BossModsOnCombatEvent(eventName, message, speaker)
     local engine, state, observedBoss, isCombat
-    if not bossModsZoneActive or not bossModsEvents[eventName] then return end
+    if not bossModsZoneActive or not (bossModsEvents[bossModsZone]
+        and bossModsEvents[bossModsZone][eventName]) then return end
     engine = SCB.mechanics
     if not engine then return end
     if eventName == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
-        engine.ObserveBossDeathMessage(SCB_BOSSMODS_ZONE, eventName, message)
+        engine.ObserveBossDeathMessage(bossModsZone, eventName, message)
         return
     end
     observedBoss, isCombat = engine.GetBossFromCombatEvidence(
-        SCB_BOSSMODS_ZONE, eventName, message, speaker)
+        bossModsZone, eventName, message, speaker)
     state = engine.GetEncounterState()
     if observedBoss then
         -- No transition to a later boss while one is already engaged.
         if state and state.engaged and not state.postBossCleanup
             and state.boss ~= observedBoss then return end
-        engine.ObserveBoss(SCB_BOSSMODS_ZONE, observedBoss, "alive")
+        engine.ObserveBoss(bossModsZone, observedBoss, "alive")
         state = engine.GetEncounterState()
         if state and state.boss == observedBoss and isCombat then
             engine.MarkEncounterEngaged(state.generation)
@@ -2422,7 +2439,8 @@ eventFrame:SetScript("OnEvent", function()
         SCB.lootWindowOpen = nil
         return
     end
-    if bossModsZoneActive and bossModsEvents[event] then
+    if bossModsZoneActive and bossModsEvents[bossModsZone]
+        and bossModsEvents[bossModsZone][event] then
         SCB_BossModsOnCombatEvent(event, arg1, arg2)
     end
     if event == "PLAYER_TARGET_CHANGED" then
