@@ -39,7 +39,7 @@ class AQ40CompletionWiring(unittest.TestCase):
         self.assertNotIn('repeatDelay = 600', defender)
         for token in ('SLASH_SCBDEFENDER1 = "/scbdefender"',
                       'bossModDefenderIntervals', 'RecordDefenderHit',
-                      'message == "export"'):
+                      'message ~= "export"'):
             self.assertIn(token, MECH)
         self.assertIn("## Version: 0.9.86-dev", TOC)
 
