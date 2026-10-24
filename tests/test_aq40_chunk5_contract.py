@@ -82,6 +82,14 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertIn('table.getn(samples) > 200', MECH)
         self.assertEqual(AQ.count('type = "dev_interval"'), 4)
 
+    def test_defender_sampling_rejects_unseen_second_live_instance(self):
+        section = MECH.split('function mechanics.RecordDefenderHit(', 1)[1].split('-- Only dev builds expose', 1)[0]
+        self.assertIn('and not slot.dead then', section)
+        self.assertIn('if id and id ~= slot.instanceID then', section)
+        self.assertIn('candidate = slot', section)
+        self.assertIn('mechanics.NPCInstanceID(candidate.unit) ~= id', section)
+        self.assertNotIn('and mechanics.NPCInstanceID(slot.unit) == slot.instanceID then', section)
+
     def test_no_hidden_generated_command_path(self):
         self.assertIn('SCB_RequestCommand(commandStep.command, commandStep.scope)', MECH)
         self.assertNotIn('SCB_RequestCommand(', AQ)
