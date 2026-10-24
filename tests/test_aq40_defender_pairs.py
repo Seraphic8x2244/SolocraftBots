@@ -17,7 +17,7 @@ class DefenderPairContract(unittest.TestCase):
     def test_exact_guid_and_live_row_required(self):
         block = SOURCE.split("function mechanics.ObserveDefenderAbility(", 1)[1].split(
             "function mechanics.GetDefenderAbilities(", 1)[0]
-        for item in ('active.id ~= "aq40_defender"',
+        for item in ('active.id ~= "aq40.defender"',
                      'UnitName(unit) ~= "Anubisath Defender"',
                      'guid = mechanics.NPCInstanceID(unit)',
                      'not row.dead and row.instanceID == guid',
