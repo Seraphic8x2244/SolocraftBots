@@ -525,8 +525,23 @@ SoloCraftBots.bossModDefinitions = {
                     label = "Anubisath Sentinel", clickTarget = true,
                     hideOnDeath = true },
             },
+            -- Priority is keyed to a positively observed ORIGINAL ability,
+            -- never the union of abilities gained after another Sentinel dies.
+            -- This is declaration data only: no combat-log text is assumed
+            -- to establish the original/inherited provenance of an ability.
+            initialAbilityPriority = {
+                { rank = 1, names = { "Mortal Strike" } },
+                { rank = 2, names = { "Mending" } },
+                { rank = 3, names = { "Fire Reflect", "Arcane Reflect" } },
+                { rank = 4, names = { "Frost Reflect", "Shadow Reflect" } },
+                { rank = 5, names = { "Shadowbolt Volley", "Shadow Storm" } },
+                { rank = 6, names = { "Knockback" } },
+                { rank = 7, names = { "Mana Burn" } },
+                { rank = 8, names = { "Thorns" } },
+                { rank = 9, names = { "Thunderclap" } },
+            },
             -- Per-GUID initial distinguishing ability and inheritance
-            -- attribution needs positive evidence; no invented icons/ranks.
+            -- attribution still require a positive GUID-bound observation.
         },
         defender = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Defender" },
