@@ -1917,7 +1917,13 @@ function mechanics.UpdatePresentation(now)
                     local total = math.max(0.001, state.minimumAt - state.startedAt)
                     frame.bar:SetValue(math.max(0, math.min(1, earliest / total)))
                     if now >= state.minimumAt then
-                        frame.detail:SetText(SCB_L("BOSSMODS_READY"))
+                        -- Earliest possible readiness is not observed proof.
+                        if state.provenance == "predicted"
+                            or state.maximumAt > state.minimumAt then
+                            frame.detail:SetText("Ready?")
+                        else
+                            frame.detail:SetText(SCB_L("BOSSMODS_READY"))
+                        end
                         frame.bar:SetStatusBarColor(0.05, 0.38, 0.14)
                     else
                         if state.maximumAt > state.minimumAt then
