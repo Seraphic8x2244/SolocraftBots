@@ -2296,11 +2296,71 @@ end
 local RenderAbilityBar
 -- The SCB 10 Hz owner handles ability transitions, roster checks and cleanup.
 -- The faster UpdatePresentation below only interpolates visible bars.
+-- Toxin Tracker uses the live SCB roster and the existing group Come owner.
+-- It deliberately NEVER changes target to the poisoned bot.
+function mechanics.ObserveViscidusToxin(name, expectedGeneration)
+    if not active or active.id ~= "aq40.viscidus" or not active.engaged
+        or (expectedGeneration and active.generation ~= expectedGeneration)
+        or active.toxinFirst then return false end
+    local member = ResolveBoundLive(name, true, true)
+    if not member then return false end
+    active.toxinFirst = { name = name, untilTime = Now() + 8 }
+    return true
+end
+
+local function RefreshToxinTracker()
+    if not active or active.id ~= "aq40.viscidus" or not active.engaged then return end
+    local state = active.toxinFirst
+    local member = state and ResolveBoundLive(state.name, true, true) or nil
+    local role = member and (member.confirmedRole or member.assumedRole or member.role)
+    local scope
+    if role == "meleedps" or role == "tank" then scope = "melee"
+    elseif role == "rangedps" or role == "healer" then scope = "rangedhealer" end
+    local live = state and Now() < state.untilTime and member and scope
+    local detail = "Awaiting first poisoned bot"
+    if state then
+        detail = state.name .. "  HP: "
+        if member and UnitHealth and UnitHealthMax then
+            detail = detail .. tostring(UnitHealth(member.unit)) ..
+                "/" .. tostring(UnitHealthMax(member.unit))
+        else detail = detail .. "unavailable" end
+        if not live then detail = detail .. " (inactive)" end
+    end
+    local slot
+    for _, candidate in ipairs(presentation.action.pool) do
+        if candidate.used and candidate.key == "viscidus:toxin"
+            and candidate.generation == active.generation then slot = candidate; break end
+    end
+    if not slot then
+        mechanics.ShowBotAction("viscidus:toxin", "Toxin Tracker", detail, nil)
+        for _, candidate in ipairs(presentation.action.pool) do
+            if candidate.used and candidate.key == "viscidus:toxin"
+                and candidate.generation == active.generation then slot = candidate; break end
+        end
+    end
+    if not slot then return end
+    slot.frame.detail:SetText(detail)
+    slot.callback = live and function(_, gen)
+        if not active or active.generation ~= gen
+            or active.toxinFirst ~= state or Now() >= state.untilTime then return end
+        local current = ResolveBoundLive(state.name, true, true)
+        local currentRole = current and
+            (current.confirmedRole or current.assumedRole or current.role)
+        local route = (currentRole == "meleedps" or currentRole == "tank")
+            and "melee" or ((currentRole == "rangedps" or currentRole == "healer")
+                and "rangedhealer" or nil)
+        if route and SCB_RequestCommand then
+            SCB_RequestCommand("come", route)
+        end
+    end or nil
+end
+
 function mechanics.UpdatePresentationState(now)
     local session = active
     if not session then return end
     if type(now) ~= "number" then now = Now() end
     if not session.postBossCleanup then mechanics.UpdateAbilityStates(now) end
+    if session.id == "aq40.viscidus" then RefreshToxinTracker() end
     local actionVisibilityChanged = false
     for _, slot in ipairs(presentation.action.pool) do
         if slot.used and slot.generation == session.generation then
@@ -3695,7 +3755,9 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "cthun_phase2" then
+    if effect.type == "viscidus_toxin" then
+        mechanics.ObserveViscidusToxin(captured, active.generation)
+    elseif effect.type == "cthun_phase2" then
         if active.id ~= "aq40.cthun" or active.cthunPhase == 2 then return end
         active.cthunPhase = 2
         -- Eye-death is a native event; do not keep the phase-one Dark Glare.
