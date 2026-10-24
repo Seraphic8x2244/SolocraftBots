@@ -2732,13 +2732,18 @@ function mechanics.ObserveAbilityLockout(id, seconds, expectedGeneration)
         return false, "invalid ability lockout"
     end
     local state = session.abilities and session.abilities[id]
-    if not state or state.phase ~= "casting" or not state.occurrence
-        or state.occurrence.finished then
-        return false, "no observed cast to interrupt"
+    local now = AbilityClock()
+    if not state or not state.occurrence
+        or (state.phase ~= "casting" and state.phase ~= "unresolved")
+        or state.occurrence.finished or not state.occurrence.observedStart
+        or type(state.occurrence.startedAt) ~= "number"
+        or now < state.occurrence.startedAt
+        or now - state.occurrence.startedAt >
+            (state.spec.castTime or 0) + 1 then
+        return false, "no recent observed cast to interrupt"
     end
     state.occurrence.finished = true
     state.occurrence.interrupted = true
-    local now = AbilityClock()
     state.phase, state.startedAt, state.readyAt = "cooldown", now, now + seconds
     state.uncertainty = "interrupt school lockout estimated"
     if session.casterCasts[state.caster] == state then
