@@ -1094,6 +1094,19 @@ function mechanics.ObserveCounterHit(id, occurrenceId, expectedGeneration)
     return true
 end
 
+-- A counter only resets on an explicit event/caller, never when its reference
+-- maximum is reached or when an unrelated ability clock expires.
+function mechanics.ResetCounter(id, expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "stale encounter"
+    end
+    local state = active.counters and active.counters[id]
+    if not state then return false, "unknown counter" end
+    state.count, state.seen = 0, {}
+    return true
+end
+
 function mechanics.GetCounter(id, expectedGeneration)
     if not active or (expectedGeneration and expectedGeneration ~= active.generation)
         then return nil end
@@ -1273,8 +1286,11 @@ function mechanics.ObserveHPThreshold(key, unit, options, expectedGeneration)
     elseif state.threshold ~= options.threshold then
         return false, "threshold changed"
     end
-    state.unit, state.currentPct, state.lastPct = unit,
-        health / maximum, health / maximum
+    -- Rebinding a token must NOT overwrite the previous measured HP sample:
+    -- doing so would conceal healing and corrupt the projected loss rate.
+    state.unit = unit
+    if not state.currentPct then state.currentPct = health / maximum end
+    if not state.lastPct then state.lastPct = health / maximum end
     slot.progressKind, slot.progressState = "threshold", state
     slot.label, slot.group = options.label, options.group
     if options.icon then slot.frame.icon:SetTexture(options.icon) end
@@ -2421,7 +2437,7 @@ end
 local function CheckEffect(e, hasPattern)
     local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
-    if e.type == "counter_hit" then
+    if e.type == "counter_hit" or e.type == "counter_reset" then
         return e.label == nil and e.duration == nil
     elseif e.type == "timer_stage" then
         return type(e.label) == "string" and e.label ~= ""
@@ -2716,7 +2732,8 @@ local function CheckDeclaration(d)
             if not CheckEffect(rule.effects[j], rule.pattern ~= nil) then
                 return false, "invalid effect"
             end
-            if rule.effects[j].type == "counter_hit"
+            if (rule.effects[j].type == "counter_hit"
+                or rule.effects[j].type == "counter_reset")
                 and not counterIds[rule.effects[j].id] then
                 return false, "counter not declared"
             end
@@ -3023,6 +3040,8 @@ local function RunDeclaredEffect(effect, captured, details)
     if effect.type == "counter_hit" then
         mechanics.ObserveCounterHit(effect.id,
             details and details.observationId, active.generation)
+    elseif effect.type == "counter_reset" then
+        mechanics.ResetCounter(effect.id, active.generation)
     elseif effect.type == "timer_stage" then
         mechanics.SetTimerStage(effect.id, effect, active.generation)
     elseif effect.type == "timer" then
