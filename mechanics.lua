@@ -3784,7 +3784,16 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "cthun_glare" then
+    if effect.type == "viscidus_phase" then
+        if active.id ~= "aq40.viscidus" then return end
+        if effect.phase == "melee" and active.viscPhase ~= "melee" then
+            active.viscPhase = "melee"
+            mechanics.ResetCounter("meleehits", active.generation)
+        elseif effect.phase == "frost" and active.viscPhase ~= "frost" then
+            active.viscPhase = "frost"
+            mechanics.ResetCounter("frosthits", active.generation)
+        end
+    elseif effect.type == "cthun_glare" then
         if active.id ~= "aq40.cthun" or active.cthunPhase == 2 then return end
         local currentGeneration = active.generation
         mechanics.SetTimerStage("glare_cast", {
@@ -3844,8 +3853,18 @@ local function RunDeclaredEffect(effect, captured, details)
         mechanics.RecordDefenderHit(effect.ability, active.generation)
         mechanics.ObserveDefenderElapsed(effect.ability, active.generation)
     elseif effect.type == "counter_hit" then
-        mechanics.ObserveCounterHit(effect.id,
-            details and details.observationId, active.generation)
+        -- BigWigs observes separate frost/frozen melee windows; native
+        -- message presence alone must not mix the two Viscidus counters.
+        local permitted = true
+        if active.id == "aq40.viscidus" then
+            if effect.id == "frosthits" then
+                permitted = active.viscPhase ~= "melee"
+            elseif effect.id == "meleehits" then
+                permitted = active.viscPhase == "melee"
+            end
+        end
+        if permitted then mechanics.ObserveCounterHit(effect.id,
+            details and details.observationId, active.generation) end
     elseif effect.type == "counter_reset" then
         mechanics.ResetCounter(effect.id, active.generation)
     elseif effect.type == "timer_stage" then
