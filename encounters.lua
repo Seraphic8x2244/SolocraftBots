@@ -770,6 +770,33 @@ SoloCraftBots.bossModDefinitions = {
             -- Party and raid AoE lines may repeat for a single occurrence;
             -- they are intentionally excluded from timing measurements.
             triggers = {
+                -- Reflect spell evidence follows pinned Elesion's native
+                -- combat strings. Record the identified pair as a passive
+                -- status, never a fabricated 600s cooldown.
+                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Moonfire is reflected back by Anubisath Defender.",
+                    effects = { { type = "ability_observed", id = "def_fire_arcane",
+                        label = "Reflect", ability = "Fire / Arcane" } } },
+                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Fireball is reflected back by Anubisath Defender.",
+                    effects = { { type = "ability_observed", id = "def_fire_arcane",
+                        label = "Reflect", ability = "Fire / Arcane" } } },
+                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Frostbolt is reflected back by Anubisath Defender.",
+                    effects = { { type = "ability_observed", id = "def_frost_shadow",
+                        label = "Reflect", ability = "Frost / Shadow" } } },
+                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                        "CHAT_MSG_SPELL_PARTY_DAMAGE",
+                        "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
+                    contains = "Corruption is reflected back by Anubisath Defender.",
+                    effects = { { type = "ability_observed", id = "def_frost_shadow",
+                        label = "Reflect", ability = "Frost / Shadow" } } },
                 { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
                     contains = "Anubisath Defender's Meteor hits you",
                     effects = { { type = "dev_interval", id = "met_sample",
