@@ -1649,6 +1649,22 @@ local function BoundActionAvailable(slot)
         ~= condition.role then return false end
     if condition.target == "bound" and (not UnitName
         or UnitName("target") ~= name) then return false end
+    -- A recipient action cannot borrow another member's observed aura.
+    if condition.observedAura then
+        if not name or not member then return false end
+        local observed = false
+        for _, auraSlot in ipairs(presentation.aura.pool) do
+            if auraSlot.used and auraSlot.key == condition.observedAura
+                and auraSlot.generation == active.generation
+                and auraSlot.memberBinding == config.binding
+                and auraSlot.target == name
+                and (not auraSlot.expiresAt or Now() < auraSlot.expiresAt) then
+                observed = true
+                break
+            end
+        end
+        if not observed then return false end
+    end
     return true
 end
 
@@ -1719,7 +1735,9 @@ function mechanics.ShowBoundBotAction(key, config)
             or (c.recipient ~= nil and c.recipient ~= "bot"
                 and c.recipient ~= "human" and c.recipient ~= "any")
             or (c.role ~= nil and (type(c.role) ~= "string" or c.role == ""))
-            or (c.target ~= nil and c.target ~= "bound") then
+            or (c.target ~= nil and c.target ~= "bound")
+            or (c.observedAura ~= nil and (type(c.observedAura) ~= "string"
+                or c.observedAura == "")) then
             return false, "invalid action condition"
         end
     end
