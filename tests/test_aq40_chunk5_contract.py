@@ -31,6 +31,9 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertIn('aliases = { "Princess Yauj", "Vem" }', AQ)
         self.assertIn('aliases = { "Emperor Vek\'nilash" }', AQ)
         self.assertIn('aliases = { "Eye of C\'Thun" }', AQ)
+        cthun = AQ.split('        cthun = {', 1)[1].split('        sentinels = {', 1)[0]
+        self.assertIn('endOnBossDeath = false', cthun)
+        self.assertIn('aliases = { "Eye of C\'Thun" }', cthun)
 
     def test_individual_hp_death_and_target_guards(self):
         for creature in ("Anubisath Sentinel", "Sartura's Royal Guard",
