@@ -1,5 +1,13 @@
 # Development Progress
 
+## AQ40 Chunk 5 — exact recipient action evidence gate (2026-10-24)
+- Starting remote `dev` HEAD `f69afea22e2f849d8d3775a242cbf94c6dec76f6` confirmed; `main` untouched. TOC bumped to **0.9.70-dev**.
+- Added optional `condition.observedAura` to the **existing** bound-action guard. The required aura must be positively displayed with the **exact key, active generation, member binding and recipient name**, and must not have expired. Missing/stale/mismatched evidence disables the action both during presentation refresh and again on click; no new sender, scheduler, encounter event, guessed recipient or ability readiness.
+- Commits: `d5460c8` runtime guard, `271154b` regression, `9c75fc2` TOC. Nine targeted remote source assertions, test presence and version checks PASS. Python unittest runner, Lua 5.0.3 compiler, CI and in-game tests **not run**; source assertions are not execution.
+- **Chunk 5 OPEN:** Fankriss Entangle fade + 8s Come, Viscidus Toxin first-hit provenance/action scope, Sentinel per-GUID initial/inherited ability evidence and Defender paired ability/reflect detection are **not implemented**. Event signatures and safe command recipes must be positively established before those declarations/actions are wired. No interim runtime test or fabricated cooldowns. Retain existing BWL/SCB ownership.
+- **Next:** establish positive Entangle/Toxin event recipient provenance and approved SCB command scopes, then wire observed aura and fade lifecycles through the new guard; separately implement Sentinel per-GUID evidence and Defender paired observations. No changes to `main`.
+
+
 ## AQ40 Chunk 5 — Defender attribution ambiguity guard (2026-10-24)
 - Verified `dev` HEAD `a14aaba2d029eb98497eed0041e8fe079fcc2824` matched user handoff exactly before modifying; `main` not edited. Addon TOC bumped from `0.9.68-dev` to `0.9.69-dev`.
 - Narrow positive-observation correction: the dev-only Defender interval recorder now fails closed if **any second tracked living Defender GUID** remains, even when that second Defender's unit token is no longer valid. It also revalidates the sole candidate's current name and GUID before attributing a self hit. This prevents silently treating a temporary token loss as evidence that only one Defender exists. Existing account settings, per-GUID samples, single encounter owner, SCB command path and BWL declarations are unchanged.
