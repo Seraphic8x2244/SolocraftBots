@@ -33,6 +33,13 @@ class ProgressContract(unittest.TestCase):
         self.assertIn("counterIds[d.counters[i].id] = true", SOURCE)
         self.assertIn('return false, "counter not declared"', SOURCE)
 
+    def test_counter_reset_requires_explicit_evidence(self):
+        self.assertIn("function mechanics.ResetCounter(id, expectedGeneration)", SOURCE)
+        self.assertIn("state.count, state.seen = 0, {}", SOURCE)
+        self.assertIn('elseif effect.type == "counter_reset" then', SOURCE)
+        self.assertIn("mechanics.ResetCounter(effect.id, active.generation)", SOURCE)
+        self.assertIn('or rule.effects[j].type == "counter_reset"', SOURCE)
+
     def test_stages_only_change_on_positive_observation(self):
         self.assertIn('elseif effect.type == "timer_stage" then', SOURCE)
         self.assertIn("mechanics.SetTimerStage(effect.id, effect, active.generation)", SOURCE)
