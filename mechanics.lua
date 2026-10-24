@@ -1672,6 +1672,29 @@ function mechanics.RecordDefenderHit(ability, expectedGeneration)
     return true, dt
 end
 
+-- Native self-hit stopwatch for Defender pairs 1 and 2. It is elapsed
+-- time since positive evidence, NEVER a claimed cooldown or cast duration.
+-- The development recorder remains independently controlled by /scbdefender.
+function mechanics.ObserveDefenderElapsed(ability, expectedGeneration)
+    if not active or active.id ~= "aq40.defender" or not active.engaged
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false
+    end
+    local labels = {
+        meteor = "Meteor - since hit", plague = "Plague - since applied",
+        shadowstorm = "Shadow Storm - since hit",
+        thunderclap = "Thunderclap - since hit",
+    }
+    if not labels[ability] then return false end
+    local slot = AcquirePresentation("timer", "defender-elapsed:" .. ability)
+    if not slot then return false end
+    slot.label = labels[ability]
+    slot.progressKind = "elapsed"
+    slot.progressState = { observedAt = Now() }
+    mechanics.UpdatePresentation()
+    return true
+end
+
 -- Only dev builds expose the recorder. All readout is via the existing chat.
 if type(GetAddOnMetadata) == "function"
     and type(GetAddOnMetadata("SoloCraftBots", "Version")) == "string"
@@ -2399,7 +2422,13 @@ function mechanics.UpdatePresentation(now)
         if slot.used and slot.generation == session.generation then
             if slot.progressKind then
                 local state, frame = slot.progressState, slot.frame
-                if slot.progressKind == "counter" then
+                if slot.progressKind == "elapsed" then
+                    frame.label:SetText(slot.label)
+                    frame.detail:SetText(string.format("%.1fs elapsed",
+                        math.max(0, now - state.observedAt)))
+                    frame.bar:SetValue(0)
+                    frame.bar:SetStatusBarColor(0.22, 0.55, 0.94)
+                elseif slot.progressKind == "counter" then
                     frame.label:SetText(slot.label)
                     frame.detail:SetText(tostring(state.count) .. "/" ..
                         (state.spec.maximumKind == "observed" and "" or "~") ..
@@ -3813,6 +3842,7 @@ local function RunDeclaredEffect(effect, captured, details)
             effect.duration, active.generation)
     elseif effect.type == "dev_interval" then
         mechanics.RecordDefenderHit(effect.ability, active.generation)
+        mechanics.ObserveDefenderElapsed(effect.ability, active.generation)
     elseif effect.type == "counter_hit" then
         mechanics.ObserveCounterHit(effect.id,
             details and details.observationId, active.generation)
