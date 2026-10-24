@@ -1033,14 +1033,16 @@ end
 -- Aura rows display caller-observed state. Only recipient/member auras have
 -- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
 -- Member auras are retired when the target is dead or leaves the live roster.
-function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding, retainAfterBossDeath, iconTexture)
+function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding, retainAfterBossDeath, iconTexture, rowGroup)
     local slot, err
     if type(label) ~= "string" or type(target) ~= "string"
         or (expiresAt ~= nil and (type(expiresAt) ~= "number" or expiresAt ~= expiresAt))
         or (memberBinding ~= nil and (type(memberBinding) ~= "string"
             or memberBinding == ""))
         or (iconTexture ~= nil and (type(iconTexture) ~= "string"
-            or iconTexture == "")) then
+            or iconTexture == ""))
+        or (rowGroup ~= nil and (type(rowGroup) ~= "string"
+            or rowGroup == "" or not string.find(rowGroup, "^[%w_%-]+$"))) then
         return false, "invalid aura"
     end
     slot, err = AcquirePresentation("aura", key)
@@ -1052,6 +1054,7 @@ function mechanics.ShowTrackedAura(key, label, target, expiresAt, memberBinding,
     slot.expiresAt = expiresAt
     slot.memberBinding = memberBinding
     slot.retainAfterBossDeath = retainAfterBossDeath == true
+    slot.group = rowGroup -- data only; never alters aura ordering or placement.
     mechanics.UpdatePresentation()
     return true
 end
@@ -1602,7 +1605,7 @@ local function AddAbilityState(session, spec, spellName, observed)
     local now = AbilityClock()
     local state = {
         id = id, baseId = spec.id, name = spellName,
-        spec = spec, caster = spec.caster, phase = "unstarted",
+        spec = spec, caster = spec.caster, group = spec.group, phase = "unstarted",
         casts = 0, auras = {}, generation = session.generation,
         observed = observed == true, uncertainty = nil,
     }
@@ -1641,6 +1644,7 @@ function mechanics.InitializeAbilities(expectedGeneration)
                 id = "first:" .. group.id .. ":" .. j,
                 label = group.label .. " " .. j, startedAt = AbilityClock(),
                 readyAt = AbilityClock() + duration, speculative = true,
+                group = group.group,
                 provenance = "predicted",
             }
         end
@@ -2059,11 +2063,17 @@ local function CheckObservation(o)
     return true
 end
 
+-- Optional semantic grouping is metadata, not UI layout or NPC identity.
+local function CheckRowGroup(value)
+    return value == nil or IsId(value)
+end
+
 local function CheckAbility(a, seen, isGroup)
     local i, j, aura, found = 0, 0, nil, {}
     if type(a) ~= "table" or not IsId(a.id) or seen[a.id]
         or type(a.label) ~= "string" or a.label == ""
         or type(a.caster) ~= "string" or a.caster == ""
+        or not CheckRowGroup(a.group)
         or (a.mode ~= "fixed" and a.mode ~= "priority"
             and a.mode ~= "opportunistic")
         or (a.firstDelay ~= nil and not IsDuration(a.firstDelay))
@@ -2086,7 +2096,9 @@ local function CheckAbility(a, seen, isGroup)
             or not CheckObservation(a.startRule)
             or type(a.startRule) ~= "table" or not a.startRule.pattern
             or type(a.firstSlots) ~= "table" or table.getn(a.firstSlots) == 0
-            or table.getn(a.firstSlots) > 2 or a.maxVisible ~= 2 then return false end
+            or table.getn(a.firstSlots) > 2
+            or (a.maxVisible ~= nil and (type(a.maxVisible) ~= "number"
+                or a.maxVisible ~= 2)) then return false end
         for i = 1, table.getn(a.names) do
             if type(a.names[i]) ~= "string" or a.names[i] == ""
                 or found[a.names[i]] then return false end
@@ -2117,6 +2129,7 @@ local function CheckAbility(a, seen, isGroup)
             or (aura.target ~= "capture" and aura.target ~= "player")
             or (aura.duration ~= nil and not IsDuration(aura.duration))
             or (aura.action ~= nil and aura.action ~= "kick")
+            or not CheckRowGroup(aura.group)
             or (aura.icon ~= nil and (type(aura.icon) ~= "string"
                 or aura.icon == ""))
             or (aura.kickLabel ~= nil and type(aura.kickLabel) ~= "string")
@@ -2153,6 +2166,7 @@ local function CheckDeclaration(d)
             or (w.when ~= "present" and w.when ~= "zone")
             or (w.when == "zone" and d.detect.prepareInZone ~= true)
             or w.type ~= "assignable_bot_action"
+            or not CheckRowGroup(w.group)
             or not IsId(w.binding) or type(w.label) ~= "string"
             or w.label == "" or w.assignable ~= true
             or type(w.action) ~= "table" or w.action.type ~= "sequence"
@@ -2195,7 +2209,8 @@ local function CheckDeclaration(d)
             or table.getn(rule.effects) == 0
             or (type(rule.contains) ~= "string" and type(rule.pattern) ~= "string")
             or (rule.contains ~= nil and rule.pattern ~= nil)
-            or (rule.event ~= nil and rule.events ~= nil) then
+            or (rule.event ~= nil and rule.events ~= nil)
+            or not CheckRowGroup(rule.group) then
             return false, "invalid trigger"
         end
         if rule.events then
