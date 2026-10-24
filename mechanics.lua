@@ -1291,6 +1291,8 @@ function mechanics.ObserveNPCHealth(key, unit, options)
 end
 
 
+local hpAttackSerial = 0
+
 -- Explicit button action for a GUID-bound hostile HP row. Every click
 -- revalidates the exact instance both before and after SCB's established
 -- target-propagation settle. No bot can receive an attack on a recycled token
@@ -1327,9 +1329,9 @@ function mechanics.AttackNPCAll(key)
     end
     local token, capturedKey = active.generation, key
     local delay = math.max(0.10, SCB_GetTargetPropagationSettle())
-    sequenceSerial = sequenceSerial + 1
+    hpAttackSerial = hpAttackSerial + 1
     return mechanics.ScheduleTimer(
-        "hp-attack:" .. token .. ":" .. sequenceSerial, delay, function()
+        "hp-attack:" .. token .. ":" .. hpAttackSerial, delay, function()
             if not active or active.generation ~= token or not active.engaged
                 or active.postBossCleanup then return end
             if mechanics.NPCInstanceID("target") ~= guid
