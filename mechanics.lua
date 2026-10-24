@@ -1326,6 +1326,107 @@ function mechanics.ObserveDeclaredUnits(tokens, expectedGeneration)
     return true
 end
 
+-- Dev-only Defender interval sampler. Samples are consecutive locally
+-- observed applications/hits for exactly one positively GUID-bound Defender;
+-- no ability cooldown is inferred from them. No independent polling owner.
+local defenderSampleNames = { "meteor", "plague", "shadowstorm", "thunderclap" }
+local function DefenderRecorderDB()
+    local version = GetAddOnMetadata and GetAddOnMetadata("SoloCraftBots", "Version")
+    if type(version) ~= "string" or not string.find(version, "%-dev$")
+        or type(SoloCraftBotsDB) ~= "table" then return nil end
+    return SoloCraftBotsDB
+end
+
+function mechanics.RecordDefenderHit(ability, expectedGeneration)
+    local db = DefenderRecorderDB()
+    if not db or db.bossModDefenderRecord ~= true
+        or not active or active.id ~= "aq40_defender" or not active.engaged
+        or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false, "recorder unavailable"
+    end
+    local allowed, i = false, 0
+    for i = 1, table.getn(defenderSampleNames) do
+        if defenderSampleNames[i] == ability then allowed = true; break end
+    end
+    if not allowed then return false, "invalid ability" end
+    -- Require exactly one live, currently identified Defender instance.
+    local id, candidate
+    for _, slot in ipairs(presentation.hp.pool) do
+        if slot.used and slot.key
+            and string.find(slot.key, "^defender:")
+            and not slot.dead and slot.unit
+            and UnitName and UnitName(slot.unit) == "Anubisath Defender"
+            and mechanics.NPCInstanceID(slot.unit) == slot.instanceID then
+            if id and id ~= slot.instanceID then
+                return false, "ambiguous defender"
+            end
+            id = slot.instanceID
+        end
+    end
+    if not id then return false, "defender GUID unavailable" end
+    active.defenderLastHits = active.defenderLastHits or {}
+    active.defenderLastHits[id] = active.defenderLastHits[id] or {}
+    local times = active.defenderLastHits[id]
+    local now, before = Now(), times[ability]
+    -- One locally targeted hit/application line represents a sampling
+    -- opportunity. Equal timestamps cannot yield a meaningful interval.
+    if before and now <= before then return false, "duplicate timestamp" end
+    times[ability] = now
+    if not before then return true, "initial observation" end
+    local dt = now - before
+    db.bossModDefenderIntervals = db.bossModDefenderIntervals or {}
+    local samples = db.bossModDefenderIntervals[ability] or {}
+    db.bossModDefenderIntervals[ability] = samples
+    table.insert(samples, dt)
+    if table.getn(samples) > 200 then table.remove(samples, 1) end
+    return true, dt
+end
+
+-- Only dev builds expose the recorder. All readout is via the existing chat.
+if type(GetAddOnMetadata) == "function"
+    and type(GetAddOnMetadata("SoloCraftBots", "Version")) == "string"
+    and string.find(GetAddOnMetadata("SoloCraftBots", "Version"), "%-dev$")
+    and type(SlashCmdList) == "table" then
+    SLASH_SCBDEFENDER1 = "/scbdefender"
+    SlashCmdList.SCBDEFENDER = function(message)
+        local db = DefenderRecorderDB()
+        if not db then return end
+        message = string.lower(message or "")
+        if message == "on" then db.bossModDefenderRecord = true
+        elseif message == "off" then db.bossModDefenderRecord = false
+        elseif message ~= "export" then
+            DEFAULT_CHAT_FRAME:AddMessage("SCB Defender: /scbdefender on|off|export")
+            return
+        end
+        if message ~= "export" then
+            DEFAULT_CHAT_FRAME:AddMessage("SCB Defender recorder: " ..
+                (db.bossModDefenderRecord and "ON" or "OFF"))
+            return
+        end
+        for _, name in ipairs(defenderSampleNames) do
+            local samples = db.bossModDefenderIntervals
+                and db.bossModDefenderIntervals[name] or {}
+            local minimum, row = nil, {}
+            for _, dt in ipairs(samples) do
+                if not minimum or dt < minimum then minimum = dt end
+                table.insert(row, string.format("%.3f", dt))
+            end
+            DEFAULT_CHAT_FRAME:AddMessage("SCB " .. name .. " count=" ..
+                table.getn(samples) .. " min=" ..
+                (minimum and string.format("%.3f", minimum) or "?"))
+            for i = 1, table.getn(row), 10 do
+                local chunk = {}
+                for j = i, math.min(i + 9, table.getn(row)) do
+                    table.insert(chunk, row[j])
+                end
+                DEFAULT_CHAT_FRAME:AddMessage(name .. ": " ..
+                    table.concat(chunk, ","))
+            end
+        end
+    end
+end
+
 -- Aura rows display caller-observed state. Only recipient/member auras have
 -- a memberBinding; observed *ability names* (e.g. Chromaggus breaths) do not.
 -- Member auras are retired when the target is dead or leaves the live roster.
@@ -2479,7 +2580,10 @@ end
 local function CheckEffect(e, hasPattern)
     local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
-    if e.type == "counter_hit" or e.type == "counter_reset" then
+    if e.type == "dev_interval" then
+        return e.ability == "meteor" or e.ability == "plague"
+            or e.ability == "shadowstorm" or e.ability == "thunderclap"
+    elseif e.type == "counter_hit" or e.type == "counter_reset" then
         return e.label == nil and e.duration == nil
     elseif e.type == "timer_stage" then
         return type(e.label) == "string" and e.label ~= ""
@@ -3117,7 +3221,9 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "counter_hit" then
+    if effect.type == "dev_interval" then
+        mechanics.RecordDefenderHit(effect.ability, active.generation)
+    elseif effect.type == "counter_hit" then
         mechanics.ObserveCounterHit(effect.id,
             details and details.observationId, active.generation)
     elseif effect.type == "counter_reset" then

@@ -578,7 +578,27 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
             },
-            triggers = {},
+            -- Dev-branch local-self hit/application sampling only.
+            -- Party and raid AoE lines may repeat for a single occurrence;
+            -- they are intentionally excluded from timing measurements.
+            triggers = {
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                    contains = "Anubisath Defender's Meteor hits you",
+                    effects = { { type = "dev_interval", id = "met_sample",
+                        ability = "meteor" } } },
+                { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                    contains = "You are afflicted by Plague.",
+                    effects = { { type = "dev_interval", id = "pla_sample",
+                        ability = "plague" } } },
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                    contains = "Anubisath Defender's Shadow Storm hits you",
+                    effects = { { type = "dev_interval", id = "sha_sample",
+                        ability = "shadowstorm" } } },
+                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                    contains = "Anubisath Defender's Thunderclap hits you",
+                    effects = { { type = "dev_interval", id = "thu_sample",
+                        ability = "thunderclap" } } },
+            },
             -- Reflect needs positive school evidence for an icon.
         },
     },
