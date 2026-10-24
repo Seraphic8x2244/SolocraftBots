@@ -43,6 +43,13 @@ class ApprovedAQ40(unittest.TestCase):
         self.assertIn("firstDelay = 20.5, repeatDelay = 20.5", ouro)
         self.assertIn("firstDelay = 20, repeatDelay = 20", ouro)
         self.assertIn('contains = "Ground Rupture"', ouro)
+        self.assertIn('castStages = {', ouro)
+        self.assertIn('spellId = 26063', ouro)
+        self.assertIn('sourceThreshold = "berserk"', ouro)
+        self.assertIn('label = "Next Emerge (estimated)"', ouro)
+        self.assertIn('function mechanics.ObserveDeclaredCastEvent(', M)
+        self.assertIn('slot.progressState.instanceID == casterGuid', M)
+        self.assertIn('castType ~= "CAST"', M)
 
     def test_cthun_attack_all_is_explicit_and_scoped(self):
         cthun = encounter("cthun", "sentinels")
