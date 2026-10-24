@@ -573,6 +573,16 @@ SoloCraftBots.bossModDefinitions = {
                     minDelay = 89, provenance = "predicted",
                     icon = "Interface\\Icons\\INV_Misc_Shovel_01" },
             },
+            -- Optional SuperWoW UNIT_CASTEVENT. The spell must be a real
+            -- successful cast by the same Ouro GUID already observed in the
+            -- HP threshold tracker. Vanilla has no equivalent positive event.
+            castStages = {
+                { id = "ourocycle", spellId = 26063,
+                    sourceThreshold = "berserk",
+                    label = "Next Emerge (estimated)", minDelay = 27,
+                    provenance = "predicted",
+                    icon = "Interface\\Icons\\INV_Misc_Shovel_01" },
+            },
             thresholds = {
                 { id = "berserk", name = "Ouro",
                     label = "Berserk (20% HP)", threshold = 0.20,
