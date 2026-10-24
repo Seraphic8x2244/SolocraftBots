@@ -661,6 +661,9 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             triggers = {
+                { event = "CHAT_MSG_COMBAT_HOSTILE_DEATH",
+                    contains = "Eye of C'Thun dies.",
+                    effects = { { type = "cthun_phase2" } } },
                 -- These Birth messages identify a *spawn already occurring*.
                 -- A reference next-spawn window is not a claimed unique unit.
                 { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
@@ -673,13 +676,11 @@ SoloCraftBots.bossModDefinitions = {
                     effects = { { type = "timer_stage", id = "giant_claw_next",
                         label = "Next Giant Claw (reference)",
                         minDelay = 30, provenance = "predicted" } } },
-                -- Elesion's first Giant Claw after a positive weakened
-                -- emote uses an 8s reference; do not fabricate the spawn.
+                -- 8s post-Weakened reference begins after its 45s duration,
+                -- not at the initial weakened emote.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
                     contains = "is weakened!",
-                    effects = { { type = "timer_stage", id = "giant_claw_next",
-                        label = "Giant Claw after Weakened (reference)",
-                        minDelay = 8, provenance = "predicted" } } },
+                    effects = { { type = "cthun_weakened" } } },
                 -- Native emote positively establishes the start of Weakened.
                 -- This 45s bar is an Elesion reference, not a phase detector.
                 { event = "CHAT_MSG_MONSTER_EMOTE",
@@ -688,6 +689,10 @@ SoloCraftBots.bossModDefinitions = {
                         label = "Weakened (reference 45s)",
                         duration = 45, provenance = "predicted" } } },
             },
+            -- Native BigWigs 47b5380 phase transition: Eye death is definitive.
+            -- The first giant claw is due 12s after phase two; subsequent
+            -- births alternate, while post-Weakened scheduling begins when
+            -- the 45s window ENDS rather than when it starts.
             -- Giant Tentacle shared HP row remains separate from spawn
             -- estimates; do not derive identity from birth messages.
         },
