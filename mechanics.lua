@@ -2710,6 +2710,34 @@ function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration, obser
     return true, occurrence.id
 end
 
+-- The interruption itself is positive evidence. The lockout duration is
+-- an explicitly declared estimate tied to the observed interrupting spell.
+-- A random silence, missing cast or stale event never starts a Heal timer.
+function mechanics.ObserveAbilityLockout(id, seconds, expectedGeneration)
+    local session = GetAbilitySession()
+    if not session or not session.engaged or session.postBossCleanup
+        or (expectedGeneration and session.generation ~= expectedGeneration)
+        or type(seconds) ~= "number" or seconds <= 0
+        or seconds ~= seconds or seconds == math.huge then
+        return false, "invalid ability lockout"
+    end
+    local state = session.abilities and session.abilities[id]
+    if not state or state.phase ~= "casting" or not state.occurrence
+        or state.occurrence.finished then
+        return false, "no observed cast to interrupt"
+    end
+    state.occurrence.finished = true
+    state.occurrence.interrupted = true
+    local now = AbilityClock()
+    state.phase, state.startedAt, state.readyAt = "cooldown", now, now + seconds
+    state.uncertainty = "interrupt school lockout estimated"
+    if session.casterCasts[state.caster] == state then
+        session.casterCasts[state.caster] = nil
+    end
+    if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
+    return true
+end
+
 function mechanics.ObserveAbilityInterrupt(id, spellName, expectedGeneration)
     local session, state
     session = GetAbilitySession()
@@ -2823,7 +2851,8 @@ RenderAbilityBar = function(slot, now)
         ReleasePresentation("timer", slot.key)
         return
     end
-    frame.label:SetText(slot.label)
+    frame.label:SetText(state and phase == "ready"
+        and state.spec.readyLabel or slot.label)
     if phase == "casting" then
         -- Estimated visual casting length never proves actual completion.
         local occurrence = state and state.occurrence
@@ -2881,7 +2910,10 @@ end
 local function CheckEffect(e, hasPattern)
     local i, names
     if type(e) ~= "table" or not IsId(e.id) then return false end
-    if e.type == "dev_interval" then
+    if e.type == "ability_lockout" then
+        return type(e.ability) == "string" and IsId(e.ability)
+            and IsDuration(e.duration)
+    elseif e.type == "dev_interval" then
         return e.ability == "meteor" or e.ability == "plague"
             or e.ability == "shadowstorm" or e.ability == "thunderclap"
     elseif e.type == "counter_hit" or e.type == "counter_reset" then
@@ -3006,6 +3038,8 @@ local function CheckAbility(a, seen, isGroup)
         or (a.resetOn ~= nil and a.resetOn ~= "start" and a.resetOn ~= "finish")
         or (a.repeatDelay ~= nil and a.resetOn == nil)
         or (a.ordinary ~= nil and type(a.ordinary) ~= "boolean")
+        or (a.readyLabel ~= nil and (type(a.readyLabel) ~= "string"
+            or a.readyLabel == ""))
         or (a.observedOnly ~= nil and type(a.observedOnly) ~= "boolean")
         or (a.observedOnly and a.repeatDelay ~= nil)
         or (a.icon ~= nil and (type(a.icon) ~= "string" or a.icon == ""))
@@ -3576,7 +3610,10 @@ local function RunDeclaredEffect(effect, captured, details)
     local key, name, binding, deadline, token, seen
     if not active then return end
     key = "decl:" .. effect.id
-    if effect.type == "dev_interval" then
+    if effect.type == "ability_lockout" then
+        mechanics.ObserveAbilityLockout(effect.ability,
+            effect.duration, active.generation)
+    elseif effect.type == "dev_interval" then
         mechanics.RecordDefenderHit(effect.ability, active.generation)
     elseif effect.type == "counter_hit" then
         mechanics.ObserveCounterHit(effect.id,
