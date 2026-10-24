@@ -1,5 +1,12 @@
 # Development Progress
 
+## AQ40 Chunk 5 — Sentinel GUID-bound observation state (2026-10-24)
+- Started from verified dev HEAD `2f470824d970fec308131ecdf1eb1cfe1d3e223f`. Code commit `2ba5366`, TOC `e9791cd`, regression file `fd3b4d5`. Current version **0.9.73-dev**, `main` not modified.
+- Implemented generic, explicitly called `ObserveSentinelAbility(unit, ability, provenance, generation)` and readout `GetSentinelAbilities(unit, generation)`: require engaged canonical Sentinel encounter, positively identified SuperWoW individual GUID, already tracked live HP row, approved ability name and explicit original/inherited provenance. The original attribute is immutable after first observation; inherited abilities append to a separate observed set. A copied readout exposes original-based priority and names. No combat-log caller presently supplies this evidence, and no sorting/icons are rendered: NOT feature-complete.
+- Added source regressions `tests/test_aq40_sentinel_provenance.py`. **9/9 scoped JavaScript remote-source assertions PASS**; Python unittest runner, Lua 5.0.3 compiler, CI and in-game runtime NOT RUN. No command changes or BWL changes.
+- **Remaining Chunk 5:** actual positive GUID-bound ability observation feed and Sentinel icons/sorting; Fankriss Entangle gain/fade with exact recipient and safe 8s Come; Viscidus Toxin first-hit recipient and role actions; Defender exclusive pairs/reflect icons and ability bars. Do not assume client chat text identifies GUID/original-vs-inherited; do not invent event formats, cooldowns or command scopes. Continue from live head, preserve SCB command ownership; no interim in-game tests.
+
+
 ## AQ40 Chunk 5 — Sentinel priority declaration checkpoint (2026-10-24)
 - Verified remote `dev` starting HEAD `2f4a0b9e2c5efd2ea9de63a23789b0a25458c06a`. No `main` writes. TOC now **0.9.72-dev**.
 - Added **declarative data only** for approved nine-step Sentinel easiest-first priority, with mutually ranked alternative names at ranks 3, 4 and 5. Ranking explicitly pertains to the **original distinguishing ability**, not inherited unions. Code commit `5b6b59b`, version `15faf3d`, regression file `24b5925`.
