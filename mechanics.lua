@@ -1220,6 +1220,34 @@ function mechanics.SetTimerStage(id, spec, expectedGeneration)
     return true
 end
 
+-- Optional GUID-attributed cast-stage evidence uses the existing SCB
+-- event owner. Never associate a same-name replacement with this caster.
+-- A missing source GUID simply withholds the transition on vanilla clients.
+function mechanics.ObserveDeclaredCastEvent(casterGuid, castType, spellId,
+    expectedGeneration)
+    if not active or not active.engaged or active.postBossCleanup
+        or (expectedGeneration and expectedGeneration ~= active.generation)
+        or type(casterGuid) ~= "string" or casterGuid == ""
+        or castType ~= "CAST" or type(spellId) ~= "number" then
+        return false, "invalid or stale cast event"
+    end
+    local d = active.definition.declarative
+    for _, spec in ipairs(d and d.castStages or {}) do
+        if spec.spellId == spellId then
+            for _, slot in ipairs(presentation.timer.pool) do
+                if slot.used and slot.generation == active.generation
+                    and slot.key == "threshold:" .. spec.sourceThreshold
+                    and slot.progressKind == "threshold"
+                    and slot.progressState
+                    and slot.progressState.instanceID == casterGuid then
+                    return mechanics.SetTimerStage(spec.id, spec, active.generation)
+                end
+            end
+        end
+    end
+    return false, "cast source not positively identified"
+end
+
 function mechanics.GetTimerStage(id, expectedGeneration)
     if not active or (expectedGeneration and expectedGeneration ~= active.generation)
         then return nil end
@@ -3223,6 +3251,37 @@ local function CheckDeclaration(d)
     if d.counters ~= nil and type(d.counters) ~= "table" then
         return false, "invalid counters"
     end
+    if d.castStages ~= nil then
+        if type(d.castStages) ~= "table" then
+            return false, "invalid cast stages"
+        end
+        local castIds = {}
+        for _, stage in ipairs(d.castStages) do
+            if type(stage) ~= "table"
+                or type(stage.spellId) ~= "number"
+                or stage.spellId <= 0
+                or stage.spellId ~= math.floor(stage.spellId)
+                or not IsId(stage.sourceThreshold)
+                or castIds[stage.spellId] then
+                return false, "invalid cast stage"
+            end
+            local foundSource = false
+            for _, threshold in ipairs(d.thresholds or {}) do
+                if threshold.id == stage.sourceThreshold then
+                    foundSource = true
+                    break
+                end
+            end
+            if not foundSource or not CheckEffect({
+                id = stage.id, type = "timer_stage",
+                label = stage.label, minDelay = stage.minDelay,
+                maxDelay = stage.maxDelay, provenance = stage.provenance,
+                icon = stage.icon, group = stage.group }, false) then
+                return false, "invalid cast stage"
+            end
+            castIds[stage.spellId] = true
+        end
+    end
     if d.initialStages ~= nil then
         if type(d.initialStages) ~= "table" then
             return false, "invalid initial stages"
@@ -3427,6 +3486,17 @@ function mechanics.GetRequiredEvents(zone)
                 AddRule(spec.startRule)
                 AddRule(spec.finishRule)
                 AddRule(spec.interruptRule)
+            end
+        end
+    end
+    if zone == "Ahn'Qiraj" then
+        for _, entry in pairs(encounters) do
+            local d = entry.declarative
+            if d and d.detect.zone == zone and d.castStages
+                and table.getn(d.castStages) > 0
+                and not seen.UNIT_CASTEVENT then
+                seen.UNIT_CASTEVENT = true
+                table.insert(result, "UNIT_CASTEVENT")
             end
         end
     end
