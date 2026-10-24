@@ -785,25 +785,29 @@ SoloCraftBots.bossModDefinitions = {
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Moonfire is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_fire_arcane",
-                        label = "Reflect", ability = "Fire / Arcane" } } },
+                        label = "Reflect", ability = "Fire / Arcane",
+                        icon = "Interface\\Icons\\Spell_Arcane_PortalDarnassus" } } },
                 { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Fireball is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_fire_arcane",
-                        label = "Reflect", ability = "Fire / Arcane" } } },
+                        label = "Reflect", ability = "Fire / Arcane",
+                        icon = "Interface\\Icons\\Spell_Arcane_PortalDarnassus" } } },
                 { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Frostbolt is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_frost_shadow",
-                        label = "Reflect", ability = "Frost / Shadow" } } },
+                        label = "Reflect", ability = "Frost / Shadow",
+                        icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" } } },
                 { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Corruption is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_frost_shadow",
-                        label = "Reflect", ability = "Frost / Shadow" } } },
+                        label = "Reflect", ability = "Frost / Shadow",
+                        icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" } } },
                 { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
                     contains = "Anubisath Defender's Meteor hits you",
                     effects = { { type = "dev_interval", id = "met_sample",
@@ -827,8 +831,6 @@ SoloCraftBots.bossModDefinitions = {
             -- No mutually exclusive pair inferred from unverified damage.
             -- Reflect evidence uses Elesion's exact spell examples.
             -- (Ability 3 is identification only; 4/5 deliberately ignored.)
-            -- Reflect-specific icons are not yet wired to this generic
-            -- observed-ability UI; source-positive text labels only.
             -- Additional cooldowns require recorded intervals.
         },
     },
