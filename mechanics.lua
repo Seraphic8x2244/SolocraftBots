@@ -3733,7 +3733,7 @@ local function RunDeclaredEffect(effect, captured, details)
             seen.names[name] = true
             table.insert(seen.order, name)
             mechanics.ShowTrackedAura("seen:" .. effect.id .. ":" .. name,
-                effect.label, name, nil)
+                effect.label, name, nil, nil, nil, effect.icon)
         end
         -- Transient alert per actual cast; repeated casts refresh the notice
         -- but do not add fake new abilities or next-cast predictions.
