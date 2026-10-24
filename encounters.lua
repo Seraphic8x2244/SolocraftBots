@@ -343,7 +343,8 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "greatheal", caster = "Princess Yauj",
-                    label = "Great Heal", mode = "opportunistic",
+                    label = "Great Heal", observedOnly = true,
+                    mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
                     startRule = {
                         events = { "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
@@ -353,7 +354,7 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "fear", caster = "Princess Yauj", label = "Fear",
-                    mode = "opportunistic",
+                    observedOnly = true, mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Shadow_Possession",
                     startRule = {
                         event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
