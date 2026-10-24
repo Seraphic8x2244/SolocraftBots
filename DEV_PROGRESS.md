@@ -1,5 +1,12 @@
 # Development Progress
 
+## AQ40 native-only continuation — Sartura/C'Thun observed events (2026-10-24)
+- Continued on `dev` from canonical encounter-ID fix checkpoint; `main` untouched. TOC now **0.9.78-dev**. Code commit `3015a72` with correction `3b60b75`; TOC `5f1d4e1`; regression `e782568`.
+- Added **native GUID-independent** observed alerts: Sartura Whirlwind fade and Enrage combat text, C'Thun weakened emote and Giant Eye/Claw Birth cast messages, from pinned Elesion BigWigs AQ40 modules. All use the existing encounter event owner and generic five-second `notice` presentation; they do NOT assert ability cooldowns, weaken duration, spawns' unique identity, or completed phase transitions. Preserves BWL data unchanged.
+- Source checks: **9/9 focused remote JavaScript source assertions PASS** for trigger presence, one C'Thun trigger table, Viscidus native emotes, dotted IDs, TOC. New `tests/test_aq40_native_sartura_cthun.py` added, Python suite NOT executed. Canonical Lua 5.0.3 compiler, CI and game runtime NOT run.
+- **Native-only implementation still incomplete**, so do not describe all AQ40 modules as working. Continue verified native event/recipient mechanics and test coverage, refusing invented signal, cooldown or bot command scope. No interim in-game tests until implementation chunks complete. GUID-only Sentinel/Defender per-creature ability attribution remains deferred/optional, not a SCB dependency.
+
+
 ## AQ40 native-only continuation — canonical IDs and observed Viscidus emotes (2026-10-24)
 - Verified starting dev HEAD `b9cef852752c7838dd25d1bf774232f55026843f` and read canonical rulebook/handoff. `main` untouched. Current TOC **0.9.77-dev**.
 - FIXED substantive registration/integration bug: registry uses dotted ids `aq40.sentinels` / `aq40.defender`, while eight new ability and rendering guards expected underscore ids. Corrected all eight to canonical dots in `mechanics.lua` (commit `38e4f36`). This makes explicit GUID-bound observer APIs and existing tracker presentation reachable when genuine observations arrive; it does not create a GUID event producer.
