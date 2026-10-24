@@ -2594,7 +2594,7 @@ local function RunDeclaredEffect(effect, captured)
         else
             deadline = effect.duration and Now() + effect.duration or nil
             mechanics.ShowTrackedAura(key, effect.label, name, deadline, binding,
-                effect.retainAfterBossDeath, effect.icon)
+                effect.retainAfterBossDeath, effect.icon, effect.group)
             if effect.action == "kick" and mechanics.BindObservedMember(binding, name) then
                 mechanics.ShowBoundBotAction("kick:" .. key, {
                     binding = binding, label = (effect.kickLabel or "Kick") .. " " .. name,
@@ -2679,7 +2679,7 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                         target = aura.target, label = aura.label, duration = aura.duration,
                         action = aura.action, kickLabel = aura.kickLabel,
                         retainAfterBossDeath = aura.retainAfterBossDeath,
-                        icon = aura.icon or spec.icon }
+                        icon = aura.icon or spec.icon, group = aura.group or spec.group }
                     RunDeclaredEffect(effect, captured)
                     if state then
                         now = Now()
