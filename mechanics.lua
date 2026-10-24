@@ -442,7 +442,7 @@ LayoutPresentation = function(kind)
         end
         -- Sentinel kill priority follows the ORIGINAL observed ability.
         -- Unknown originals sort last, retaining acquisition order on ties.
-        if active and active.id == "aq40_sentinels" then
+        if active and active.id == "aq40.sentinels" then
             local order = {}
             for i, slot in ipairs(rows) do order[slot] = i end
             table.sort(rows, function(a, b)
@@ -1354,7 +1354,7 @@ local function SentinelPriority(name)
 end
 
 function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGeneration)
-    if not active or active.id ~= "aq40_sentinels" or not active.engaged
+    if not active or active.id ~= "aq40.sentinels" or not active.engaged
         or active.postBossCleanup
         or (expectedGeneration and active.generation ~= expectedGeneration)
         or (provenance ~= "original" and provenance ~= "inherited")
@@ -1385,7 +1385,7 @@ function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGen
 end
 
 function mechanics.GetSentinelAbilities(unit, expectedGeneration)
-    if not active or active.id ~= "aq40_sentinels" or not active.engaged
+    if not active or active.id ~= "aq40.sentinels" or not active.engaged
         or (expectedGeneration and active.generation ~= expectedGeneration) then
         return nil
     end
@@ -1421,7 +1421,7 @@ local defenderPairs = {
     firearcane = 3, frostshadow = 3,
 }
 function mechanics.ObserveDefenderAbility(unit, ability, expectedGeneration)
-    if not active or active.id ~= "aq40_defender" or not active.engaged
+    if not active or active.id ~= "aq40.defender" or not active.engaged
         or active.postBossCleanup
         or (expectedGeneration and expectedGeneration ~= active.generation)
         or type(ability) ~= "string" or not defenderPairs[ability]
@@ -1448,7 +1448,7 @@ function mechanics.ObserveDefenderAbility(unit, ability, expectedGeneration)
 end
 
 function mechanics.GetDefenderAbilities(unit, expectedGeneration)
-    if not active or active.id ~= "aq40_defender" or not active.engaged
+    if not active or active.id ~= "aq40.defender" or not active.engaged
         or active.postBossCleanup
         or (expectedGeneration and expectedGeneration ~= active.generation)
         or not UnitName or UnitName(unit) ~= "Anubisath Defender" then
@@ -1483,7 +1483,7 @@ end
 function mechanics.RecordDefenderHit(ability, expectedGeneration)
     local db = DefenderRecorderDB()
     if not db or db.bossModDefenderRecord ~= true
-        or not active or active.id ~= "aq40_defender" or not active.engaged
+        or not active or active.id ~= "aq40.defender" or not active.engaged
         or active.postBossCleanup
         or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "recorder unavailable"
@@ -2312,7 +2312,7 @@ function mechanics.UpdatePresentation(now)
                 ReleasePresentation("hp", slot.key)
             else
                 local label = slot.label
-                if session.id == "aq40_sentinels" and slot.sentinelAbilities then
+                if session.id == "aq40.sentinels" and slot.sentinelAbilities then
                     local seen = {}
                     for spell in pairs(slot.sentinelAbilities.observed) do
                         table.insert(seen, spell)
@@ -2321,7 +2321,7 @@ function mechanics.UpdatePresentation(now)
                     if table.getn(seen) > 0 then
                         label = label .. " [" .. table.concat(seen, ", ") .. "]"
                     end
-                elseif session.id == "aq40_defender" and slot.defenderPairs then
+                elseif session.id == "aq40.defender" and slot.defenderPairs then
                     local seen = {}
                     for pair = 1, 3 do
                         if slot.defenderPairs[pair] then
