@@ -2391,13 +2391,22 @@ end
 
 -- One AoE cast -> one completion; subsequent recipient hits during the
 -- resulting cooldown cannot restart it. Missing start logs remain explicit.
-function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration)
+function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration, observationId)
     local session, state, occurrence, now
     session = GetAbilitySession()
     if not session or (expectedGeneration and session.generation ~= expectedGeneration)
         or not session.engaged then return false, "stale encounter" end
     state = ResolveAbility(id, spellName)
     if not state then return false, "unknown ability" end
+    -- A confirmed event identity can de-duplicate repeated recipient lines
+    -- without guessing an AoE cooldown or merging distinct occurrences.
+    if observationId ~= nil and (type(observationId) ~= "string"
+        and type(observationId) ~= "number") then
+        return false, "invalid observation identity"
+    end
+    if observationId ~= nil and state.lastFinishObservationId == observationId then
+        return true, "duplicate observation"
+    end
     now = AbilityClock()
     occurrence = state.occurrence
     if occurrence and occurrence.finished and not state.cooldownFromStart
@@ -2419,6 +2428,7 @@ function mechanics.ObserveAbilityFinish(id, spellName, expectedGeneration)
     occurrence.finished, occurrence.observedFinish = true, true
     occurrence.finishedAt = now
     state.lastFinishedAt, state.uncertainty = now, nil
+    state.lastFinishObservationId = observationId
     if session.casterCasts[state.caster] == state then
         session.casterCasts[state.caster] = nil
     end
@@ -3409,7 +3419,8 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
             end
             matched, captured = MatchAbilityObservation(spec.finishRule, eventName, message, details)
             if matched and mechanics.ObserveAbilityFinish(spec.id,
-                isGroup and captured or nil, session.generation) then
+                isGroup and captured or nil, session.generation,
+                details and details.observationId) then
                 count = count + 1
             end
             matched, captured = MatchAbilityObservation(spec.interruptRule, eventName, message, details)
