@@ -11,7 +11,8 @@ class AQ40CompletionWiring(unittest.TestCase):
     def test_viscidus_toxin_bot_event_and_group_owner(self):
         visc = ENC.split("        viscidus = {", 1)[1].split("        huhuran = {", 1)[0]
         self.assertIn('pattern = "^(.+) is afflicted by Toxin%.$"', visc)
-        self.assertIn('type = "viscidus_toxin"', visc)
+        self.assertIn('type = "viscidus_toxin",', visc)
+        self.assertIn('type = "viscidus_phase",', visc)
         self.assertIn('function mechanics.ObserveViscidusToxin', MECH)
         self.assertIn('ResolveBoundLive(name, true, true)', MECH)
         self.assertIn('Now() + 8', MECH)
@@ -23,19 +24,21 @@ class AQ40CompletionWiring(unittest.TestCase):
         for spell in ("Giant Claw Tentacle", "Giant Eye Tentacle"):
             self.assertIn(spell, cthun)
         self.assertIn("Eye of C'Thun dies.", cthun)
-        self.assertIn('type = "cthun_phase2"', cthun)
-        self.assertIn('type = "cthun_glare"', cthun)
-        self.assertIn('type = "cthun_weakened"', cthun)
+        self.assertIn('type = "cthun_phase2",', cthun)
+        self.assertIn('type = "cthun_glare",', cthun)
+        self.assertIn('type = "cthun_weakened",', cthun)
         self.assertIn('minDelay = 12', MECH)
         self.assertIn('minDelay = 42', MECH)
         self.assertIn('minDelay = 8', MECH)
         self.assertIn('minDelay = 38', MECH)
         self.assertIn('minDelay = 39', MECH)
+        self.assertIn('for _, alias in ipairs(spec.aliases or {})', MECH)
         self.assertIn('ScheduleTimer("cthun-after-weakened", 45', MECH)
 
     def test_defender_learning_preserved_without_600_second_cooldown(self):
         defender = ENC.split("        defender = {", 1)[1]
         self.assertIn('repeatDelay = 40, resetOn = "finish"', defender)
+        self.assertIn('function mechanics.ObserveDefenderElapsed', MECH)
         self.assertNotIn('repeatDelay = 600', defender)
         for token in ('SLASH_SCBDEFENDER1 = "/scbdefender"',
                       'bossModDefenderIntervals', 'RecordDefenderHit',
