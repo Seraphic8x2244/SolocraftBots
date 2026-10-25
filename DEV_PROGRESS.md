@@ -8,10 +8,18 @@
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
 ## AQ40 module-by-module repair plans — agreed decisions only (2026-10-25)
+### Agreed work order — BWL and AQ40 (user-defined, 2026-10-25)
+1. Define the **BWL and AQ40 modules and submodules** to make their responsibilities clear.
+2. Build a **central scanner module**.
+3. Connect the **BWL and AQ40 modules/submodules** to that scanner for activation and data.
+4. Build/revise the **Anubisath Sentinel module**; user can repeatedly reset Sentinels for testing on a non-locked character.
+
+These are the user-selected sequence and goals, **not approval to edit addon code now**. Detailed mechanics are to be agreed in discussion before implementation. Preserve the existing raid-wide scan until its replacement is fully implemented and covers all existing uses.
+
 - Only document **repair behaviour/implementation decisions after explicit user approval**. Do **not** record assistant proposals, investigations, suspected diagnoses, or unapproved technical details here, even labelled "unapproved". Preserve the user's actual runtime reports separately below.
 - **Review order:** begin with **Anubisath Sentinels** (first module in raid progression). Review one module at a time against pinned Elesion BigWigs and the existing SCB implementation. No addon code changes until explicitly authorised.
 - **Anubisath Sentinels:** repair approach **not yet agreed**; no fixes approved or implemented. Use the separate user runtime record below when discussing it. Original/inherited ability attribution remains user-deferred.
-- **Raid-wide target polling retirement (explicit user requirement):** the current raid-wide 0.4-second target scan is marked for retirement **ONLY AFTER it has been fully replaced**, not merely when a replacement design is agreed or partly implemented. Preserve the existing scan and its functionality until the replacement actually covers all its uses. The user considers unconditional scanning throughout a raid wasteful. No replacement architecture is approved yet; module/submodule activation triggers remain under discussion.
+- **Raid-wide target polling retirement (explicit user requirement):** the current raid-wide 0.4-second target scan is marked for retirement **ONLY AFTER it has been fully replaced**, not merely when a replacement design is agreed or partly implemented. Preserve the existing scan and its functionality until the replacement actually covers all its uses. The user considers unconditional scanning throughout a raid wasteful. The user has selected a central scanner as the high-level replacement direction; module/submodule activation and scanner details remain to be worked out.
 
 ## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
 This section records **only the user's reported in-game observations, diagnostic output supplied by the user, and the user's own requested changes or design ideas**. Suggestions from assistant discussions, code-analysis conclusions, inferred test outcomes, unrequested safety requirements and invented test results are **not** part of this runtime record. A request below does not imply implementation or testing. Other historic development entries further down describe implementation history and must not be mistaken for user runtime confirmation.
