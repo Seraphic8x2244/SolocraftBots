@@ -1,5 +1,12 @@
 # Development Progress
 
+## Sentinel AQ40 user runtime observation — 0.9.89-dev (2026-10-25)
+- User observed Sentinel HP bars eventually appearing, **very slowly** and seemingly reliant on current player/raid targets. This target-dependence is an observation, not an established code root cause.
+- HP bars **were not clickable** in the user runtime. Do not claim clicking is implemented/working merely because a declaration includes `clickTarget = true`; audit actual widget wiring separately if requested.
+- GUID-based Sentinel original/inherited ability attribution remains expressly **deferred**. Do not conflate these deferred features with HP discovery latency or non-clickable bars.
+- This is a report of the user's runtime observation, not a fix or code test. Next: if asked, address HP discovery and target interaction as separate scoped fixes on dev; preserve deferred ability boundaries.
+
+
 ## Defender Plague victim/Kick correction — 0.9.89-dev (2026-10-25)
 - `dev` only, resumed at `b9089f078bb76cd5c1dc9f0aaa9c81dd34e9d0b4`. Replaced self-only Defender Plague completion-only rule with the existing Burning Adrenaline-style **40-second victim aura**: self and named party/friendly-player applications, fade-based removal, existing bound Kick widget, no manual bot target or separate command owner. Pinned Elesion BigWigs `Defenders.lua` confirms Plague duration 40s; it is an aura duration, **not a proven cooldown**.
 - Existing self-hit Defender observation/interval recorder remains; no new dependency. Runtime, Lua 5.0.3 compiler and Python tests have not been run. Next raid test: Plague on bot gives named 40s row + Kick, click uses existing Kick and fades on combat-log removal.
