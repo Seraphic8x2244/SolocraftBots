@@ -1,5 +1,10 @@
 # Development Progress
 
+## Defender Plague victim/Kick correction — 0.9.89-dev (2026-10-25)
+- `dev` only, resumed at `b9089f078bb76cd5c1dc9f0aaa9c81dd34e9d0b4`. Replaced self-only Defender Plague completion-only rule with the existing Burning Adrenaline-style **40-second victim aura**: self and named party/friendly-player applications, fade-based removal, existing bound Kick widget, no manual bot target or separate command owner. Pinned Elesion BigWigs `Defenders.lua` confirms Plague duration 40s; it is an aura duration, **not a proven cooldown**.
+- Existing self-hit Defender observation/interval recorder remains; no new dependency. Runtime, Lua 5.0.3 compiler and Python tests have not been run. Next raid test: Plague on bot gives named 40s row + Kick, click uses existing Kick and fades on combat-log removal.
+
+
 ## AQ40 Skeram/Ouro native mechanics — 0.9.88-dev (2026-10-25)
 - Verified `dev` start HEAD `bfa287ac583870525ba2f44c8bf2cb28ed386c4d`. Only `dev` changed; stable `main` untouched. TOC now `0.9.88-dev`. The handoff HEAD is this documentation commit.
 - **Skeram scope strictly real boss marking ONLY.** Existing SCB 0.10s presentation owner checks positive `target`/`raidNtarget` native tokens; while engaged and permitted as raid leader/officer, marker 6 goes only to a Skeram with max HP above pinned Elesion BigWigs' raid-size threshold (20–40: raid size × 10,000; under 20: 200,000). At most one mark attempt/session. No split, MC, clone actions added.
