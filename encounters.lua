@@ -771,15 +771,40 @@ SoloCraftBots.bossModDefinitions = {
                 },
                 {
                     id = "plague", caster = "Anubisath Defender",
-                    label = "Plague (40s reference)", observedOnly = true,
+                    label = "Plague", observedOnly = true,
                     mode = "opportunistic",
-                    -- Pinned BigWigs supplies this one actual 40s reference;
-                    -- the 600s meteor/storm/clap placeholders are NOT CDs.
-                    repeatDelay = 40, resetOn = "finish",
-                    icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
-                    finishRule = {
-                        event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
-                        contains = "You are afflicted by Plague.",
+                    -- Same bot-bound Kick aura path as Vael Burning Adrenaline.
+                    -- Pinned Elesion BigWigs: Plague duration 40 seconds.
+                    auras = {
+                        { id = "plague", label = "Plague",
+                            icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
+                            target = "player", duration = 40,
+                            action = "kick", kickLabel = "Kick",
+                            gain = {
+                                event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                                contains = "You are afflicted by Plague.",
+                            },
+                        },
+                        { id = "plague", label = "Plague",
+                            icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
+                            target = "capture", duration = 40,
+                            action = "kick", kickLabel = "Kick",
+                            gain = {
+                                events = {
+                                    "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
+                                    "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE",
+                                },
+                                pattern = "^(.+) is afflicted by Plague%.$",
+                            },
+                            fade = {
+                                events = {
+                                    "CHAT_MSG_SPELL_AURA_GONE_SELF",
+                                    "CHAT_MSG_SPELL_AURA_GONE_PARTY",
+                                    "CHAT_MSG_SPELL_AURA_GONE_OTHER",
+                                },
+                                pattern = "^Plague fades from (.+)%.$",
+                            },
+                        },
                     },
                 },
                 {
