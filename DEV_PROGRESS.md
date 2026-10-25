@@ -1,5 +1,12 @@
 # Development Progress
 
+## AQ40 review decisions — discussion only (2026-10-25)
+- **Review order, explicitly corrected by user:** begin with **Anubisath Sentinels**, the first AQ40 module encountered in raid progression. **The Prophet Skeram is the first boss**, not the first module. Do not start with C'Thun or Skeram when reviewing modules in raid order.
+- **User's assessment:** prior AQ40 development chats may have invented rules while coding; the current AQ40 Boss Mods implementation is a mess. Treat existing code and earlier assistant-authored requirements as subject to review, **not** automatically approved or correct. This is the user's assessment, not a newly verified code finding.
+- Review **one encounter at a time**, compare with pinned **Elesion BigWigs** for actual implementation/behaviour, and separate **user-reported runtime evidence**, **verified source defects**, **suspected causes**, and **proposed changes**. Do not promote suggestions into requirements without user agreement.
+- **No addon code changes or other AQ40 implementation until the user explicitly approves.** This section records discussion/process only; existing runtime observations in the separate section below remain authoritative and unmodified.
+- Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
+
 ## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
 This section records **only the user's reported in-game observations, diagnostic output supplied by the user, and the user's own requested changes or design ideas**. Suggestions from assistant discussions, code-analysis conclusions, inferred test outcomes, unrequested safety requirements and invented test results are **not** part of this runtime record. A request below does not imply implementation or testing. Other historic development entries further down describe implementation history and must not be mistaken for user runtime confirmation.
 
