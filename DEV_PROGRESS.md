@@ -7,6 +7,23 @@
 - **No addon code changes or other AQ40 implementation until the user explicitly approves.** This section records discussion/process only; existing runtime observations in the separate section below remain authoritative and unmodified.
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
+## AQ40 module-by-module repair plans — discussion record (2026-10-25)
+**Purpose:** Persist the evolving *repair strategy*, separate from the authoritative user runtime report below. Update each module during discussion so decisions survive chat changes. Record proposals as **unapproved** until the user explicitly agrees. Never imply that a source finding is an in-game test. This is not authorisation to implement.
+
+### 1. Anubisath Sentinels — review OPEN; implementation NOT authorised
+- **Existing test evidence:** See the separate `Anubisath Sentinels — user-observed runtime` section below. HP rows appeared slowly, depended on **which Sentinel the user personally targeted**, and could not be clicked. No raid-target dependence was reported.
+- **Review method (process agreed; not a technical solution):**
+  1. Inspect the *actual* SCB Sentinel observation, HP-row rendering, and click/target code; distinguish confirmed defects from unproven diagnoses.
+  2. Inspect pinned Elesion BigWigs Sentinel behaviour and relevant native/extension APIs. Identify which mechanisms are actually applicable to SCB, without assuming that copying the whole module is desired.
+  3. Discuss what each Sentinel row should display, how multiple mobs are discovered, and what clicking should do; separate original/inherited ability tracking from basic HP/click functionality.
+  4. Agree the narrow repair behaviour with the user **before** deciding on code changes. No extra dependency, guard, timer, identity restriction, or feature is implicitly authorised.
+  5. Only after explicit approval: implement on `dev`, review changes and tests, then ask for focused in-game confirmation. Record the observed results against the exact tested commit/version.
+- **Source-code defects confirmed during this repair review:** none yet; no Sentinel-specific code comparison completed in this discussion.
+- **Possible root causes / proposed changes:** none approved; to be investigated and recorded here separately from user runtime results.
+- **Explicit scope boundary:** GUID-dependent original-vs-inherited Sentinel ability attribution remains **deferred by the user**. Do not treat it as the cause of slow/unclickable HP bars or silently revive it.
+- **Next discussion:** begin with the existing Sentinel HP-row discovery and click implementation versus Elesion; present one finding/decision at a time.
+- **User approvals for Sentinel implementation:** none yet.
+
 ## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
 This section records **only the user's reported in-game observations, diagnostic output supplied by the user, and the user's own requested changes or design ideas**. Suggestions from assistant discussions, code-analysis conclusions, inferred test outcomes, unrequested safety requirements and invented test results are **not** part of this runtime record. A request below does not imply implementation or testing. Other historic development entries further down describe implementation history and must not be mistaken for user runtime confirmation.
 
