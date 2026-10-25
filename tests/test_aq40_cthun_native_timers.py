@@ -20,7 +20,7 @@ class CthunNativeTimers(unittest.TestCase):
         self.assertIn('duration = 45, provenance = "predicted"', cthun)
 
     def test_not_promoted_to_stable(self):
-        self.assertIn("## Version: 0.9.88-dev", TOC)
+        self.assertIn("## Version: 0.9.89-dev", TOC)
 
 if __name__ == "__main__":
     unittest.main()
