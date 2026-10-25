@@ -1,11 +1,82 @@
 # Development Progress
 
-## Sentinel AQ40 user runtime observation — 0.9.89-dev (2026-10-25)
-- User observed Sentinel HP bars eventually appearing, **very slowly** and seemingly reliant on current player/raid targets. This target-dependence is an observation, not an established code root cause.
-- HP bars **were not clickable** in the user runtime. Do not claim clicking is implemented/working merely because a declaration includes `clickTarget = true`; audit actual widget wiring separately if requested.
-- GUID-based Sentinel original/inherited ability attribution remains expressly **deferred**. Do not conflate these deferred features with HP discovery latency or non-clickable bars.
-- This is a report of the user's runtime observation, not a fix or code test. Next: if asked, address HP discovery and target interaction as separate scoped fixes on dev; preserve deferred ability boundaries.
+## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
+This section records **only the user's reported in-game observations, diagnostic output supplied by the user, and the user's own requested changes or design ideas**. Suggestions from assistant discussions, code-analysis conclusions, inferred test outcomes, unrequested safety requirements and invented test results are **not** part of this runtime record. A request below does not imply implementation or testing. Other historic development entries further down describe implementation history and must not be mistaken for user runtime confirmation.
 
+### Skeram / Kick All — user-observed runtime
+- Skeram was killed, a saved raid ID existed and a boss loot window was open, but Kick All still kept the last bot.
+- In-game diagnostic reported `Zone: Ahn'Qiraj | Recognised: false | Saved IDs: 1`.
+- The user separately reported that the saved raid instance appeared under a differently worded name (`Ahn'Qiraj Temple`).
+- This is a **Kick All** report, **not a Boss Mods result**. Do not conflate their independent code paths.
+- User intent: with an existing raid ID and open boss loot window, Kick All should remove all bots subject to the already-existing rules; not silently retain one.
+
+### Anubisath Sentinels — user-observed runtime
+- Sentinel HP rows eventually appeared, but **very slowly**; appearance depended on **which Sentinel the user personally targeted**.
+- **The user did not report raid-target dependence.** Earlier wording claiming current player/**raid** targets was incorrect and is superseded by this correction.
+- Sentinel HP rows were **not clickable**.
+- GUID-dependent original-versus-inherited Sentinel ability attribution remains deferred by the user. That is not a runtime result and must not be treated as the reason the HP rows failed.
+
+### Anubisath Defenders — user-observed runtime and explicit requests
+- The Thunderclap display showed a detection message and a separate time-since-last-Thunderclap style tracker, rather than one straightforward cooldown bar.
+- User requested **one cooldown bar** per relevant ability: provisional **10 seconds Thunderclap** and **7 seconds Meteor**, with the learner **continuing to collect** intervals. These are user-selected guesses, **not measured confirmed cooldowns**.
+- Defender learner export printed into the WoW chat log, **not into a box convenient to copy/send**.
+- The user accidentally pulled **two Defenders at once** during part of the recorded run; the user flagged that sample oddities may result.
+- The export screenshot was previously transcribed in this conversation as **Meteor count 7, minimum 5.283s** (samples 7.624, 6.427, 14.034, 5.781, 5.285, 7.881, 5.283) and **Thunderclap count 10, minimum 8.526s** (samples 9.273, 9.592, 9.201, 8.539, 9.193, 10.157, 8.526, 9.719, 9.285, 9.182). Plague and Shadow Storm reported count 0. **These figures are the earlier assistant's screenshot transcription, not an independent validation of the image or timings.**
+- User asked whether the learner survived reloads and how to clear it; these were questions, not evidence of a runtime test of persistence or clearing.
+
+### Battleguard Sartura — user-observed runtime and explicit requests
+- Presentation looked good overall.
+- Sartura's guard HP bars could remain at **1% after death**; user raised whether a death message should be considered.
+- Whirlwind timing worked well.
+- User requested that the **channel bar drain**, rather than fill. User suggested an **optional template direction setting**, with fill as the default and an invert/drain option where specified.
+
+### Fankriss — user-observed runtime
+- Entangle did show a victim name, including a **bot name**, so at least one named application was visible.
+- **Only one Entangle tracker was actually seen**. This does not establish whether simultaneous multiple victims work or are capped.
+- A Come button for the displayed named bot did **not** appear.
+- User wondered whether not knowing that Entangle had faded explained the absent button; this was **a question, not an established cause**.
+- Earlier intended after-fade named Come behaviour was under discussion; do not invent extra restrictions or treat it as runtime-verified.
+
+### Viscidus — user-observed runtime and explicit requests
+- Frost hit count appeared to reset after the **first round of bot Frostbolts**, then became additive.
+- Viscidus froze **before** the estimated frost counter indicated he would; the user accepts that counting every hit accurately may not be possible.
+- User requested that the positive **frozen emote** force the frost bar to full and display **FROZEN**.
+- The melee tracker appeared during the **freeze round**, and the freeze tracker appeared during the **melee round**.
+- The melee counter **did not reset after the first explosion**.
+- The **poison/Toxin tracker did nothing** during the user's test. The user explicitly approved **removing that tracker**.
+- User specifically wants the intended Viscidus phase/visibility/reset sequence **discussed before anyone changes code**. Prior assistant-generated sequencing suggestions were **not approved specifications**.
+
+### Princess Huhuran — user-observed runtime and explicit requests
+- Huhuran's timer seemed **quite good**.
+- The current 100%-to-30% health range occupied an apparently full-to-empty bar; it misleadingly suggested death when she was actually reaching the **30% enrage** threshold.
+- User requested showing **actual boss HP (100%-to-0%)** on the HP bar, while retaining the separate **time-to-30%** estimate, and changing the HP bar to **red during enrage**.
+
+### Ouro — user-observed runtime and explicit requests
+- Sweep and Sand Blast timings felt **a little inaccurate** to the user; user requested a check against **Elesion BigWigs**.
+- User requested removing **`(estimated)`** from Submerge/Emerge timer labels.
+- During submerge, Sweep and Sand Blast timers should be **inactive**; on emergence, **restart their counters**.
+- User reported the same misleading health-scale behaviour as Huhuran: the displayed 100%-to-20% threshold progress resembles a full 100%-to-0% HP bar.
+- User requested an **actual HP 100%-to-0% bar**, retaining the **time-to-20% Berserk** calculation, and a **red Berserk/enrage state** during Berserk.
+
+### C'Thun — user-observed runtime failures
+- Overall C'Thun timings were badly wrong.
+- **Dark Glare** timing was wrong and the Dark Glare timer remained visible during **Phase 2**.
+- **Giant Eye / Giant Claw** spawn timers were wrong; user objected to the unnecessary **`(reference)`** text in their labels.
+- **Giant Tentacle HP rows remained after their tentacles died**.
+- **Flesh Tentacle HP tracker was not clickable** and **Attack did not work**; user suspected the targeting issue might be responsible, **but did not verify that cause**.
+- Boss Mods **did not reset when the fight reset**.
+- **No Small Tentacle spawn timers appeared**.
+- None of these mechanics should be labelled runtime PASS based on source-only checks.
+
+### User's shared template state/colour idea — proposal made by user, not implemented
+- User asked whether templates should support **inactive**, **tracking**, and **active** states.
+- User's colour ideas: **grey** = dead/inactive due to boss phase, etc.; **green** = normal HP; **blue** = timer; **red** = enrage/Berserk, etc.
+- These are the **user's own design ideas**, not a finalised schema or an implementation claim.
+
+### User's development instruction for later AQ40 repairs
+- Use **Elesion BigWigs** as the functional reference: reproduce the relevant observed behaviour within SCB, rather than adding unrequested safety nets, restrictions, imaginary events, or arbitrary prerequisites.
+- **Do not add assistant-proposed fixes, invented test observations, speculative root causes or unapproved design details to the runtime record.** Keep user observations distinct from later engineering analysis.
+- This entry is a **documentation-only capture**, not an addon code change, runtime retest or acceptance of any fixes.
 
 ## Defender Plague victim/Kick correction — 0.9.89-dev (2026-10-25)
 - `dev` only, resumed at `b9089f078bb76cd5c1dc9f0aaa9c81dd34e9d0b4`. Replaced self-only Defender Plague completion-only rule with the existing Burning Adrenaline-style **40-second victim aura**: self and named party/friendly-player applications, fade-based removal, existing bound Kick widget, no manual bot target or separate command owner. Pinned Elesion BigWigs `Defenders.lua` confirms Plague duration 40s; it is an aura duration, **not a proven cooldown**.
