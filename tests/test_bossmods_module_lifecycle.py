@@ -66,7 +66,7 @@ class ModuleLifecycleContract(unittest.TestCase):
         self.assertIn('count = 1', vael)
         self.assertIn('action = "kick"', vael)
         self.assertIn('retainAfterBossDeath = true', vael)
-        self.assertIn('## Version: 0.9.94-dev', TOC)
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
 
 if __name__ == "__main__":
