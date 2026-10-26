@@ -16,12 +16,12 @@ class ObservedHPAbilityPresentation(unittest.TestCase):
     def test_sentinel_priority_from_original(self):
         body = SRC.split("function mechanics.ObserveSentinelAbility(", 1)[1].split(
             "function mechanics.GetSentinelAbilities(", 1)[0]
-        self.assertIn("state.priority = state.original and SentinelPriority(state.original)", body)
+        self.assertIn("entry.abilities.priority = SentinelPriority(ability)", body)
         self.assertIn('LayoutPresentation("tracker")', body)
 
     def test_only_observed_abilities_shown(self):
         render = SRC.split("function mechanics.UpdatePresentation(now)", 1)[1]
-        self.assertIn("pairs(slot.sentinelAbilities.observed)", render)
+        self.assertIn("pairs(abilities.observed)", render)
         self.assertIn("slot.defenderPairs[pair]", render)
         self.assertIn('table.concat(seen, ", ")', render)
 
