@@ -17,8 +17,8 @@ class IntegratedBossModsContract(unittest.TestCase):
     def test_complete_zone_hierarchy(self):
         bwl = DATA.split("    bwl = {", 1)[1].split("    -- Chosen AQ40", 1)[0]
         aq = DATA.split("    aq40 = {", 1)[1]
-        self.assertEqual(len(re.findall(r"^        [a-z]+ = \\{", bwl, re.M)), 8)
-        self.assertEqual(len(re.findall(r"^        [a-z]+ = \\{", aq, re.M)), 11)
+        self.assertEqual(len(re.findall(r"^        [a-z]+ = \{", bwl, re.M)), 8)
+        self.assertEqual(len(re.findall(r"^        [a-z]+ = \{", aq, re.M)), 11)
         for chunk in (bwl, aq):
             self.assertIn("moduleWaker =", chunk)
             self.assertIn("moduleSleeper =", chunk)
@@ -60,7 +60,7 @@ class IntegratedBossModsContract(unittest.TestCase):
 
     def test_compatibility_boundary(self):
         self.assertIn("## Interface: 11200", TOC)
-        self.assertRegex(TOC, r"## Version: 0\\.9\\.\\d+-dev")
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
         self.assertIn("local function SentinelState()", MECH)
         self.assertNotIn("function SCB_BossMods", MAIN)
         self.assertNotIn('SetScript("OnUpdate"', DATA)
