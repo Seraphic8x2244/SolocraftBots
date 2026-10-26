@@ -9,11 +9,11 @@ TOC = (ROOT / "SoloCraftBots.toc").read_text(encoding="utf-8")
 
 
 class ModuleLifecycleContract(unittest.TestCase):
-    def test_one_owner_and_old_scan_remains(self):
+    def test_one_owner_and_old_scan_retired(self):
         self.assertEqual(MECH.count("SoloCraftBotsBossModsEventFrame"), 1)
-        self.assertIn("bossModsPollElapsed >= 0.4", MECH)
-        self.assertIn('SCB_BossModsObserveTargets()', MECH)
-        self.assertIn('SCB_BossModsGroupCombat()', MECH)
+        self.assertNotIn("bossModsPollElapsed", MECH)
+        self.assertNotIn("SCB_BossModsObserveTargets", MECH)
+        self.assertIn("SCB_BossModsCompleteSweep()", MECH)
         self.assertIn('bossModsFrame:RegisterEvent("PLAYER_TARGET_CHANGED")', MECH)
         self.assertNotIn("SCB_BOSSMODS_ZONES", MECH)
 
@@ -36,7 +36,7 @@ class ModuleLifecycleContract(unittest.TestCase):
         self.assertIn("needed > 1 and source ~= \"message\"", MECH)
 
     def test_disengagement_resets_attempt_and_keeps_encounter(self):
-        self.assertIn('engine.DisengageEncounter("raid disengaged", state.generation)', MECH)
+        self.assertIn('mechanics.DisengageEncounter("raid disengaged", state.generation)', MECH)
         reset = MECH.split("function mechanics.DisengageEncounter(", 1)[1].split(
             "function mechanics.WakeEncounter(", 1)[0]
         self.assertIn("BeginPostBossCleanup(false)", reset)
@@ -51,7 +51,7 @@ class ModuleLifecycleContract(unittest.TestCase):
                        "retained.action[\"kick:\" .. slot.key] = true",
                        "moduleLifecycle.TrackerCount(session, cfg.id)",
                        "FinishPostBossCleanup()", "session.retainingEffects",
-                       "session.retainedActions[actionKey]",
+                       "active.retainedActions[slot.key]",
                        "mechanics.CheckModuleSleeper(session.generation)"):
             self.assertIn(marker, MECH)
         self.assertIn("session.retainingEffects and not session.engaged", MECH)
@@ -66,7 +66,7 @@ class ModuleLifecycleContract(unittest.TestCase):
         self.assertIn('count = 1', vael)
         self.assertIn('action = "kick"', vael)
         self.assertIn('retainAfterBossDeath = true', vael)
-        self.assertIn('## Version: 0.9.93-dev', TOC)
+        self.assertIn('## Version: 0.9.94-dev', TOC)
 
 
 if __name__ == "__main__":

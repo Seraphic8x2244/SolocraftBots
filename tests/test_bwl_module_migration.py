@@ -64,7 +64,7 @@ class BWLModuleMigration(unittest.TestCase):
         self.assertEqual(vael.count('retainAfterBossDeath = true'), 2)
         self.assertEqual(vael.count('action = "kick"'), 2)
         self.assertIn('retained.action["kick:" .. slot.key] = true', MECH)
-        self.assertIn('session.retainedActions[actionKey]', MECH)
+        self.assertIn('active.retainedActions[slot.key]', MECH)
 
     def test_timers_remain_scoped_to_combat_modules(self):
         for key in ("broodlord", "firemaw", "ebonroc", "flamegor",
@@ -82,13 +82,13 @@ class BWLModuleMigration(unittest.TestCase):
             'duration = "combat", encounter = session.id',
             "submodule = sub.id",
             "dispatchDeclaredHP = scan.dispatchDeclaredHP",
-            'mechanics.ObserveBoss(zone, observation.name, "dead", "unit")',
+            'mechanics.ObserveModuleNPCDeath(bossModsZone, name, "unit")',
             "if raid and raid.wakers[name] and not dead then",
-            "bossModsPollElapsed >= 0.4",
-            "SCB_BossModsObserveTargets()",
+            "SCB_BossModsCompleteSweep()",
+            'SCB_BossModsVisitScanToken(base .. "target")',
         ):
             self.assertIn(snippet, MECH)
-        self.assertIn("## Version: 0.9.93-dev", TOC)
+        self.assertIn("## Version: 0.9.94-dev", TOC)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ class AQ40Chunk5Contract(unittest.TestCase):
         self.assertIn('zone = "Blackwing Lair"', ENCOUNTERS)
         self.assertIn('moduleLifecycle.raids[zone]', MECH)
         self.assertIn('zone = "Ahn\'Qiraj"', ENCOUNTERS)
-        self.assertIn('engine.ObserveDeclaredUnits(tokens, state.generation)', MECH)
+        self.assertIn('mechanics.ObserveDeclaredUnits({ unit }, active.generation)', MECH)
         self.assertIn('bossModsEvents[bossModsZone][event]', MECH)
         self.assertIn('SetScript("OnUpdate"', MECH)
         self.assertNotIn('SCB_BossMods', OWNER)

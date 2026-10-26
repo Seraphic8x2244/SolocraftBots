@@ -28,14 +28,14 @@ class BossModsOwnerExtraction(unittest.TestCase):
         self.assertLess(TOC.index("mechanics.lua"), TOC.index("encounters.lua"))
         self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
-    def test_old_scan_group_combat_and_render_cadences_unchanged(self):
-        for marker in ('bossModsPollElapsed >= 0.4',
+    def test_retired_scan_group_combat_and_render_cadences(self):
+        for marker in ('SCB_BossModsCompleteSweep()',
                        'bossModsElapsed >= 0.10',
                        'bossModsVisualElapsed >= (1 / 30)',
-                       'engine.ObserveDeclaredUnits(tokens, state.generation)',
-                       'SCB_BossModsGroupCombat()',
-                       'bossModsCalmSamples >= 2',
-                       'engine.DisengageEncounter("raid disengaged", state.generation)',
+                       'mechanics.ObserveDeclaredUnits({ unit }, active.generation)',
+                       'SCB_BossModsTrackCombatState(true)',
+                       'raidTargetScanner.calm >= 2',
+                       'mechanics.DisengageEncounter("raid disengaged", state.generation)',
                        'engine.ObserveBossDeathMessage(',
                        'engine.ObserveDeclaredCastEvent(',
                        'engine.UpdateTimers(now)',

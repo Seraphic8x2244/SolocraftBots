@@ -12,23 +12,24 @@ def section(start, end):
 
 
 class RaidTargetScannerContract(unittest.TestCase):
-    def test_one_event_owner_and_legacy_scan_retained(self):
+    def test_one_event_owner_and_legacy_scan_retired(self):
         self.assertEqual(MECH.count('CreateFrame("Frame", "SoloCraftBotsBossModsEventFrame"'), 1)
         self.assertEqual(MECH.count('bossModsFrame:SetScript("OnUpdate"'), 1)
-        self.assertIn("bossModsPollElapsed >= 0.4", MECH)
-        self.assertIn("SCB_BossModsObserveTargets()", MECH)
+        self.assertNotIn("bossModsPollElapsed", MECH)
+        self.assertNotIn("SCB_BossModsObserveTargets", MECH)
+        self.assertIn("SCB_BossModsCompleteSweep()", MECH)
         self.assertIn("engine.TickRaidTargetScanner(elapsed)", MECH)
-        self.assertIn("## Version: 0.9.93-dev", TOC)
+        self.assertIn("## Version: 0.9.94-dev", TOC)
 
     def test_five_second_discovery_for_group_and_player_combat(self):
-        onset = section("local function SCB_BossModsTrackCombatState(",
+        onset = section("SCB_BossModsTrackCombatState = function(",
                         "local function SCB_BossModsInitialize(")
         self.assertIn('mechanics.RequestRaidTargetObservations("__combat_discovery"', onset)
         self.assertIn("duration = \"fixed\", seconds = 5", onset)
         self.assertIn("raidTargetScanner.inCombat = true", onset)
         self.assertIn("raidTargetScanner.inCombat = false", onset)
         self.assertIn("request.duration == \"combat\"", onset)
-        self.assertIn("SCB_BossModsTrackCombatState(groupCombat)", MECH)
+        self.assertIn("SCB_BossModsTrackCombatState(true)", MECH)
         self.assertIn('bossModsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")', MECH)
         self.assertIn('event == "PLAYER_REGEN_DISABLED" and bossModsZoneActive', MECH)
         self.assertIn("SCB_BossModsTrackCombatState(true)", MECH)
@@ -73,13 +74,12 @@ class RaidTargetScannerContract(unittest.TestCase):
 
     def test_sweep_side_paths_and_idle_shutdown(self):
         tick = section("function mechanics.TickRaidTargetScanner(",
-                       "local function SCB_BossModsTrackCombatState(")
+                       "SCB_BossModsTrackCombatState = function(")
         for marker in ("SCB_BossModsPruneScanRequests()",
                        "not next(raidTargetScanner.requests)",
-                       "raidTargetScanner.elapsed = 0",
                        "raidTargetScanner.sideElapsed = 0",
                        "raidTargetScanner.elapsed >= 0.025",
-                       'n > 0 and "raid" or "party"',
+                       'raid > 0 and "raid" or party > 0 and "party"',
                        'SCB_BossModsVisitScanToken(base .. "target")',
                        'SCB_BossModsVisitScanToken(base .. "targettarget")',
                        'SCB_BossModsVisitScanToken("mouseover")',
@@ -88,7 +88,7 @@ class RaidTargetScannerContract(unittest.TestCase):
             self.assertIn(marker, tick)
         self.assertIn("SCB_BossModsVisitScanToken(\"target\")",
                       section("local function SCB_BossModsPlayerTargetChanged(",
-                              "local function SCB_BossModsGroupCombat("))
+                              "local function SCB_BossModsOnCombatEvent("))
         self.assertIn("engine.ClearRaidTargetObservations()",
                       section("local function SCB_BossModsRefreshZone(",
                               "local function SCB_BossModsPlayerTargetChanged("))
