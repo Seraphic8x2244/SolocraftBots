@@ -4790,7 +4790,7 @@ local function SCB_BossModsPruneScanRequests()
                 or (request.submodule
                     and not mechanics.IsSubmoduleActive(request.submodule,
                         request.generation))
-            if request.duration == "combat" and not active.engaged then
+            if request.duration == "combat" and (not active or not active.engaged) then
                 stale = true
             end
         end
@@ -4879,6 +4879,7 @@ function mechanics.TickRaidTargetScanner(elapsed)
                 .. raidTargetScanner.index
             SCB_BossModsVisitScanToken(base .. "target")
             SCB_BossModsVisitScanToken(base .. "targettarget")
+            if not next(raidTargetScanner.requests) then break end
         end
     end
     -- Preserve the non-raid target/mouseover/target-of-target paths for new
@@ -4988,6 +4989,9 @@ local function SCB_BossModsPlayerTargetChanged()
     if not name then return end
     SCB.mechanics.WakeEncounter(bossModsZone, name,
         UnitAffectingCombat and UnitAffectingCombat("target") and true or false)
+    if next(raidTargetScanner.requests) then
+        SCB_BossModsVisitScanToken("target")
+    end
 end
 
 -- Read the current player's *group* combat states, not only the local
