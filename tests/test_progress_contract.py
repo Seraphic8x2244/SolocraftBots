@@ -15,8 +15,8 @@ class ProgressContract(unittest.TestCase):
         self.assertIn("mechanics.ScheduleTimer(\"stage-ready:\" .. id", SOURCE)
         self.assertIn("mechanics.UpdatePresentation()", SOURCE)
         self.assertIn("mechanics.UpdateTimers(now)", SOURCE)
-        self.assertNotIn('SetScript("OnUpdate"', SOURCE)
-        self.assertNotIn('RegisterEvent(', SOURCE)
+        self.assertEqual(SOURCE.count('bossModsFrame:SetScript("OnUpdate"'), 1)
+        self.assertIn('bossModsFrame:RegisterEvent("PLAYER_TARGET_CHANGED")', SOURCE)
 
     def test_counted_hits_are_only_observed(self):
         self.assertIn("function mechanics.ObserveCounterHit(id, occurrenceId, expectedGeneration)", SOURCE)
