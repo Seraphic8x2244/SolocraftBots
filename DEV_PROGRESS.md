@@ -4,146 +4,128 @@
 - **Review order, explicitly corrected by user:** begin with **Anubisath Sentinels**, the first AQ40 module encountered in raid progression. **The Prophet Skeram is the first boss**, not the first module. Do not start with C'Thun or Skeram when reviewing modules in raid order.
 - **User's assessment:** prior AQ40 development chats may have invented rules while coding; the current AQ40 Boss Mods implementation is a mess. Treat existing code and earlier assistant-authored requirements as subject to review, **not** automatically approved or correct. This is the user's assessment, not a newly verified code finding.
 - Review **one encounter at a time**, compare with pinned **Elesion BigWigs** for actual implementation/behaviour, and separate **user-reported runtime evidence**, **verified source defects**, **suspected causes**, and **proposed changes**. Do not promote suggestions into requirements without user agreement.
-- **No addon code changes or other AQ40 implementation until the user explicitly approves.** This section records discussion/process only; existing runtime observations in the separate section below remain authoritative and unmodified.
+- **Architecture approval recorded above (2026-10-26).** The present commit is documentation-only; addon implementation and individual encounter changes have not started. Existing runtime observations in the separate section below remain authoritative and unmodified.
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
-## BWL + AQ40 Boss Mods redesign — discussion draft (2026-10-26)
+## Boss Mods architecture rework — APPROVED DESIGN (2026-10-26)
 
-**Status:** The user's latest design direction, saved by explicit request. **Planning/documentation only; no addon code changes authorised.** Details marked as requiring validation are not established runtime facts.
+**Status:** User-approved architecture/design specification; this update is documentation-only. **No addon Lua, TOC or runtime behaviour changed in this commit.** Implement incrementally on `dev`; leave `main` untouched. Vanilla WoW 1.12.1 / Lua 5.0.3. BWL and AQ40 are the initial encounters, not hardcoded limits on supported zones.
+**Current implementation at approval:** `SoloCraftBots.lua` owns Boss Mods-specific event/zone/update/0.4-second raid-wide target observations; `mechanics.lua` owns the existing encounter engine/presentation/actions; `encounters.lua` owns declarations. Existing HP and clickable attack paths use GUID-requiring `mechanics.NPCInstanceID()`. These are source observations, not in-game test results.
+**Scope:** Architecture and migration plan approved. Encounter-specific repairs beyond the Sentinel first case still require encounter-by-encounter review against pinned Elesion BigWigs and the user's runtime observations below. Do not invent additional evidence gates, restrictions, or encounter timings.
 
-### 1. Module Hierarchy
+### 1. Implementation sequence — FOLLOW THIS ORDER
 
-**RAIDMODULE → NPCMODULE → SUBMODULE**
+1. **Consolidate Boss Mods ownership first.** Move Boss Mods-specific zone recognition, event registration/dispatch, target observation and update logic out of `SoloCraftBots.lua` into `mechanics.lua`. Preserve existing functionality during migration. No Boss Mods-specific executable logic remains in the main addon; it continues to expose its general bot command/roster interfaces.
+2. **Define module hierarchy and lifecycle.** RAIDMODULE → ENCOUNTERMODULE → SUBMODULE, including wake, combat entry/exit, attempt reset, combined sleeper conditions and retention of unresolved effects.
+3. **Build one central, demand-driven target scanner in `mechanics.lua`.**
+4. **Connect BWL/AQ40 encounters and submodules** to the new lifecycle, scanner, timer and presentation ownership without losing existing features.
+5. **Retire obsolete continuous polling only after full replacement.** Do not remove the current raid-wide 0.4-second scan prematurely; verify every responsibility has migrated.
+6. **Rebuild/revise and runtime-test Anubisath Sentinels** as the first case for the new scanner and module lifecycle; user can reset/test the pack on a character without an AQ40 lockout.
+7. **Review/repair other encounters one at a time** using recorded in-game failures and pinned Elesion BigWigs. Begin AQ40 encounter-module review with Anubisath Sentinels, not Skeram or C'Thun.
+
+### 2. Module hierarchy
+
+**RAIDMODULE → ENCOUNTERMODULE → SUBMODULE** (the older term `NPCMODULE` is superseded).
 
 **RAIDMODULE**
-- Activates automatically on entering its raid zone.
-- Defines recognised NPCs using \`moduleWaker\`.
-- Watches the player's target for a \`moduleWaker\` NPC.
-- Requests the central scanner's automatic **5-second raid-target scan on entering combat** in a recognised raid zone.
-- A recognised \`moduleWaker\` NPC seen through either player's target or the 5-second raid-target scan loads the corresponding NPCMODULE. No separate \`forceWake\` is required.
+- Activates upon entering **its configured required zone**, not a hardcoded raid-only list. BWL and AQ40 are the first configurations.
+- Declares recognised encounter NPCs using `moduleWaker`.
+- Observes deliberate player targeting immediately (e.g. `PLAYER_TARGET_CHANGED`), allowing pre-pull encounter activation.
+- **At the beginning of every combat in its required zone**, requests the shared scanner's automatic **five-second raid-member-target discovery scan**. This can wake encounters the player never personally targeted.
+- A `moduleWaker` observed by either route wakes the matching ENCOUNTERMODULE; no separate `forceWake` mechanism.
 
-**NPCMODULE**
-- Loads when its \`moduleWaker\` is observed, independently of whether the player is in combat.
-- Defines \`moduleSleeper\` to specify when the module fully unloads.
-- Contains \`passiveModules\` that can operate while loaded **out of combat**, and may continue in combat.
-- Contains \`combatModules\` that activate when combat begins and deactivate when combat ends.
-- Leaving combat **does not automatically unload** the NPCMODULE; its \`moduleSleeper\` controls that.
+**ENCOUNTERMODULE**
+- Represents a whole encounter, including multiple NPCs such as Sentinel packs or Bug Trio.
+- Wakes on its `moduleWaker`, in or out of combat; owns `passiveModules`, `combatModules` and `moduleSleeper`.
+- Manages combat entry/exit and resets attempt-specific state on combat disengagement. Combat ending alone does **not** unload the encounter.
+- Fully unloads **only when all declared `moduleSleeper` conditions are satisfied**. Boss death alone may not be enough.
 
-Example declarations (design notation, not implemented Lua):
+**SUBMODULE**
+- `passiveModules`: available while the encounter is loaded, before/during combat and after combat where applicable.
+- `combatModules`: normally active only during combat, resetting attempt-specific counters and requesting scanner observations as appropriate.
+- Combat submodules with ongoing actionable effects may declare `retainUntilResolved = true`. Those effects **and their associated buttons/actions** continue functioning after boss death/combat end until resolved. Reset must not wipe these retained effects.
+- Reuse the existing SCB Boss Mods timer, tracker, presentation and command integrations rather than introducing one independent scheduler or event/update loop per submodule.
 
-\`\`\`text
-RAIDMODULE: BWL
-  moduleWaker:
-    Razorgore
-    Vaelastrasz
-    Broodlord
+### 3. Central target scanner
 
-  NPCMODULE: Razorgore
-    moduleSleeper: npcdead("Razorgore", count:1)
-    passiveModules: Eggbreaker
-    combatModules: {}
+- Owned by `mechanics.lua`; a **single shared scanner** serves all active encounter/submodule requests.
+- Target cadence: approximately **one raid member's target every 25ms**, giving approximately one 40-member sweep per second at sufficient update frequency. This is a design cadence, not a guaranteed real-time timer.
+- Independently of deliberate player targeting, **start a five-second discovery request on every combat start in any active RAIDMODULE's required zone** to find `moduleWaker` NPCs. If discovered during combat, their combat submodules activate.
+- Continue scanning after the discovery request expires only while submodules have outstanding requests, e.g. Sentinel HP tracking through combat.
+- Each request declares **what is needed** (identity/name, marker, HP, buffs, etc.) and **how long** (fixed window or combat duration). Combine concurrent requests into one visit per token and distribute observations; do not perform duplicate per-submodule scans. Read **buffs**, not debuffs, for Sentinel ability identification.
+- Stop the raid-target scanner when no requests remain. Preserve inexpensive event-driven player-target observation and other existing target/mouseover/target-of-target observation capabilities when needed.
+- Do not replace the current 0.4-second broad scan until **all** its observation/reset/activation responsibilities are accounted for in the new architecture. Do not add a competing long-lived polling owner.
+- `mechanics.lua` may register its own one Boss Mods event frame/update handler. Lua code cannot update the fixed 1.12.1 Lua 5.0.3 runtime; respect native API availability and optional client extensions.
 
-  NPCMODULE: Vaelastrasz
-    moduleSleeper: npcdead("Vaelastrasz", count:1)
-    passiveModules: EngageTimer
-    combatModules: BurningAdrenaline
+### 4. Lifecycle and conditional shutdown
 
-  NPCMODULE: Broodlord
-    moduleSleeper: npcdead("Broodlord", count:1)
-    passiveModules: {}
-    combatModules: BlastWave
+**General rule: conditions inside `moduleSleeper` are combined with logical AND.** An ENCOUNTERMODULE may remain loaded after NPC death or combat ending because a tracker has unresolved effects. Do not introduce an unrelated deferred-shutdown system or a hypothetical simultaneous-encounters requirement.
 
-RAIDMODULE: AQ40
-  moduleWaker:
-    Anubisath Sentinel
-    Skeram
-    Yauj
-    Kri
-    ...
+Example **Vaelastrasz** (illustrative Lua 5.0.3-compatible design notation; schema not implemented):
 
-  NPCMODULE: Anubisath Sentinel
-    moduleSleeper: npcdead("Anubisath Sentinel", count:4)
-    passiveModules: {}
-    combatModules: AuraIdentification, HPTracker, AbilityInheritance
-\`\`\`
+~~~lua
+moduleSleeper = {
+    npcdead = { name = "Vaelastrasz the Corrupt", count = 1 },
+    trackerEmpty = "BurningAdrenalineTracker",
+}
+~~~
 
-### 2. Central Target Scanner
+Vaelastrasz death satisfies only the first condition. Outstanding Burning Adrenaline bars and **Kick buttons** must stay active so the user can kick an affected bot to prevent the raid-wiping explosion. Only when the boss is dead **and** BurningAdrenalineTracker has zero unresolved entries can the encounter unload. The BA combat submodule uses `retainUntilResolved = true`. Its fade/expiry/removal observations, display and actions must remain functional until resolution; combat-disengagement cleanup must not delete them.
 
-- **Single shared scanner** supplies target information to all BWL/AQ40 modules and submodules, rather than duplicated per-encounter polling.
-- Scans **one raid member's target every 25ms**. With 40 raid members, one complete sweep takes approximately **1 second**; a 5-second scan allows approximately five sweeps.
-- Runs automatically for **the first 5 seconds on entering combat in a recognised raid zone** to discover \`moduleWaker\` NPCs.
-- Also runs whenever a loaded module/submodule requests data.
-- Each request specifies **data required** (e.g. NPC/target identity, HP, **buffs**, not debuffs when identifying Sentinel abilities) and **duration** (fixed window or until combat ends).
-- Concurrent requests share the same cycle. A 5-second discovery request can expire while longer-running HP requests keep scanning.
-- When all requests end, the shared scanner switches off.
-- **Retire the current continuous 0.4-second raid-wide polling ONLY AFTER the new design is fully implemented and replaces all its existing functionality.** Do not remove the old behaviour merely because a design is agreed or partly coded.
+Example **Anubisath Sentinels**:
 
-### 3. BWL + AQ40 Integration / Lifecycle
+~~~lua
+moduleSleeper = {
+    npcdead = { name = "Anubisath Sentinel", count = 4 },
+}
+~~~
 
-1. Enter a recognised raid zone → RAIDMODULE activates and looks for player-target \`moduleWaker\` NPCs.
-2. Deliberately target a recognised NPC → its NPCMODULE loads; its passive modules can operate before combat.
-3. Enter combat → loaded NPCMODULE combat submodules activate and request scanner data as needed.
-4. If **no NPCMODULE was deliberately loaded**, the raid zone's automatic **5-second combat scan** can discover a \`moduleWaker\` in a raid member's target. Its NPCMODULE then loads; because combat is underway, combat submodules activate.
-5. Leave combat → combat submodules deactivate and end their combat-duration scanner requests. Passive modules may remain operational.
-6. Meet the NPCMODULE's explicit \`moduleSleeper\` condition (e.g. named NPC death count) → module unloads and its submodules stop.
+All four Sentinel deaths **within the current attempt** satisfy shutdown. If combat disengages before this, reset attempt-specific counters, deaths, HP and inherited abilities so the next pull is clean, while the ENCOUNTERMODULE need not unload.
 
-Submodule-specific scanner requests and lifecycle handling must be defined as each encounter is migrated, preserving existing functionality.
+**Lifecycle summary**
+1. Enter configured zone → RAIDMODULE active.
+2. Observe `moduleWaker` by personal target or five-second combat scan → ENCOUNTERMODULE loads, passive submodules active.
+3. Enter combat → combat submodules activate; five-second raid-target discovery scan always runs in the active configured zone.
+4. Combat ends → normal combat submodules stop and attempt-specific state resets; retained unresolved effects and their actions survive.
+5. Some sleeper conditions satisfied → stay loaded.
+6. **All** sleeper conditions satisfied → unload encounter and release its submodules.
+7. Leave required zone → clear that RAIDMODULE and its encounter state.
 
-### 4. Anubisath Sentinel NPCMODULE
+### 5. Anubisath Sentinel ENCOUNTERMODULE — first runtime validation
 
-**Wake and combat start**
-- Target an Anubisath Sentinel, or discover one through the raid's initial 5-second combat scan → load the Sentinel NPCMODULE.
-- On combat activation, establish **four Sentinel HP-bar slots** and activate its combat submodules.
+- Wake on `Anubisath Sentinel` observed through player target or five-second combat discovery.
+- Establish **four Sentinel HP slots** on combat activation.
+- Request **five seconds of buff inspection** of raid members' targeted Sentinels; identify distinguishing abilities (e.g. Thorns, Shadow Storm, Thunderclap); assign unique raid markers to identified Sentinels. Inventory: **Raid Marker → Sentinel → Known Abilities**.
+- SuperWoW's enhanced buff/identity observations may be used where available (user has SuperWoW); players without that capability may lack enhanced buff identification. **SuperWoW must not become mandatory for the whole addon.**
+- Request continuous raid-target HP observations for the fight, beyond the initial five-second buff window. Associate HP with observed markers; retain last known HP while a marked Sentinel is unobserved. Use currently matching observed unit tokens for clickable bars; do not impose a universal GUID requirement on native marker-based tracking.
+- Use observed near-death HP (proposed **1%**) and available Sentinel death messages to infer likely dead markers and associated original abilities, then reflect inherited abilities in survivors. Generic same-name death messages alone do not name a marker; attribution is a practical inference, not a proven source GUID. Continue observing abilities after initial identification.
+- `moduleSleeper` requires four Sentinel deaths in the current attempt; reset on disengagement. Test marker assignment, buffs, HP visibility/clicks, death attribution and inheritance in-game. **No runtime pass is implied by this design.**
 
-**Initial buff identification — first 5 seconds**
-- Request **buff** inspection from the central scanner for raid members' targeted Sentinels, for **5 seconds**.
-- Use observed distinguishing buffs (for example, **Thorns, Shadow Storm, Thunderclap**) to identify Sentinels.
-- Assign a **unique raid marker** to each identified Sentinel.
-- Maintain an inventory keyed by raid marker: **Raid Marker → Sentinel → Known Abilities**.
-- Discovering all four within five seconds is a goal, **not a guaranteed result**. Treatment of unobserved mobs/abilities remains to be validated.
+### 6. Identity, API and integration principles
 
-**Continuous HP tracking**
-- The HP submodule continues requesting raid-target HP data **throughout combat**, including after the initial five-second buff scan expires.
-- Use observed **raid markers** to associate HP readings with the four distinct Sentinel bars (without relying on native GUIDs).
-- If a marked Sentinel is not currently observable through raid-member targets, retain its last known HP until observed again.
-- Intended HP bars are individually targetable; reliable unit-token reacquisition and targeting must be validated on the native client.
+- Use creature names where instance distinction is unnecessary, raid markers for simultaneous creatures where useful, currently observed valid unit tokens for targeting, and optional SuperWoW GUIDs where they materially help.
+- Remove unnecessary GUID-only **Boss Mods** gates where the relevant mechanic can operate from available native evidence. Do not replace actual encounter logic with guessed extra checks, invented delays or blockers; prefer pinned Elesion BigWigs behaviour.
+- Some advanced observation functionality may require SuperWoW; do not turn that into a mandatory global SCB dependency. Do not propose updating WoW's built-in Lua 5.0.3 runtime.
+- `mechanics.lua` owns **all Boss Mods execution**, its own event/update handling, central scanner, encounter lifecycles, timers, HP and actions. `encounters.lua` owns definitions. `SoloCraftBots.lua` must contain **no Boss Mods-specific functionality** after migration.
+- Boss Mods continues calling SCB's **existing general bot commands/roster interfaces**. Do not duplicate those systems.
 
-**Death inference and ability inheritance**
-- Track **which marked Sentinel is approaching death**, with **1% HP** discussed as the proposed presumed-death threshold.
-- Associate that marker with the abilities currently recorded against it.
-- A generic "Anubisath Sentinel dies" message may corroborate a death, but **does not identify which marker died**. Marker attribution from HP proximity remains inference, not certainty.
-- When a Sentinel is presumed dead, infer its known abilities pass to the surviving marked Sentinels, updating their ability inventories.
-- Marking, death attribution, and inherited-ability accuracy require actual encounter validation.
+### 7. Preservation, verification and scope boundaries
 
-**Sleep and testing**
-- \`moduleSleeper: npcdead("Anubisath Sentinel", count:4)\` — unload after **four Sentinel deaths in the encounter**, not simply on leaving combat.
-- User can repeatedly reset/test the pack using a character without an AQ40 lockout.
-- This is the first focused practical validation case for the shared scanner and lifecycle architecture.
-
-### 5. Implementation Sequence (user-defined)
-
-1. Define BWL/AQ40 RAIDMODULE, NPCMODULE and SUBMODULE structures and responsibilities.
-2. Build the central target scanner.
-3. Integrate BWL/AQ40 modules and submodules with activation, lifecycle and scanner data.
-4. Rebuild/revise and test the Anubisath Sentinel module.
-
-**Open validation questions:** exact combat activator semantics; reliable marking, individual target retrieval and death attribution; inferred ability inheritance; unknown/untargeted Sentinels; preservation of all old polling uses during migration. These are questions, **not new requirements or proven defects**.
+- Migrate working BWL/AQ40 behaviour rather than rewriting unrelated abilities/timings. Retain the old 0.4-second scan until the new ownership/scan replaces every responsibility.
+- Keep user runtime reports in the separate section below as observations, not presumed root causes; user specifically identified slow/non-clickable Sentinel HP rows, C'Thun phase/reset/timer failures and other AQ40 issues.
+- Review each encounter against pinned **Elesion BigWigs** working modules, without unrequested invented safety nets and without treating static inspection as runtime testing.
+- Development on `dev` only, stable `main` untouched. Bump TOC version when addon-affecting implementation begins; this documentation-only change leaves it at `0.9.89-dev`.
+- **Next implementation step when separately requested:** migrate Boss Mods-specific event/update/zone handling from `SoloCraftBots.lua` to `mechanics.lua` without changing unrelated SCB features.
 
 ---
 
-## AQ40 module-by-module repair plans — agreed decisions only (2026-10-25)
-### Agreed work order — BWL and AQ40 (user-defined, 2026-10-25)
-1. Define the **BWL and AQ40 modules and submodules** to make their responsibilities clear.
-2. Build a **central scanner module**.
-3. Connect the **BWL and AQ40 modules/submodules** to that scanner for activation and data.
-4. Build/revise the **Anubisath Sentinel module**; user can repeatedly reset Sentinels for testing on a non-locked character.
+## AQ40 module-by-module review — approved direction (2026-10-26)
 
-These are the user-selected sequence and goals, **not approval to edit addon code now**. Detailed mechanics are to be agreed in discussion before implementation. Preserve the existing raid-wide scan until its replacement is fully implemented and covers all existing uses.
-
-- Only document **repair behaviour/implementation decisions after explicit user approval**. Do **not** record assistant proposals, investigations, suspected diagnoses, or unapproved technical details here, even labelled "unapproved". Preserve the user's actual runtime reports separately below.
-- **Review order:** begin with **Anubisath Sentinels** (first module in raid progression). Review one module at a time against pinned Elesion BigWigs and the existing SCB implementation. No addon code changes until explicitly authorised.
-- **Anubisath Sentinels:** the proposed scanner/marker-based redesign is documented above, including inferred ability inheritance. No code changes approved or implemented; in-game reliability remains unverified. The prior deferral of an approach to inherited abilities is superseded by this discussion draft.
-- **Raid-wide target polling retirement (explicit user requirement):** the current raid-wide 0.4-second target scan is marked for retirement **ONLY AFTER it has been fully replaced**, not merely when a replacement design is agreed or partly implemented. Preserve the existing scan and its functionality until the replacement actually covers all its uses. The user considers unconditional scanning throughout a raid wasteful. The user has selected a central scanner as the high-level replacement direction; module/submodule activation and scanner details remain to be worked out.
+- The **approved architecture and ordered implementation plan are above**. This section no longer defines a competing work order; former discussion-draft status and NPCMODULE terminology are superseded.
+- **Encounter review order:** begin with Anubisath Sentinels, the first AQ40 encounter module encountered in raid progression. Skeram is the first boss, not the first module.
+- **Retire old polling only after complete replacement.** The user does not want unconditional raid-wide target polling throughout the raid.
+- For individual repairs, compare against pinned Elesion BigWigs and distinguish user-observed runtime failures from source findings and unverified hypotheses. Do not invent extra dependencies, blockers, timers or safety gates.
+- The user approved **the architecture/design** and requested that it be recorded. **No Lua implementation, runtime retest or individual encounter repair was performed in this documentation update.**
 
 ## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
 This section records **only the user's reported in-game observations, diagnostic output supplied by the user, and the user's own requested changes or design ideas**. Suggestions from assistant discussions, code-analysis conclusions, inferred test outcomes, unrequested safety requirements and invented test results are **not** part of this runtime record. A request below does not imply implementation or testing. Other historic development entries further down describe implementation history and must not be mistaken for user runtime confirmation.
