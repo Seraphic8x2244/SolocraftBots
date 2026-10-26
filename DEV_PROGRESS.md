@@ -4,12 +4,12 @@
 - **Review order, explicitly corrected by user:** begin with **Anubisath Sentinels**, the first AQ40 module encountered in raid progression. **The Prophet Skeram is the first boss**, not the first module. Do not start with C'Thun or Skeram when reviewing modules in raid order.
 - **User's assessment:** prior AQ40 development chats may have invented rules while coding; the current AQ40 Boss Mods implementation is a mess. Treat existing code and earlier assistant-authored requirements as subject to review, **not** automatically approved or correct. This is the user's assessment, not a newly verified code finding.
 - Review **one encounter at a time**, compare with pinned **Elesion BigWigs** for actual implementation/behaviour, and separate **user-reported runtime evidence**, **verified source defects**, **suspected causes**, and **proposed changes**. Do not promote suggestions into requirements without user agreement.
-- **Architecture approval recorded above (2026-10-26).** The present commit is documentation-only; addon implementation and individual encounter changes have not started. Existing runtime observations in the separate section below remain authoritative and unmodified.
+- **Architecture approved 2026-10-26; Chunk 1 implementation completed subsequently.** Encounter-specific repairs have not started. Existing runtime observations in the separate section below remain authoritative and unmodified.
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
 ## Boss Mods rework — FIXED SIX-CHUNK DEVELOPMENT CONTRACT (approved 2026-10-26)
 
-**Status:** Approved work allocation for the Boss Mods architecture described immediately below; no architecture-rework code has started. `dev` only, version `0.9.89-dev` at planning. **One integrated development task, six coding checkpoints for chat reliability, one user runtime-testing stage after all six.**
+**Status:** **Chunk 1 COMPLETE** (implementation `e0b3217380b5ed4f1d9a9d00776a199218d7a984`, `0.9.90-dev`). **Chunk 2 NEXT**. `dev` only. **One integrated development task, six coding checkpoints for chat reliability, one user runtime-testing stage after all six.**
 
 ### Binding rules — read before working on any chunk
 
@@ -55,13 +55,23 @@
 - Finish BWL/AQ40 architecture integration, resolve integration defects actually found, run available Lua 5.0.3/compiler/automated/CI checks, report limitations precisely. No artificial subchunks for marking/HP/buffs/inheritance.
 - **Done when:** the integrated Boss Mods rework is fully implemented and developer-checked, with remaining runtime uncertainties documented. **Only then** present a consolidated in-game test to the user.
 
-**Current handoff:** **Chunk 1 next, not yet started.** Latest actual `dev` HEAD must be verified in the next development chat. No Lua was changed by this planning commit.
+**Current handoff:** **Chunk 1 complete; Chunk 2 next.** Implementation commit `e0b3217380b5ed4f1d9a9d00776a199218d7a984` on `dev` (version `0.9.90-dev`); the documentation/handoff commit follows it. Verify actual remote `dev` HEAD at resume. Carry out **the entire fixed Chunk 2**, not a smaller slice; no gameplay testing or release before all six chunks.
+
+### Chunk 1 completion and developer-check provenance (2026-10-26)
+
+- **Code and tests:** `e0b3217380b5ed4f1d9a9d00776a199218d7a984` — extracted all previous Boss Mods-specific executable logic from `SoloCraftBots.lua` to `mechanics.lua`. One dedicated `SoloCraftBotsBossModsEventFrame` in mechanics owns zone recognition and resets, dynamic combat event subscription (including optional `UNIT_CASTEVENT` guarded with `pcall`), native raid/player/party target + mouseover observations, full-raid group-combat checks, death/combat dispatch, encounter registration at `PLAYER_LOGIN` after `encounters.lua` is loaded, and existing 0.4s target scan / 0.10s state updates / 30Hz presentation updates. The four Boss Mods option defaults moved from the general options initializer to the module. General UI/event/roster/bot-command behaviour remains with existing SCB owners; no new command path or scanner was added. `SoloCraftBots.toc` bumped from `0.9.89-dev` to `0.9.90-dev`.
+- **Regressions:** Existing `tests/test_aq40_chunk5_contract.py` ownership assertions now point at `mechanics.lua`; added `tests/test_bossmods_owner_extraction.py` for module frame, load order, event registration, original scan/engagement/cadence, options ownership and main-file exclusion.
+- **Checks performed:** 11 source-level transformation/invariant assertions **PASS** (whole prior Boss Mods section migrated intact except frame reference/comment, no Boss Mods references left in main file, shared event registrations untouched, original 0.4s polling and 0.10s/30Hz update paths retained, optional SuperWoW event subscription preserved, startup and TOC version checked). Remote GitHub `dev` verified pointing to the implementation commit after push; updated test source and moved code spot-checked from the remote.
+- **Checks not run:** Python `unittest` regression suite **NOT RUN** (repository is not mounted in an executable checkout; GitHub connector reads/writes repository but does not execute code). Canonical **Lua 5.0.3 compiler NOT RUN** (no mounted checker or repository checkout; container cannot resolve `github.com`). No in-game/user runtime testing (explicitly deferred by the fixed six-chunk contract). Source assertions are **not** compiler or gameplay proof. No CI pass claimed.
+- **Next full Chunk 2:** implement RAIDMODULE → ENCOUNTERMODULE → SUBMODULE with required-zone activation, `moduleWaker`, pre-combat/passive vs in-combat modules, disengagement/attempt resets, logical-AND `moduleSleeper`, and `retainUntilResolved` where unresolved effects and **their action buttons** survive boss death/combat exit. Specifically preserve Vaelastrasz BA bars **and Kick actions** until NPC dead and tracker empty. Reuse the now module-owned Boss Mods frame/engine. Keep 0.4s scanning until Chunk 5. Do not begin central request scanner (Chunk 3) or migrate BWL/AQ40 definitions as a separate activity (Chunks 4–5) within Chunk 2. Developer-level checks only; no user runtime test.
+
+---
 
 ---
 
 ## Boss Mods architecture rework — APPROVED DESIGN (2026-10-26)
 
-**Status:** User-approved architecture/design specification. The fixed six-chunk coding contract above governs implementation; no user gameplay testing before the integrated rework is complete. This update is documentation-only. **No addon Lua, TOC or runtime behaviour changed in this commit.** Implement incrementally on `dev`; leave `main` untouched. Vanilla WoW 1.12.1 / Lua 5.0.3. BWL and AQ40 are the initial encounters, not hardcoded limits on supported zones.
+**Status:** User-approved architecture/design specification, recorded as the documentation-only planning baseline on 2026-10-26. **Chunk 1 has since been implemented** as documented in the checkpoint above. The fixed six-chunk contract governs all work; no user gameplay testing before the integrated rework is complete. Work on `dev` only; leave `main` untouched. Vanilla WoW 1.12.1 / Lua 5.0.3. BWL and AQ40 are the initial encounters, not hardcoded limits on supported zones.
 **Current implementation at approval:** `SoloCraftBots.lua` owns Boss Mods-specific event/zone/update/0.4-second raid-wide target observations; `mechanics.lua` owns the existing encounter engine/presentation/actions; `encounters.lua` owns declarations. Existing HP and clickable attack paths use GUID-requiring `mechanics.NPCInstanceID()`. These are source observations, not in-game test results.
 **Scope:** Architecture and migration plan approved. Encounter-specific repairs beyond the Sentinel first case still require encounter-by-encounter review against pinned Elesion BigWigs and the user's runtime observations below. Do not invent additional evidence gates, restrictions, or encounter timings.
 
