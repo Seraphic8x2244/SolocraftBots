@@ -99,6 +99,9 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if not ok then return false, why end
     local okCounters, reason = mechanics.InitializeCounters(active.generation)
     if not okCounters then return false, reason end
+    if active.id == "aq40.sentinels" then
+        mechanics.BeginSentinelAttempt(active.generation)
+    end
     if BeginEncounterScanRequests then BeginEncounterScanRequests(active) end
     return true
 end
@@ -786,8 +789,18 @@ local function CreatePresentationFrame(kind, group)
             local slot = frame.scbSlot
             if not slot or not slot.used or not slot.clickTarget or not active
                 or slot.generation ~= active.generation then return end
-            -- Never target a recycled token or a same-name replacement.
+            -- Marker identity works without SuperWoW; recheck the live token.
             local unit = slot.unit
+            if slot.sentinelMark then
+                if unit and UnitExists and UnitExists(unit) and UnitName
+                    and UnitName(unit) == "Anubisath Sentinel"
+                    and GetRaidTargetIndex
+                    and GetRaidTargetIndex(unit) == slot.sentinelMark
+                    and (not UnitIsDeadOrGhost or not UnitIsDeadOrGhost(unit))
+                    and TargetUnit then TargetUnit(unit) end
+                return
+            end
+            -- Other templates retain their per-spawn GUID guard.
             if unit and mechanics.NPCInstanceID(unit) == slot.instanceID
                 and UnitExists and UnitExists(unit)
                 and UnitIsDeadOrGhost and not UnitIsDeadOrGhost(unit)
@@ -1044,6 +1057,7 @@ local function AcquirePresentation(kind, key)
     slot.retainAfterBossDeath = nil
     slot.abilityRecord, slot.abilityHint = nil, nil
     slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+    slot.sentinelMark, slot.sentinelAbilities, slot.sentinelUnseen = nil, nil, nil
     slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
     slot.timerName = nil
     slot.progressKind, slot.progressState = nil, nil
@@ -1082,6 +1096,7 @@ local function ReleasePresentation(kind, key)
             slot.retainAfterBossDeath = nil
             slot.abilityRecord, slot.abilityHint = nil, nil
             slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+    slot.sentinelMark, slot.sentinelAbilities, slot.sentinelUnseen = nil, nil, nil
             slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
             slot.timerName = nil
             slot.progressKind, slot.progressState = nil, nil
@@ -1596,6 +1611,22 @@ function mechanics.GetSentinelAbilities(unit, expectedGeneration)
         end
     end
     return nil
+end
+
+-- Vanilla tooltip names supplement optional enhanced UnitBuff spell IDs.
+function mechanics.ReadSentinelBuffName(unit, index)
+    if not CreateFrame then return nil end
+    if not mechanics.sentinelBuffTooltip then
+        mechanics.sentinelBuffTooltip = CreateFrame("GameTooltip",
+            "SCB_SentinelBuffTooltip", UIParent, "GameTooltipTemplate")
+        mechanics.sentinelBuffTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    end
+    local tip = mechanics.sentinelBuffTooltip
+    if not tip.SetUnitBuff then return nil end
+    tip:ClearLines()
+    if not pcall(tip.SetUnitBuff, tip, unit, index) then return nil end
+    local line = getglobal and getglobal("SCB_SentinelBuffTooltipTextLeft1")
+    return line and line.GetText and line:GetText() or nil
 end
 
 -- Defender pair selection is recorded only against an observed individual
@@ -2274,6 +2305,7 @@ function mechanics.ClearPresentation()
             slot.memberBinding = nil
             slot.retainAfterBossDeath = nil
             slot.instanceID, slot.unit, slot.dead = nil, nil, nil
+    slot.sentinelMark, slot.sentinelAbilities, slot.sentinelUnseen = nil, nil, nil
             slot.clickTarget, slot.hideOnDeath, slot.attackAll = nil, nil, nil
             slot.frame:Hide()
         end
@@ -2689,7 +2721,12 @@ function mechanics.UpdatePresentation(now)
         if slot.used and slot.generation == session.generation then
             local unit = slot.unit
             if not slot.dead and unit
-                and mechanics.NPCInstanceID(unit) == slot.instanceID
+                and ((slot.sentinelMark and GetRaidTargetIndex
+                    and UnitExists and UnitExists(unit) and UnitName
+                    and UnitName(unit) == "Anubisath Sentinel"
+                    and GetRaidTargetIndex(unit) == slot.sentinelMark)
+                    or (not slot.sentinelMark
+                        and mechanics.NPCInstanceID(unit) == slot.instanceID))
                 and UnitHealth and UnitHealthMax then
                 local health, maximum = UnitHealth(unit), UnitHealthMax(unit)
                 if type(health) == "number" and type(maximum) == "number"
@@ -2704,13 +2741,23 @@ function mechanics.UpdatePresentation(now)
             else
                 local label = slot.label
                 if session.id == "aq40.sentinels" and slot.sentinelAbilities then
-                    local seen = {}
-                    for spell in pairs(slot.sentinelAbilities.observed) do
+                    local abilities = slot.sentinelAbilities
+                    local seen, inherited = {}, {}
+                    for spell in pairs(abilities.observed) do
                         table.insert(seen, spell)
                     end
+                    for spell in pairs(abilities.inherited) do
+                        table.insert(inherited, spell)
+                    end
                     table.sort(seen)
-                    if table.getn(seen) > 0 then
-                        label = label .. " [" .. table.concat(seen, ", ") .. "]"
+                    table.sort(inherited)
+                    if abilities.original then
+                        label = label .. " [" .. abilities.original .. "]"
+                    elseif table.getn(seen) > 0 then
+                        label = label .. " [seen: " .. table.concat(seen, ", ") .. "]"
+                    end
+                    if table.getn(inherited) > 0 then
+                        label = label .. " + " .. table.concat(inherited, ", ")
                     end
                 elseif session.id == "aq40.defender" and slot.defenderPairs then
                     local seen = {}
@@ -2724,7 +2771,11 @@ function mechanics.UpdatePresentation(now)
                     end
                 end
                 slot.frame.label:SetText(label)
-                if slot.dead then
+                if slot.sentinelUnseen then
+                    slot.frame.detail:SetText("--")
+                    slot.frame.bar:SetValue(0)
+                    slot.frame.bar:SetStatusBarColor(0.35, 0.35, 0.35)
+                elseif slot.dead then
                     slot.frame.detail:SetText("DEAD")
                     slot.frame.bar:SetValue(0)
                     slot.frame.bar:SetStatusBarColor(0.35, 0.35, 0.35)
@@ -3891,6 +3942,12 @@ function mechanics.ObserveModuleNPCDeath(zone, name, source)
     if not needed then return false end
     local old = state.deaths[name] or 0
     if old >= needed then return true end
+    if session.id == "aq40.sentinels" and name == "Anubisath Sentinel" then
+        if source == "message" then
+            return mechanics.ObserveSentinelDeathMessage(session.generation)
+        end
+        return false -- individual marker-corpses are reconciled in the scanner
+    end
     if needed > 1 and source ~= "message" then return false end
     state.deaths[name] = old + 1
     if mechanics.CheckModuleSleeper(session.generation) then return true end
@@ -3938,6 +3995,7 @@ function mechanics.DisengageEncounter(reason, expectedGeneration)
     session.defenderLastHits, session.toxinFirst = nil, nil
     session.skeramMarked, session.ouroSeen, session.ouroPhase = nil, nil, nil
     session.cthunPhase, session.viscPhase = nil, nil
+    session.sentinelState = nil
     session.prepared = false
     return true
 end
@@ -4686,8 +4744,8 @@ local bossModsElapsed = 0
 local bossModsVisualElapsed = 0
 local bossModsEvents = {}
 
--- Chunk 3: one demand-driven observer, serviced by the existing Boss Mods
--- OnUpdate. The older broad 0.4-second path deliberately remains until Chunk 5.
+-- One demand-driven observer owned by Boss Mods OnUpdate.
+-- The obsolete broad 0.4-second path was retired in Chunk 5.
 -- A request belongs to the active zone, and optionally to one encounter attempt.
 local raidTargetScanner = {
     requests = {}, index = 0, elapsed = 0, sideElapsed = 0,
@@ -4851,6 +4909,9 @@ BeginEncounterScanRequests = function(session)
                         mechanics.MarkEncounterEngaged(owner)
                     end
                     if session.id == "aq40.skeram" then AQ40SkeramMark(observation) end
+                    if session.id == "aq40.sentinels" then
+                        mechanics.ObserveSentinelSnapshot(observation, owner)
+                    end
                 end,
             })
         end
@@ -4926,14 +4987,18 @@ local function SCB_BossModsVisitScanToken(unit)
         snapshot.hp = UnitHealth(unit)
         snapshot.hpMax = UnitHealthMax(unit)
     end
-    -- Native 1.12 UnitBuff exposes buff textures. Enhanced clients may expose
-    -- more, but no spell-name/ID inference is fabricated from a texture.
+    -- One shared buff read; optional enhanced spell ID and native tooltip name.
     if buffs and UnitBuff then
         snapshot.buffs = {}
         for i = 1, 32 do
-            local texture = UnitBuff(unit, i)
+            local texture, applications, spellId = UnitBuff(unit, i)
             if not texture then break end
-            table.insert(snapshot.buffs, texture)
+            local buff = { texture = texture,
+                spellId = type(spellId) == "number" and spellId or nil }
+            if name == "Anubisath Sentinel" then
+                buff.name = mechanics.ReadSentinelBuffName(unit, i)
+            end
+            table.insert(snapshot.buffs, buff)
         end
     end
     local previous = raidTargetScanner.cycleObserved[name]
