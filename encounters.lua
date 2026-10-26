@@ -373,6 +373,13 @@ SoloCraftBots.bossModDefinitions = {
         skeram = {
             detect = { zone = "Ahn'Qiraj", boss = "The Prophet Skeram",
                 endOnBossDeath = false },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "The Prophet Skeram",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true, marker = true },
+                    names = { "The Prophet Skeram" },
+                    dispatchDeclaredHP = true } } },
             mechanics = {}, abilities = {}, triggers = {},
             -- Real-boss raid marker 6 uses native maximum-health comparison\n            -- in the encounter owner; no clone or MC mechanics requested.
         },
@@ -380,14 +387,22 @@ SoloCraftBots.bossModDefinitions = {
             detect = { zone = "Ahn'Qiraj", boss = "Lord Kri",
                 aliases = { "Princess Yauj", "Vem" },
                 endOnBossDeath = false },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = { "Lord Kri", "Princess Yauj", "Vem" },
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Lord Kri", "Princess Yauj", "Vem" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { { name = "Lord Kri", count = 1 }, { name = "Princess Yauj", count = 1 }, { name = "Vem", count = 1 } } },
             mechanics = {},
             hpUnits = {
-                { id = "kri", name = "Lord Kri", label = "Lord Kri" },
-                { id = "yauj", name = "Princess Yauj", label = "Princess Yauj" },
-                { id = "vem", name = "Vem", label = "Vem" },
+                { submodule = "combat", id = "kri", name = "Lord Kri", label = "Lord Kri" },
+                { submodule = "combat", id = "yauj", name = "Princess Yauj", label = "Princess Yauj" },
+                { submodule = "combat", id = "vem", name = "Vem", label = "Vem" },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "poison", caster = "Lord Kri", label = "Poison Volley",
                     mode = "opportunistic",
                     -- Pinned BigWigs: first 8-10s, subsequent 8-14s.
@@ -401,7 +416,7 @@ SoloCraftBots.bossModDefinitions = {
                         contains = "Lord Kri's Poison Volley",
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "greatheal", caster = "Princess Yauj",
                     label = "Great Heal", readyLabel = "Heal Ready",
                     mode = "opportunistic", castTime = 2,
@@ -412,7 +427,7 @@ SoloCraftBots.bossModDefinitions = {
                         contains = "Princess Yauj begins to cast Great Heal.",
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "fear", caster = "Princess Yauj", label = "Fear",
                     mode = "opportunistic",
                     -- Pinned BugFamily: initial 10-20s, later 20s.
@@ -429,7 +444,7 @@ SoloCraftBots.bossModDefinitions = {
             -- names the interrupt spell AND its Great Heal target. Durations
             -- are per interrupt type; absent evidence remains unresolved.
             triggers = {
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -438,7 +453,7 @@ SoloCraftBots.bossModDefinitions = {
                         id = "lockout_kick",
                         ability = "greatheal", duration = 5 } },
                 },
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -447,7 +462,7 @@ SoloCraftBots.bossModDefinitions = {
                         id = "lockout_pummel",
                         ability = "greatheal", duration = 4 } },
                 },
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -456,7 +471,7 @@ SoloCraftBots.bossModDefinitions = {
                         id = "lockout_shieldbash",
                         ability = "greatheal", duration = 6 } },
                 },
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -465,7 +480,7 @@ SoloCraftBots.bossModDefinitions = {
                         id = "lockout_counterspell",
                         ability = "greatheal", duration = 10 } },
                 },
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -474,7 +489,7 @@ SoloCraftBots.bossModDefinitions = {
                         id = "lockout_earthshock",
                         ability = "greatheal", duration = 2 } },
                 },
-                {
+                { submodule = "combat",
                     events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
@@ -487,15 +502,23 @@ SoloCraftBots.bossModDefinitions = {
         },
         sartura = {
             detect = { zone = "Ahn'Qiraj", boss = "Battleguard Sartura" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Battleguard Sartura",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Battleguard Sartura", "Sartura's Royal Guard" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Battleguard Sartura", count = 1 } },
             mechanics = {},
             hpUnits = {
-                { id = "boss", name = "Battleguard Sartura",
+                { submodule = "combat", id = "boss", name = "Battleguard Sartura",
                     label = "Battleguard Sartura" },
-                { id = "guard", name = "Sartura's Royal Guard",
+                { submodule = "combat", id = "guard", name = "Sartura's Royal Guard",
                     label = "Royal Guard" },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "whirlwind", caster = "Battleguard Sartura",
                     label = "Whirlwind",
                     mode = "opportunistic",
@@ -520,15 +543,23 @@ SoloCraftBots.bossModDefinitions = {
         },
         fankriss = {
             detect = { zone = "Ahn'Qiraj", boss = "Fankriss the Unyielding" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Fankriss the Unyielding",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Fankriss the Unyielding", "Spawn of Fankriss" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Fankriss the Unyielding", count = 1 } },
             mechanics = {},
             hpUnits = {
-                { id = "boss", name = "Fankriss the Unyielding",
+                { submodule = "combat", id = "boss", name = "Fankriss the Unyielding",
                     label = "Fankriss" },
-                { id = "worm", name = "Spawn of Fankriss",
+                { submodule = "combat", id = "worm", name = "Spawn of Fankriss",
                     label = "Enraging Worm", hideOnDeath = true },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "entangle", caster = "Fankriss the Unyielding",
                     label = "Entangle", mode = "opportunistic",
                     observedOnly = true,
@@ -558,9 +589,17 @@ SoloCraftBots.bossModDefinitions = {
         },
         viscidus = {
             detect = { zone = "Ahn'Qiraj", boss = "Viscidus" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Viscidus",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Viscidus" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Viscidus", count = 1 } },
             mechanics = {},
             abilities = {
-                {
+                { submodule = "combat",
                     id = "toxin", caster = "Viscidus", label = "Toxin",
                     observedOnly = true, mode = "opportunistic",
                     auras = {
@@ -574,56 +613,56 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             counters = {
-                { id = "frosthits", label = "Observed Frost Hits",
+                { submodule = "combat", id = "frosthits", label = "Observed Frost Hits",
                     maximum = 200, maximumKind = "reference",
                     icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" },
-                { id = "meleehits", label = "Observed Melee Hits",
+                { submodule = "combat", id = "meleehits", label = "Observed Melee Hits",
                     maximum = 110, maximumKind = "reference",
                     icon = "Interface\\Icons\\INV_Sword_04" },
             },
             triggers = {
                 -- Native other-recipient Toxin applications expose a roster name.
                 -- Only the first positively matched live bot is retained.
-                { events = { "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE" },
                     pattern = "^(.+) is afflicted by Toxin%.$",
                     effects = { { type = "viscidus_toxin", id = "toxin_other" } } },
-                { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
                     contains = "You are afflicted by Toxin.",
                     effects = { { type = "viscidus_toxin", id = "toxin_self", target = "player" } } },
                 -- BigWigs' native emote boundaries: frost hits count until
                 -- frozen, then melee hits count. A later slow emote resets
                 -- the next frost cycle without inventing a glob duration.
-                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                { submodule = "combat", event = "CHAT_MSG_RAID_BOSS_EMOTE",
                     contains = " is frozen solid!",
                     effects = { { type = "viscidus_phase", id = "frozen", phase = "melee" } } },
-                { event = "CHAT_MSG_RAID_BOSS_EMOTE",
+                { submodule = "combat", event = "CHAT_MSG_RAID_BOSS_EMOTE",
                     contains = " begins to slow!",
                     effects = { { type = "viscidus_phase", id = "slow", phase = "frost" } } },
                 -- Confirmed creature buff applications; these are only a
                 -- subset of frost damage hits, not a complete frost count.
-                {
+                { submodule = "combat",
                     event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
                     pattern = "^Viscidus gains (Chilled)%.$",
                     effects = { { type = "counter_hit", id = "frosthits" } },
                 },
-                {
+                { submodule = "combat",
                     event = "CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS",
                     contains = "Viscidus gains Winter's Chill.",
                     effects = { { type = "counter_hit", id = "frosthits" } },
                 },
                 -- Native physical hit/crit text differs for self and others.
                 -- Do not count spell damage as a physical hit.
-                { event = "CHAT_MSG_COMBAT_SELF_HITS",
+                { submodule = "combat", event = "CHAT_MSG_COMBAT_SELF_HITS",
                     pattern = "^You [hc][ir][ti].* Viscidus for ",
                     effects = { { type = "counter_hit", id = "meleehits" } } },
-                { events = { "CHAT_MSG_COMBAT_PARTY_HITS",
+                { submodule = "combat", events = { "CHAT_MSG_COMBAT_PARTY_HITS",
                         "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS" },
                     pattern = " [hc][ir][ti].* Viscidus for ",
                     effects = { { type = "counter_hit", id = "meleehits" } } },
                 -- Elesion counts native spell combat messages containing Frost
                 -- damage; restrict to messages explicitly naming Viscidus.
-                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     pattern = "Viscidus.*Frost damage",
@@ -633,9 +672,17 @@ SoloCraftBots.bossModDefinitions = {
         },
         huhuran = {
             detect = { zone = "Ahn'Qiraj", boss = "Princess Huhuran" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Princess Huhuran",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Princess Huhuran" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Princess Huhuran", count = 1 } },
             mechanics = {}, abilities = {}, triggers = {},
             thresholds = {
-                { id = "berserk", name = "Princess Huhuran",
+                { submodule = "combat", id = "berserk", name = "Princess Huhuran",
                     label = "Berserk (30% HP)", threshold = 0.30,
                     icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy" },
             },
@@ -644,17 +691,33 @@ SoloCraftBots.bossModDefinitions = {
             detect = { zone = "Ahn'Qiraj", boss = "Emperor Vek'lor",
                 aliases = { "Emperor Vek'nilash" },
                 endOnBossDeath = false },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = { "Emperor Vek'lor", "Emperor Vek'nilash" },
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Emperor Vek'lor", "Emperor Vek'nilash" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { { name = "Emperor Vek'lor", count = 1 }, { name = "Emperor Vek'nilash", count = 1 } } },
             mechanics = {}, abilities = {}, triggers = {},
             -- Vek'lor target-of-target requires positive target-chain
             -- identity; no name-only fallback.
         },
         ouro = {
             detect = { zone = "Ahn'Qiraj", boss = "Ouro" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Ouro",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Ouro" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Ouro", count = 1 } },
             mechanics = {},
             -- First readiness is estimated from observed engagement.
             -- Only a positive Ground Rupture refreshes this single row.
             initialStages = {
-                { id = "ourocycle", label = "Next Submerge (estimated)",
+                { submodule = "combat", id = "ourocycle", label = "Next Submerge (estimated)",
                     minDelay = 89, provenance = "predicted",
                     icon = "Interface\\Icons\\INV_Misc_Shovel_01" },
             },
@@ -662,19 +725,19 @@ SoloCraftBots.bossModDefinitions = {
             -- successful cast by the same Ouro GUID already observed in the
             -- HP threshold tracker. Vanilla has no equivalent positive event.
             castStages = {
-                { id = "ourocycle", spellId = 26063,
+                { submodule = "combat", id = "ourocycle", spellId = 26063,
                     sourceThreshold = "berserk",
                     label = "Next Emerge (estimated)", minDelay = 27,
                     provenance = "predicted",
                     icon = "Interface\\Icons\\INV_Misc_Shovel_01" },
             },
             thresholds = {
-                { id = "berserk", name = "Ouro",
+                { submodule = "combat", id = "berserk", name = "Ouro",
                     label = "Berserk (20% HP)", threshold = 0.20,
                     icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy" },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "sweep", caster = "Ouro", label = "Sweep",
                     mode = "opportunistic",
                     firstDelay = 20.5, repeatDelay = 20.5,
@@ -685,7 +748,7 @@ SoloCraftBots.bossModDefinitions = {
                         contains = "Ouro begins to cast Sweep.",
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "sandblast", caster = "Ouro", label = "Sand Blast",
                     mode = "opportunistic",
                     firstDelay = 20, repeatDelay = 20,
@@ -698,7 +761,7 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             triggers = {
-                {
+                { submodule = "combat",
                     event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
                     contains = "Ground Rupture",
                     effects = { { type = "timer_stage", id = "ourocycle",
@@ -714,19 +777,27 @@ SoloCraftBots.bossModDefinitions = {
             detect = { zone = "Ahn'Qiraj", boss = "C'Thun",
                 aliases = { "Eye of C'Thun" },
                 endOnBossDeath = false },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = { "C'Thun", "Eye of C'Thun" },
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "C'Thun", "Eye of C'Thun", "Flesh Tentacle", "Giant Claw Tentacle", "Giant Eye Tentacle" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "C'Thun", count = 1 } },
             mechanics = {}, triggers = {},
             hpUnits = {
-                { id = "flesh", name = "Flesh Tentacle",
+                { submodule = "combat", id = "flesh", name = "Flesh Tentacle",
                     label = "Flesh Tentacle", hideOnDeath = true,
                     clickTarget = true, attackAll = true },
                 -- Shared template, separate positive per-spawn GUID rows.
-                { id = "giant", name = "Giant Claw Tentacle",
+                { submodule = "combat", id = "giant", name = "Giant Claw Tentacle",
                     aliases = { "Giant Eye Tentacle" },
                     label = "Giant Tentacle", hideOnDeath = true,
                     clickTarget = true },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "darkglare", caster = "Eye of C'Thun",
                     label = "Dark Glare", mode = "opportunistic",
                     -- Elesion 47b5380 reference estimates, not runtime-verified.
@@ -742,32 +813,32 @@ SoloCraftBots.bossModDefinitions = {
                 },
             },
             triggers = {
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE",
                     contains = "Eye of C'Thun begins to cast Dark Glare.",
                     effects = { { type = "cthun_glare", id = "glare_active" } } },
-                { event = "CHAT_MSG_COMBAT_HOSTILE_DEATH",
+                { submodule = "combat", event = "CHAT_MSG_COMBAT_HOSTILE_DEATH",
                     contains = "Eye of C'Thun dies.",
                     effects = { { type = "cthun_phase2", id = "phase2" } } },
                 -- These Birth messages identify a *spawn already occurring*.
                 -- A reference next-spawn window is not a claimed unique unit.
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
                     contains = "Giant Claw Tentacle begins to cast Birth.",
                     effects = { { type = "timer_stage", id = "giant_eye_next",
                         label = "Next Giant Eye (reference)",
                         minDelay = 30, provenance = "predicted" } } },
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF",
                     contains = "Giant Eye Tentacle begins to cast Birth.",
                     effects = { { type = "timer_stage", id = "giant_claw_next",
                         label = "Next Giant Claw (reference)",
                         minDelay = 30, provenance = "predicted" } } },
                 -- 8s post-Weakened reference begins after its 45s duration,
                 -- not at the initial weakened emote.
-                { event = "CHAT_MSG_MONSTER_EMOTE",
+                { submodule = "combat", event = "CHAT_MSG_MONSTER_EMOTE",
                     contains = "is weakened!",
                     effects = { { type = "cthun_weakened", id = "weaken_recovery" } } },
                 -- Native emote positively establishes the start of Weakened.
                 -- This 45s bar is an Elesion reference, not a phase detector.
-                { event = "CHAT_MSG_MONSTER_EMOTE",
+                { submodule = "combat", event = "CHAT_MSG_MONSTER_EMOTE",
                     contains = "is weakened!",
                     effects = { { id = "weakened", type = "timer",
                         label = "Weakened (reference 45s)",
@@ -783,9 +854,17 @@ SoloCraftBots.bossModDefinitions = {
         sentinels = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Sentinel",
                 endOnBossDeath = false },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Anubisath Sentinel",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Anubisath Sentinel" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Anubisath Sentinel", count = 4 } },
             mechanics = {}, abilities = {}, triggers = {},
             hpUnits = {
-                { id = "sentinel", name = "Anubisath Sentinel",
+                { submodule = "combat", id = "sentinel", name = "Anubisath Sentinel",
                     label = "Anubisath Sentinel", clickTarget = true,
                     hideOnDeath = true },
             },
@@ -809,13 +888,21 @@ SoloCraftBots.bossModDefinitions = {
         },
         defender = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Defender" },
+            requiredZone = "Ahn'Qiraj",
+            moduleWaker = "Anubisath Defender",
+            passiveModules = {},
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true, hp = true },
+                    names = { "Anubisath Defender" },
+                    dispatchDeclaredHP = true } } },
+            moduleSleeper = { npcdead = { name = "Anubisath Defender", count = 1 } },
             mechanics = {},
             hpUnits = {
-                { id = "defender", name = "Anubisath Defender",
+                { submodule = "combat", id = "defender", name = "Anubisath Defender",
                     label = "Anubisath Defender", hideOnDeath = true },
             },
             abilities = {
-                {
+                { submodule = "combat",
                     id = "meteor", caster = "Anubisath Defender",
                     label = "Meteor observed", observedOnly = true,
                     mode = "opportunistic",
@@ -827,7 +914,7 @@ SoloCraftBots.bossModDefinitions = {
                         contains = "Anubisath Defender's Meteor hits",
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "plague", caster = "Anubisath Defender",
                     label = "Plague", observedOnly = true,
                     mode = "opportunistic",
@@ -865,7 +952,7 @@ SoloCraftBots.bossModDefinitions = {
                         },
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "shadowstorm", caster = "Anubisath Defender",
                     label = "Shadow Storm observed", observedOnly = true,
                     mode = "opportunistic",
@@ -877,7 +964,7 @@ SoloCraftBots.bossModDefinitions = {
                         contains = "Anubisath Defender's Shadow Storm hits",
                     },
                 },
-                {
+                { submodule = "combat",
                     id = "thunderclap", caster = "Anubisath Defender",
                     label = "Thunderclap observed", observedOnly = true,
                     mode = "opportunistic",
@@ -897,47 +984,47 @@ SoloCraftBots.bossModDefinitions = {
                 -- Reflect spell evidence follows pinned Elesion's native
                 -- combat strings. Record the identified pair as a passive
                 -- status, never a fabricated 600s cooldown.
-                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Moonfire is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_fire_arcane",
                         label = "Reflect", ability = "Fire / Arcane",
                         icon = "Interface\\Icons\\Spell_Arcane_PortalDarnassus" } } },
-                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Fireball is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_fire_arcane",
                         label = "Reflect", ability = "Fire / Arcane",
                         icon = "Interface\\Icons\\Spell_Arcane_PortalDarnassus" } } },
-                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Frostbolt is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_frost_shadow",
                         label = "Reflect", ability = "Frost / Shadow",
                         icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" } } },
-                { events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
+                { submodule = "combat", events = { "CHAT_MSG_SPELL_SELF_DAMAGE",
                         "CHAT_MSG_SPELL_PARTY_DAMAGE",
                         "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" },
                     contains = "Corruption is reflected back by Anubisath Defender.",
                     effects = { { type = "ability_observed", id = "def_frost_shadow",
                         label = "Reflect", ability = "Frost / Shadow",
                         icon = "Interface\\Icons\\Spell_Frost_FrostBolt02" } } },
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
                     contains = "Anubisath Defender's Meteor hits you",
                     effects = { { type = "dev_interval", id = "met_sample",
                         ability = "meteor" } } },
-                { event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE",
                     contains = "You are afflicted by Plague.",
                     effects = { { type = "dev_interval", id = "pla_sample",
                         ability = "plague" } } },
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
                     contains = "Anubisath Defender's Shadow Storm hits you",
                     effects = { { type = "dev_interval", id = "sha_sample",
                         ability = "shadowstorm" } } },
-                { event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
+                { submodule = "combat", event = "CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE",
                     contains = "Anubisath Defender's Thunderclap hits you",
                     effects = { { type = "dev_interval", id = "thu_sample",
                         ability = "thunderclap" } } },
