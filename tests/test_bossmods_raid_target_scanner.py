@@ -19,7 +19,7 @@ class RaidTargetScannerContract(unittest.TestCase):
         self.assertNotIn("SCB_BossModsObserveTargets", MECH)
         self.assertIn("SCB_BossModsCompleteSweep()", MECH)
         self.assertIn("engine.TickRaidTargetScanner(elapsed)", MECH)
-        self.assertRegex(TOC, r"## Version: 0\\.9\\.\\d+-dev")
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
     def test_five_second_discovery_for_group_and_player_combat(self):
         onset = section("SCB_BossModsTrackCombatState = function(",
