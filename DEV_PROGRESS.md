@@ -7,9 +7,61 @@
 - **Architecture approval recorded above (2026-10-26).** The present commit is documentation-only; addon implementation and individual encounter changes have not started. Existing runtime observations in the separate section below remain authoritative and unmodified.
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
+## Boss Mods rework — FIXED SIX-CHUNK DEVELOPMENT CONTRACT (approved 2026-10-26)
+
+**Status:** Approved work allocation for the Boss Mods architecture described immediately below; no architecture-rework code has started. `dev` only, version `0.9.89-dev` at planning. **One integrated development task, six coding checkpoints for chat reliability, one user runtime-testing stage after all six.**
+
+### Binding rules — read before working on any chunk
+
+1. **One project, not six features.** Chunks separate the coding workload across conversations, not independently working releases or user acceptance milestones. Do not ask the user to open WoW, test an encounter or approve intermediate work. One consolidated user runtime validation follows the complete integrated rework.
+2. **Fixed chunk definitions.** Implement each whole chunk as agreed below. Never progressively divide the last remaining chunk into smaller tasks, lower its completion criteria, or stop merely because a convenient function or isolated change is complete. No artificial code-line, file, function or commit ceilings. Only a demonstrated technical blocker justifies revising a chunk; record exactly what prevents completion and why a change is necessary.
+3. **Meaningful complete work.** Declaration stubs, one new test, an unused API, a minor refactor, or a scaffolding commit do not constitute a finished chunk. Make substantive changes covering all named responsibilities. Multiple coherent commits within a chunk are fine.
+4. **Context exhaustion is a handoff, not a scope reduction.** Aim for one full chunk per chat; if the chat becomes unreliable before completion, checkpoint and commit genuine progress, record precisely what remains, and continue **the same numbered chunk** in the next chat. Do not mark it complete, invent Chunk N.a or start the next chunk prematurely.
+5. **Developer checks only between chunks.** Run available Lua **5.0.3** compiler checks, regression tests, CI and integration/static checks; fix attributable code defects. Record what actually ran, passed, failed or could not run. These checks never prove in-game functionality. **No intermediate user gameplay tests or testing releases.** TOC version bumps for addon code remain required by `dev_rulebook.md`.
+6. **Single authoritative architecture.** Follow the approved design below. All Boss Mods-specific zone recognition, events, update dispatch, lifecycle, scans, timers, trackers and actions belong in `mechanics.lua`; `encounters.lua` contains definitions. No Boss Mods-specific executable logic remains in `SoloCraftBots.lua` when migrated. Reuse SCB's existing general bot-command, roster and shared services; no parallel scanner, separate encounter engine, per-encounter ticker, duplicate commands or interim compatibility system solely to make a chunk independently releasable.
+7. **Preserve working mechanics.** Do not change unrelated addon features or invent restrictions, additional evidence gates, magic timings or dependencies. Use pinned Elesion BigWigs for relevant encounter mechanics. Optional SuperWoW enhancements are permitted without making it a requirement for SCB. The old 0.4-second scan stays until every responsibility is migrated and its replacement works structurally.
+8. **Reliable handoffs.** At start read `dev_rulebook.md` and this document, verify `dev` remote HEAD, and follow the entire active chunk definition. Commit substantive code and tests; update only `DEV_PROGRESS.md` with exact chunk status, commit, remaining work, dependencies, verified checks and next action. Never create a parallel status document or silently modify `main`. If necessary, checkpoint before context becomes unreliable.
+9. **No recurring rework of completed chunks.** A genuine integration bug can be fixed later, but do not reopen chunks to reinterpret them or invent preparatory subchunks. End of Chunk 6 means the full integrated architecture is coded and developer-checked, ready for **one consolidated user runtime test**, not claimed runtime-pass.
+10. **Communication distinction.** Keep chat replies and resume prompts **short**, showing actual progress. Keep **repository specifications and handoffs sufficiently detailed and self-contained** for future chats. Do not confuse user-requested concise responses with abbreviated development documentation.
+
+### Fixed chunks — complete in this order
+
+**Chunk 1 — Boss Mods ownership extraction**
+- Move all Boss Mods-specific code currently in `SoloCraftBots.lua` into `mechanics.lua`: zone recognition/activation; event registration and dispatch; target, group-combat and boss observations; existing 0.4-second raid-wide poll; update/timer/presentation dispatch; initialization. Own a single Boss Mods event/update frame in `mechanics.lua`.
+- Preserve the existing scanning/event/engagement/reset behaviour for now. Address initialization/load order with `encounters.lua` (loaded after `mechanics.lua`) without reintroducing a main-file Boss Mods dispatcher. Leave unrelated SCB features, shared commands and roster untouched.
+- **Done when:** no Boss Mods-specific executable code remains in `SoloCraftBots.lua`; all the responsibilities above have moved and available structural/compiler/regression checks have been run or accurately marked unavailable. No user runtime check.
+
+**Chunk 2 — Module hierarchy and encounter lifecycle**
+- Implement required-zone RAIDMODULE → ENCOUNTERMODULE → SUBMODULE; deliberate-target `moduleWaker`; passive/combat activation; combat-disengagement reset of attempt-specific state; combined logical-AND `moduleSleeper` conditions; `retainUntilResolved` for retained post-combat effects and their actions. Integrate with the existing mechanics engine, not a duplicate.
+- Vaelastrasz illustrates the invariant: `npcdead=1` **and** `BurningAdrenalineTracker` empty before unloading. After Vael dies, unresolved BA bars **and Kick buttons remain usable**; combat cleanup cannot remove them.
+- **Done when:** the full approved lifecycle and retained-effect semantics exist as executable code with developer-level checks; no gameplay test.
+
+**Chunk 3 — Complete central scanner**
+- Implement one shared demand-driven scanner in `mechanics.lua`: approximately one raid-member target per 25ms, automatic **five-second discovery scan at the beginning of every combat** in each configured required zone (including untargeted bosses), immediate deliberate player-target discovery, and module waking via `moduleWaker`.
+- Requests specify observations (identity, raid marker, HP, buffs, etc.) and duration (fixed/combat); simultaneous consumers share visits/observations. Expire independent requests, stop raid-target polling when none remains, and preserve needed mouseover/target-of-target observation paths. Keep the old 0.4-second scanning until Chunk 5.
+- **Done when:** discovery, requests, sharing, collection, dispatch, expiry and shutdown are all implemented and developer-checked. No gameplay test.
+
+**Chunk 4 — Entire BWL migration**
+- Migrate **all BWL encounters** to new hierarchy, lifecycle and scanner, including pre-pull controls, timers and actions. Preserve existing behaviour and post-death Burning Adrenaline Kick functionality; do not subdivide into one chunk per boss or redesign unrelated abilities.
+- **Done when:** all BWL encounter definitions and supported mechanics use the new owners, with appropriate developer-level integration coverage. No gameplay test.
+
+**Chunk 5 — Entire AQ40 migration and old scan retirement**
+- Migrate **all AQ40 encounters** onto the new hierarchy/lifecycle/scanner without yet doing the comprehensive Sentinel-specific rebuild or other encounter-by-encounter runtime-defect repairs.
+- Verify coverage of **every prior 0.4-second scan responsibility** (target observations, combat detection, wake/engagement, HP, death/disengagement/reset and other consumers) before removing it. Finish with one authoritative central Boss Mods scanner; do not leave duplicate pollers.
+- **Done when:** all AQ40 encounters are wired to the new system, obsolete 0.4-second polling has been removed without deliberately losing functionality, and developer-level checks are accounted for. No gameplay test.
+
+**Chunk 6 — Complete Sentinel rebuild and final integration**
+- Implement the **whole** four-Sentinel case: raid marker identity and four HP bars; five-second buff identification using optional SuperWoW; continuous marker-associated HP and last-known state; clickable current-unit targeting without unconditional GUID gating; ~1% near-death inference and death-message attribution; inherited survivor abilities; four-death `moduleSleeper`; clean disengagement resets.
+- Finish BWL/AQ40 architecture integration, resolve integration defects actually found, run available Lua 5.0.3/compiler/automated/CI checks, report limitations precisely. No artificial subchunks for marking/HP/buffs/inheritance.
+- **Done when:** the integrated Boss Mods rework is fully implemented and developer-checked, with remaining runtime uncertainties documented. **Only then** present a consolidated in-game test to the user.
+
+**Current handoff:** **Chunk 1 next, not yet started.** Latest actual `dev` HEAD must be verified in the next development chat. No Lua was changed by this planning commit.
+
+---
+
 ## Boss Mods architecture rework — APPROVED DESIGN (2026-10-26)
 
-**Status:** User-approved architecture/design specification; this update is documentation-only. **No addon Lua, TOC or runtime behaviour changed in this commit.** Implement incrementally on `dev`; leave `main` untouched. Vanilla WoW 1.12.1 / Lua 5.0.3. BWL and AQ40 are the initial encounters, not hardcoded limits on supported zones.
+**Status:** User-approved architecture/design specification. The fixed six-chunk coding contract above governs implementation; no user gameplay testing before the integrated rework is complete. This update is documentation-only. **No addon Lua, TOC or runtime behaviour changed in this commit.** Implement incrementally on `dev`; leave `main` untouched. Vanilla WoW 1.12.1 / Lua 5.0.3. BWL and AQ40 are the initial encounters, not hardcoded limits on supported zones.
 **Current implementation at approval:** `SoloCraftBots.lua` owns Boss Mods-specific event/zone/update/0.4-second raid-wide target observations; `mechanics.lua` owns the existing encounter engine/presentation/actions; `encounters.lua` owns declarations. Existing HP and clickable attack paths use GUID-requiring `mechanics.NPCInstanceID()`. These are source observations, not in-game test results.
 **Scope:** Architecture and migration plan approved. Encounter-specific repairs beyond the Sentinel first case still require encounter-by-encounter review against pinned Elesion BigWigs and the user's runtime observations below. Do not invent additional evidence gates, restrictions, or encounter timings.
 
@@ -91,7 +143,7 @@ All four Sentinel deaths **within the current attempt** satisfy shutdown. If com
 6. **All** sleeper conditions satisfied → unload encounter and release its submodules.
 7. Leave required zone → clear that RAIDMODULE and its encounter state.
 
-### 5. Anubisath Sentinel ENCOUNTERMODULE — first runtime validation
+### 5. Anubisath Sentinel ENCOUNTERMODULE — first complete encounter implementation
 
 - Wake on `Anubisath Sentinel` observed through player target or five-second combat discovery.
 - Establish **four Sentinel HP slots** on combat activation.
@@ -99,7 +151,7 @@ All four Sentinel deaths **within the current attempt** satisfy shutdown. If com
 - SuperWoW's enhanced buff/identity observations may be used where available (user has SuperWoW); players without that capability may lack enhanced buff identification. **SuperWoW must not become mandatory for the whole addon.**
 - Request continuous raid-target HP observations for the fight, beyond the initial five-second buff window. Associate HP with observed markers; retain last known HP while a marked Sentinel is unobserved. Use currently matching observed unit tokens for clickable bars; do not impose a universal GUID requirement on native marker-based tracking.
 - Use observed near-death HP (proposed **1%**) and available Sentinel death messages to infer likely dead markers and associated original abilities, then reflect inherited abilities in survivors. Generic same-name death messages alone do not name a marker; attribution is a practical inference, not a proven source GUID. Continue observing abilities after initial identification.
-- `moduleSleeper` requires four Sentinel deaths in the current attempt; reset on disengagement. Test marker assignment, buffs, HP visibility/clicks, death attribution and inheritance in-game. **No runtime pass is implied by this design.**
+- `moduleSleeper` requires four Sentinel deaths in the current attempt; reset on disengagement. After all six chunks, validate marker assignment, buffs, HP visibility/clicks, death attribution and inheritance in-game. **No runtime pass is implied by this design or intermediate coding.**
 
 ### 6. Identity, API and integration principles
 
