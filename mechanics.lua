@@ -4818,7 +4818,12 @@ local function SCB_BossModsVisitScanToken(unit)
             if request.observations.marker then marker = true end
             if request.observations.hp then hp = true end
             if request.observations.buffs then buffs = true end
-            if request.dispatchDeclaredHP then hpDispatch = true end
+            if request.dispatchDeclaredHP and
+                (not request.encounter or (active
+                    and active.id == request.encounter
+                    and active.generation == request.generation)) then
+                hpDispatch = true
+            end
         end
     end
     if table.getn(selected) == 0 then return end
@@ -4848,9 +4853,19 @@ local function SCB_BossModsVisitScanToken(unit)
         mechanics.ObserveDeclaredUnits({ unit }, active.generation)
     end
     for _, subscriber in ipairs(selected) do
-        if raidTargetScanner.requests[subscriber.key] == subscriber.request
-            and subscriber.request.onObservation then
-            subscriber.request.onObservation(snapshot)
+        local request = subscriber.request
+        local current = raidTargetScanner.requests[subscriber.key] == request
+        if current and request.encounter then
+            current = active and active.id == request.encounter
+                and active.generation == request.generation
+                and (not active.moduleState
+                    or active.moduleState.attempt == request.attempt)
+                and (not request.submodule or
+                    mechanics.IsSubmoduleActive(request.submodule,
+                        request.generation))
+        end
+        if current and request.onObservation then
+            request.onObservation(snapshot)
         end
     end
 end
@@ -5144,6 +5159,7 @@ local function SCB_BossModsOnCombatEvent(eventName, message, speaker,
         bossModsZone, eventName, message, speaker)
     state = engine.GetEncounterState()
     if observedBoss then
+        if isCombat then SCB_BossModsTrackCombatState(true) end
         -- No transition to a later boss while one is already engaged.
         if state and state.engaged and not state.postBossCleanup
             and state.boss ~= observedBoss then return end
