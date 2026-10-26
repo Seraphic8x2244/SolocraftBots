@@ -858,15 +858,46 @@ SoloCraftBots.bossModDefinitions = {
             moduleWaker = "Anubisath Sentinel",
             passiveModules = {},
             combatModules = { { id = "combat",
-                scan = { observations = { identity = true, hp = true },
+                scan = { observations = { identity = true, marker = true,
+                        hp = true, buffs = true },
                     names = { "Anubisath Sentinel" },
-                    dispatchDeclaredHP = true } } },
+                    dispatchDeclaredHP = false } } },
             moduleSleeper = { npcdead = { name = "Anubisath Sentinel", count = 4 } },
-            mechanics = {}, abilities = {}, triggers = {},
-            hpUnits = {
-                { submodule = "combat", id = "sentinel", name = "Anubisath Sentinel",
-                    label = "Anubisath Sentinel", clickTarget = true,
-                    hideOnDeath = true },
+            mechanics = {}, abilities = {}, triggers = {}, hpUnits = {},
+            sentinelTracking = {
+                preferredMarkers = { 8, 7, 6, 5, 4, 3, 2, 1 },
+                -- Sentinel's own ability buff IDs, not periodic cast IDs;
+                -- optional enhanced third return from UnitBuff is supported.
+                buffIdentification = {
+                    spellIds = {
+                        [2147] = "Mending", [21737] = "Knockback",
+                        [812] = "Mana Burn", [13022] = "Fire Reflect",
+                        [19595] = "Frost Reflect", [25777] = "Thorns",
+                        [2834] = "Thunderclap", [9347] = "Mortal Strike",
+                        [2148] = "Shadow Storm",
+                    },
+                    names = {
+                        ["Mending"] = "Mending", ["Renew"] = "Mending",
+                        ["Periodic Knock Away"] = "Knockback",
+                        ["Knockback"] = "Knockback",
+                        ["Periodic Mana Burn"] = "Mana Burn",
+                        ["Mana Burn"] = "Mana Burn",
+                        ["Reflect Fire and Arcane"] = "Fire Reflect",
+                        ["Fire and Arcane Reflection"] = "Fire Reflect",
+                        ["Reflect Shadow and Frost"] = "Frost Reflect",
+                        ["Shadow and Frost Reflection"] = "Frost Reflect",
+                        ["Thorns"] = "Thorns",
+                        ["Periodic Thunderclap"] = "Thunderclap",
+                        ["Thunderclap"] = "Thunderclap",
+                        ["Mortal Strike"] = "Mortal Strike",
+                        ["Periodic Shadow Storm"] = "Shadow Storm",
+                        ["Shadow Storm"] = "Shadow Storm",
+                        ["Shadowbolt Volley"] = "Shadow Storm",
+                    },
+                    -- Texture-only observation may conflate different spells;
+                    -- do not guess an original from an unverified icon.
+                    textures = {},
+                },
             },
             -- Priority is keyed to a positively observed ORIGINAL ability,
             -- never the union of abilities gained after another Sentinel dies.
@@ -883,8 +914,8 @@ SoloCraftBots.bossModDefinitions = {
                 { rank = 8, names = { "Thorns" } },
                 { rank = 9, names = { "Thunderclap" } },
             },
-            -- Per-GUID initial distinguishing ability and inheritance
-            -- attribution still require a positive GUID-bound observation.
+            -- Four attempt-scoped marker rows are owned by mechanics.lua;
+            -- GUID-based corroboration is optional, not mandatory.
         },
         defender = {
             detect = { zone = "Ahn'Qiraj", boss = "Anubisath Defender" },
