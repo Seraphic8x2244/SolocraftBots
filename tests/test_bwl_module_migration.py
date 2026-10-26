@@ -88,7 +88,7 @@ class BWLModuleMigration(unittest.TestCase):
             'SCB_BossModsVisitScanToken(base .. "target")',
         ):
             self.assertIn(snippet, MECH)
-        self.assertIn("## Version: 0.9.94-dev", TOC)
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
 
 if __name__ == "__main__":
