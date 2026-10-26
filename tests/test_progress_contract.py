@@ -64,7 +64,7 @@ class ProgressContract(unittest.TestCase):
         self.assertIn('frame.detail:SetText(string.format("%.0f%% HP"', SOURCE)
 
     def test_lifecycle_and_bwl_compatibility(self):
-        self.assertIn("return mechanics.InitializeCounters(active.generation)", SOURCE)
+        self.assertIn("mechanics.InitializeCounters(active.generation)", SOURCE)
         self.assertIn("slot.progressKind, slot.progressState = nil, nil", SOURCE)
         self.assertIn("RenderAbilityBar(slot, now)", SOURCE)
         self.assertIn("SCB_RequestCommand(commandStep.command, commandStep.scope)", SOURCE)

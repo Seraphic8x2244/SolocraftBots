@@ -28,9 +28,16 @@ SoloCraftBots.bossModDefinitions = {
         razorgore = {
             -- Presence actions require the SCB owner's positive alive scan.
             detect = { zone = "Blackwing Lair", boss = "Razorgore the Untamed" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Razorgore the Untamed",
+            passiveModules = { { id = "eggbreaker" } },
+            combatModules = { { id = "combat",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Razorgore the Untamed", count = 1 } },
             mechanics = {
                 {
-                    id = "egg", type = "assignable_bot_action", when = "present",
+                    id = "egg", submodule = "eggbreaker",
+                    type = "assignable_bot_action", when = "present",
                     binding = "razoreggboi", label = "Assign Eggbreaker",
                     assignedLabel = "name", assignable = true,
                     icon = {
@@ -51,6 +58,7 @@ SoloCraftBots.bossModDefinitions = {
             passiveModules = { { id = "engagetimer" } },
             combatModules = { {
                 id = "burningadrenaline", retainUntilResolved = true,
+                scan = { observations = { identity = true } },
                 tracker = { id = "BurningAdrenalineTracker", kind = "aura",
                     keyPrefix = "decl:burningadrenaline_burning:",
                     actionKeyPrefix = "kick:decl:burningadrenaline_burning:" },
@@ -62,7 +70,8 @@ SoloCraftBots.bossModDefinitions = {
             mechanics = {},
             abilities = {
                 {
-                    id = "burningadrenaline", caster = "Vaelastrasz the Corrupt",
+                    id = "burningadrenaline", submodule = "burningadrenaline",
+                    caster = "Vaelastrasz the Corrupt",
                     label = "Burning Adrenaline", mode = "opportunistic",
                     -- Auras arrive independently from any observed spell cast.
                     auras = {
@@ -104,19 +113,19 @@ SoloCraftBots.bossModDefinitions = {
             },
             triggers = {
                 {
-                    event = "CHAT_MSG_MONSTER_YELL", contains = "Too late, friends",
+                    submodule = "engagetimer", event = "CHAT_MSG_MONSTER_YELL", contains = "Too late, friends",
                     effects = { { type = "timer", id = "pull",
                         label = "Vael pull (estimate)", duration = 36,
                         provenance = "predicted" } },
                 },
                 {
-                    event = "CHAT_MSG_MONSTER_YELL", contains = "I beg you, mortals",
+                    submodule = "engagetimer", event = "CHAT_MSG_MONSTER_YELL", contains = "I beg you, mortals",
                     effects = { { type = "timer", id = "pull",
                         label = "Vael pull (estimate)", duration = 26,
                         provenance = "predicted" } },
                 },
                 {
-                    event = "CHAT_MSG_MONSTER_YELL",
+                    submodule = "engagetimer", event = "CHAT_MSG_MONSTER_YELL",
                     contains = "FLAME! DEATH! DESTRUCTION!",
                     effects = { { type = "timer", id = "pull",
                         label = "Vael pull (estimate)", duration = 10,
@@ -126,10 +135,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         broodlord = {
             detect = { zone = "Blackwing Lair", boss = "Broodlord Lashlayer" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Broodlord Lashlayer",
+            passiveModules = {},
+            combatModules = { { id = "blastwave",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Broodlord Lashlayer", count = 1 } },
             mechanics = {}, triggers = {},
             abilities = {
                 {
-                    id = "blastwave", caster = "Broodlord Lashlayer",
+                    id = "blastwave", submodule = "blastwave", caster = "Broodlord Lashlayer",
                     label = "Blast Wave", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Holy_Excorcism_02",
                     repeatDelay = 20, resetOn = "finish",
@@ -146,10 +161,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         firemaw = {
             detect = { zone = "Blackwing Lair", boss = "Firemaw" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Firemaw",
+            passiveModules = {},
+            combatModules = { { id = "casts",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Firemaw", count = 1 } },
             mechanics = {}, triggers = {},
             abilities = {
                 {
-                    id = "shadowflame", caster = "Firemaw",
+                    id = "shadowflame", submodule = "casts", caster = "Firemaw",
                     label = "Shadow Flame", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
@@ -168,7 +189,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    id = "wingbuffet", caster = "Firemaw",
+                    id = "wingbuffet", submodule = "casts", caster = "Firemaw",
                     label = "Wing Buffet", mode = "opportunistic",
                     icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1,
@@ -184,10 +205,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         ebonroc = {
             detect = { zone = "Blackwing Lair", boss = "Ebonroc" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Ebonroc",
+            passiveModules = {},
+            combatModules = { { id = "casts",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Ebonroc", count = 1 } },
             mechanics = {}, triggers = {},
             abilities = {
                 {
-                    id = "shadowflame", caster = "Ebonroc",
+                    id = "shadowflame", submodule = "casts", caster = "Ebonroc",
                     label = "Shadow Flame", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
@@ -206,7 +233,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    id = "wingbuffet", caster = "Ebonroc",
+                    id = "wingbuffet", submodule = "casts", caster = "Ebonroc",
                     label = "Wing Buffet", mode = "opportunistic",
                     icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1, repeatDelay = 29,
@@ -220,10 +247,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         flamegor = {
             detect = { zone = "Blackwing Lair", boss = "Flamegor" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Flamegor",
+            passiveModules = {},
+            combatModules = { { id = "casts",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Flamegor", count = 1 } },
             mechanics = {}, triggers = {},
             abilities = {
                 {
-                    id = "shadowflame", caster = "Flamegor",
+                    id = "shadowflame", submodule = "casts", caster = "Flamegor",
                     label = "Shadow Flame", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 14, castTime = 2, repeatDelay = 14,
@@ -242,7 +275,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    id = "wingbuffet", caster = "Flamegor",
+                    id = "wingbuffet", submodule = "casts", caster = "Flamegor",
                     label = "Wing Buffet", mode = "opportunistic",
                     icon = "Interface\\Icons\\INV_Misc_MonsterScales_14",
                     firstDelay = 30, castTime = 1, repeatDelay = 29,
@@ -256,10 +289,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         chromaggus = {
             detect = { zone = "Blackwing Lair", boss = "Chromaggus" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Chromaggus",
+            passiveModules = {},
+            combatModules = { { id = "breaths",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Chromaggus", count = 1 } },
             mechanics = {}, triggers = {},
             abilityGroups = {
                 {
-                    id = "breaths", caster = "Chromaggus", label = "Breath",
+                    id = "breaths", submodule = "breaths", caster = "Chromaggus", label = "Breath",
                     mode = "opportunistic", maxVisible = 2,
                     firstSlots = { 30, 60 },
                     names = { "Corrosive Acid", "Frost Burn", "Ignite Flesh",
@@ -286,10 +325,16 @@ SoloCraftBots.bossModDefinitions = {
         },
         nefarian = {
             detect = { zone = "Blackwing Lair", boss = "Nefarian" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Nefarian",
+            passiveModules = {},
+            combatModules = { { id = "casts",
+                scan = { observations = { identity = true } } } },
+            moduleSleeper = { npcdead = { name = "Nefarian", count = 1 } },
             mechanics = {}, triggers = {},
             abilities = {
                 {
-                    id = "fear", caster = "Nefarian",
+                    id = "fear", submodule = "casts", caster = "Nefarian",
                     label = "Bellowing Roar", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Shadow_Charm",
                     firstDelay = 25, castTime = 1.5,
@@ -300,7 +345,7 @@ SoloCraftBots.bossModDefinitions = {
                     },
                 },
                 {
-                    id = "shadowflame", caster = "Nefarian",
+                    id = "shadowflame", submodule = "casts", caster = "Nefarian",
                     label = "Shadow Flame", mode = "opportunistic",
                     icon = "Interface\\Icons\\Spell_Fire_Incinerate",
                     firstDelay = 19.7, castTime = 2,

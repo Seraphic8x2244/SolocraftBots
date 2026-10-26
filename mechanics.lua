@@ -25,6 +25,9 @@ local prepSuppressed = {} -- boss death within this BWL zone session
 local BeginPostBossCleanup
 local FinishPostBossCleanup
 local moduleLifecycle = { raids = {}, current = nil }
+-- Deferred definitions below the shared scanner API; lifecycle calls retain
+-- one central observer rather than creating encounter-owned pollers.
+local BeginEncounterScanRequests, CancelEncounterScanRequests
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -94,7 +97,10 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if not active.definition.declarative then return true end
     local ok, why = mechanics.InitializeAbilities(active.generation)
     if not ok then return false, why end
-    return mechanics.InitializeCounters(active.generation)
+    local okCounters, reason = mechanics.InitializeCounters(active.generation)
+    if not okCounters then return false, reason end
+    if BeginEncounterScanRequests then BeginEncounterScanRequests(active) end
+    return true
 end
 
 function mechanics.GetEncounterState()
@@ -127,6 +133,7 @@ function mechanics.StopEncounter(reason, expectedGeneration)
     if not old or (expectedGeneration and old.generation ~= expectedGeneration) then
         return false
     end
+    if CancelEncounterScanRequests then CancelEncounterScanRequests(old.generation) end
     -- Invalidate before callbacks: a late event/timer from the previous fight
     -- must not act on a newly started fight, even if its encounter id matches.
     active = nil
@@ -2291,8 +2298,8 @@ local function RetireTrackedMemberAura(slot)
     ReleasePresentation("aura", key)
 end
 
--- Retention belongs to combat SUBMODULES. Until BWL is migrated, the
--- existing aura flag continues to opt in using the same UI/action owner.
+-- Retention belongs to combat SUBMODULES. Aura flags remain supported for
+-- unmigrated AQ40 declarations until Chunk 5.
 function moduleLifecycle.RetainsSlot(session, kind, slot)
     if kind == "aura" and slot.retainAfterBossDeath then return true end
     if not session.moduleState then return false end
@@ -3701,6 +3708,48 @@ local function ValidateModuleSpec(id, def)
             local part = { id = sub.id,
                 retainUntilResolved = sub.retainUntilResolved == true,
                 tracker = sub.tracker }
+            -- A combat submodule declares its demand; the engine subscribes
+            -- once per attempt through RequestRaidTargetObservations.
+            if sub.scan ~= nil then
+                local scan = sub.scan
+                if group ~= "combatModules" or type(scan) ~= "table"
+                    or type(scan.observations) ~= "table" then
+                    return nil, "invalid submodule scan"
+                end
+                local flags, count = {}, 0
+                for field, enabled in pairs(scan.observations) do
+                    if (field ~= "identity" and field ~= "hp"
+                        and field ~= "marker" and field ~= "buffs")
+                        or type(enabled) ~= "boolean" then
+                        return nil, "invalid scan observation"
+                    end
+                    if enabled then flags[field] = true; count = count + 1 end
+                end
+                if count == 0 then return nil, "empty submodule scan" end
+                local names = nil
+                if scan.names ~= nil then
+                    if type(scan.names) ~= "table"
+                        or table.getn(scan.names) == 0 then
+                        return nil, "invalid scan names"
+                    end
+                    names = {}
+                    for _, scanName in ipairs(scan.names) do
+                        if type(scanName) ~= "string" or scanName == "" then
+                            return nil, "invalid scan name"
+                        end
+                        table.insert(names, scanName)
+                    end
+                end
+                if scan.dispatchDeclaredHP ~= nil
+                    and type(scan.dispatchDeclaredHP) ~= "boolean" then
+                    return nil, "invalid scan HP dispatch"
+                end
+                if scan.dispatchDeclaredHP and not flags.hp then
+                    return nil, "scan HP dispatch needs HP"
+                end
+                part.scan = { observations = flags, names = names,
+                    dispatchDeclaredHP = scan.dispatchDeclaredHP == true }
+            end
             if sub.tracker then
                 local t = sub.tracker
                 if group ~= "combatModules" or type(t) ~= "table"
@@ -3863,6 +3912,9 @@ function mechanics.ObserveModuleNPCDeath(zone, name, source)
         if (state.deaths[mob] or 0) < count then allDead = false end
     end
     if allDead then
+        if CancelEncounterScanRequests then
+            CancelEncounterScanRequests(session.generation)
+        end
         BeginPostBossCleanup(true)
         mechanics.CheckModuleSleeper(session.generation)
     end
@@ -3876,6 +3928,9 @@ function mechanics.DisengageEncounter(reason, expectedGeneration)
         return false
     end
     -- A new pull reuses the loaded encounter, but never the old attempt.
+    if CancelEncounterScanRequests then
+        CancelEncounterScanRequests(session.generation)
+    end
     BeginPostBossCleanup(false)
     session.engaged = false
     local state = session.moduleState
@@ -4773,6 +4828,49 @@ function mechanics.GetRaidTargetScannerState()
         inCombat = raidTargetScanner.inCombat, requests = requests }
 end
 
+-- Connect declared combat submodules to the one shared observer. No scan
+-- happens simply because a boss has been selected before the pull.
+CancelEncounterScanRequests = function(ownerGeneration)
+    for key, request in pairs(raidTargetScanner.requests) do
+        if request.generation == ownerGeneration
+            and string.sub(key, 1, 17) == "__encounter_scan:" then
+            raidTargetScanner.requests[key] = nil
+        end
+    end
+end
+
+BeginEncounterScanRequests = function(session)
+    if not session or not session.moduleState or not session.engaged then return end
+    local zone = session.moduleState.spec.requiredZone
+    local boss = session.definition.declarative.detect.boss
+    local owner = session.generation
+    for _, sub in ipairs(session.moduleState.spec.combatModules) do
+        if sub.scan and mechanics.IsSubmoduleActive(sub.id, owner) then
+            local scan = sub.scan
+            mechanics.RequestRaidTargetObservations(
+                "__encounter_scan:" .. owner .. ":" .. sub.id, {
+                observations = scan.observations,
+                names = scan.names or { boss },
+                duration = "combat", encounter = session.id,
+                submodule = sub.id,
+                dispatchDeclaredHP = scan.dispatchDeclaredHP,
+                onObservation = function(observation)
+                    -- Revalidate when a scanner visit wakes/replaces an
+                    -- encounter. Corpse tokens are never living wakers.
+                    if not active or active.generation ~= owner
+                        or not active.engaged or active.postBossCleanup then return end
+                    if observation.dead then
+                        mechanics.ObserveBoss(zone, observation.name, "dead", "unit")
+                    elseif observation.combat then
+                        mechanics.MarkEncounterEngaged(owner)
+                    end
+                end,
+            })
+        end
+    end
+end
+
+
 -- Expire individual requests without affecting other subscribers. A combat
 -- request is bound to its encounter attempt, not simply a timer since wake.
 local function SCB_BossModsPruneScanRequests()
@@ -4805,7 +4903,9 @@ local function SCB_BossModsVisitScanToken(unit)
     local name = UnitName(unit)
     if type(name) ~= "string" or name == "" then return end
     local raid = moduleLifecycle.current
-    if raid and raid.wakers[name] then
+    local dead = (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit))
+        or (UnitIsDead and UnitIsDead(unit))
+    if raid and raid.wakers[name] and not dead then
         mechanics.WakeEncounter(bossModsZone, name,
             raidTargetScanner.inCombat or
                 (UnitAffectingCombat and UnitAffectingCombat(unit)) and true or false)

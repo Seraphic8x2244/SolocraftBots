@@ -18,7 +18,7 @@ class RaidTargetScannerContract(unittest.TestCase):
         self.assertIn("bossModsPollElapsed >= 0.4", MECH)
         self.assertIn("SCB_BossModsObserveTargets()", MECH)
         self.assertIn("engine.TickRaidTargetScanner(elapsed)", MECH)
-        self.assertIn("## Version: 0.9.92-dev", TOC)
+        self.assertIn("## Version: 0.9.93-dev", TOC)
 
     def test_five_second_discovery_for_group_and_player_combat(self):
         onset = section("local function SCB_BossModsTrackCombatState(",
