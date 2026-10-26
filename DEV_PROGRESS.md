@@ -7,6 +7,130 @@
 - **No addon code changes or other AQ40 implementation until the user explicitly approves.** This section records discussion/process only; existing runtime observations in the separate section below remain authoritative and unmodified.
 - Keep chat explanations **short and focused**; user expressly rejected lengthy summaries.
 
+## BWL + AQ40 Boss Mods redesign — discussion draft (2026-10-26)
+
+**Status:** The user's latest design direction, saved by explicit request. **Planning/documentation only; no addon code changes authorised.** Details marked as requiring validation are not established runtime facts.
+
+### 1. Module Hierarchy
+
+**RAIDMODULE → NPCMODULE → SUBMODULE**
+
+**RAIDMODULE**
+- Activates automatically on entering its raid zone.
+- Defines recognised NPCs using \`moduleWaker\`.
+- Watches the player's target for a \`moduleWaker\` NPC.
+- Requests the central scanner's automatic **5-second raid-target scan on entering combat** in a recognised raid zone.
+- A recognised \`moduleWaker\` NPC seen through either player's target or the 5-second raid-target scan loads the corresponding NPCMODULE. No separate \`forceWake\` is required.
+
+**NPCMODULE**
+- Loads when its \`moduleWaker\` is observed, independently of whether the player is in combat.
+- Defines \`moduleSleeper\` to specify when the module fully unloads.
+- Contains \`passiveModules\` that can operate while loaded **out of combat**, and may continue in combat.
+- Contains \`combatModules\` that activate when combat begins and deactivate when combat ends.
+- Leaving combat **does not automatically unload** the NPCMODULE; its \`moduleSleeper\` controls that.
+
+Example declarations (design notation, not implemented Lua):
+
+\`\`\`text
+RAIDMODULE: BWL
+  moduleWaker:
+    Razorgore
+    Vaelastrasz
+    Broodlord
+
+  NPCMODULE: Razorgore
+    moduleSleeper: npcdead("Razorgore", count:1)
+    passiveModules: Eggbreaker
+    combatModules: {}
+
+  NPCMODULE: Vaelastrasz
+    moduleSleeper: npcdead("Vaelastrasz", count:1)
+    passiveModules: EngageTimer
+    combatModules: BurningAdrenaline
+
+  NPCMODULE: Broodlord
+    moduleSleeper: npcdead("Broodlord", count:1)
+    passiveModules: {}
+    combatModules: BlastWave
+
+RAIDMODULE: AQ40
+  moduleWaker:
+    Anubisath Sentinel
+    Skeram
+    Yauj
+    Kri
+    ...
+
+  NPCMODULE: Anubisath Sentinel
+    moduleSleeper: npcdead("Anubisath Sentinel", count:4)
+    passiveModules: {}
+    combatModules: AuraIdentification, HPTracker, AbilityInheritance
+\`\`\`
+
+### 2. Central Target Scanner
+
+- **Single shared scanner** supplies target information to all BWL/AQ40 modules and submodules, rather than duplicated per-encounter polling.
+- Scans **one raid member's target every 25ms**. With 40 raid members, one complete sweep takes approximately **1 second**; a 5-second scan allows approximately five sweeps.
+- Runs automatically for **the first 5 seconds on entering combat in a recognised raid zone** to discover \`moduleWaker\` NPCs.
+- Also runs whenever a loaded module/submodule requests data.
+- Each request specifies **data required** (e.g. NPC/target identity, HP, **buffs**, not debuffs when identifying Sentinel abilities) and **duration** (fixed window or until combat ends).
+- Concurrent requests share the same cycle. A 5-second discovery request can expire while longer-running HP requests keep scanning.
+- When all requests end, the shared scanner switches off.
+- **Retire the current continuous 0.4-second raid-wide polling ONLY AFTER the new design is fully implemented and replaces all its existing functionality.** Do not remove the old behaviour merely because a design is agreed or partly coded.
+
+### 3. BWL + AQ40 Integration / Lifecycle
+
+1. Enter a recognised raid zone → RAIDMODULE activates and looks for player-target \`moduleWaker\` NPCs.
+2. Deliberately target a recognised NPC → its NPCMODULE loads; its passive modules can operate before combat.
+3. Enter combat → loaded NPCMODULE combat submodules activate and request scanner data as needed.
+4. If **no NPCMODULE was deliberately loaded**, the raid zone's automatic **5-second combat scan** can discover a \`moduleWaker\` in a raid member's target. Its NPCMODULE then loads; because combat is underway, combat submodules activate.
+5. Leave combat → combat submodules deactivate and end their combat-duration scanner requests. Passive modules may remain operational.
+6. Meet the NPCMODULE's explicit \`moduleSleeper\` condition (e.g. named NPC death count) → module unloads and its submodules stop.
+
+Submodule-specific scanner requests and lifecycle handling must be defined as each encounter is migrated, preserving existing functionality.
+
+### 4. Anubisath Sentinel NPCMODULE
+
+**Wake and combat start**
+- Target an Anubisath Sentinel, or discover one through the raid's initial 5-second combat scan → load the Sentinel NPCMODULE.
+- On combat activation, establish **four Sentinel HP-bar slots** and activate its combat submodules.
+
+**Initial buff identification — first 5 seconds**
+- Request **buff** inspection from the central scanner for raid members' targeted Sentinels, for **5 seconds**.
+- Use observed distinguishing buffs (for example, **Thorns, Shadow Storm, Thunderclap**) to identify Sentinels.
+- Assign a **unique raid marker** to each identified Sentinel.
+- Maintain an inventory keyed by raid marker: **Raid Marker → Sentinel → Known Abilities**.
+- Discovering all four within five seconds is a goal, **not a guaranteed result**. Treatment of unobserved mobs/abilities remains to be validated.
+
+**Continuous HP tracking**
+- The HP submodule continues requesting raid-target HP data **throughout combat**, including after the initial five-second buff scan expires.
+- Use observed **raid markers** to associate HP readings with the four distinct Sentinel bars (without relying on native GUIDs).
+- If a marked Sentinel is not currently observable through raid-member targets, retain its last known HP until observed again.
+- Intended HP bars are individually targetable; reliable unit-token reacquisition and targeting must be validated on the native client.
+
+**Death inference and ability inheritance**
+- Track **which marked Sentinel is approaching death**, with **1% HP** discussed as the proposed presumed-death threshold.
+- Associate that marker with the abilities currently recorded against it.
+- A generic "Anubisath Sentinel dies" message may corroborate a death, but **does not identify which marker died**. Marker attribution from HP proximity remains inference, not certainty.
+- When a Sentinel is presumed dead, infer its known abilities pass to the surviving marked Sentinels, updating their ability inventories.
+- Marking, death attribution, and inherited-ability accuracy require actual encounter validation.
+
+**Sleep and testing**
+- \`moduleSleeper: npcdead("Anubisath Sentinel", count:4)\` — unload after **four Sentinel deaths in the encounter**, not simply on leaving combat.
+- User can repeatedly reset/test the pack using a character without an AQ40 lockout.
+- This is the first focused practical validation case for the shared scanner and lifecycle architecture.
+
+### 5. Implementation Sequence (user-defined)
+
+1. Define BWL/AQ40 RAIDMODULE, NPCMODULE and SUBMODULE structures and responsibilities.
+2. Build the central target scanner.
+3. Integrate BWL/AQ40 modules and submodules with activation, lifecycle and scanner data.
+4. Rebuild/revise and test the Anubisath Sentinel module.
+
+**Open validation questions:** exact combat activator semantics; reliable marking, individual target retrieval and death attribution; inferred ability inheritance; unknown/untargeted Sentinels; preservation of all old polling uses during migration. These are questions, **not new requirements or proven defects**.
+
+---
+
 ## AQ40 module-by-module repair plans — agreed decisions only (2026-10-25)
 ### Agreed work order — BWL and AQ40 (user-defined, 2026-10-25)
 1. Define the **BWL and AQ40 modules and submodules** to make their responsibilities clear.
@@ -18,7 +142,7 @@ These are the user-selected sequence and goals, **not approval to edit addon cod
 
 - Only document **repair behaviour/implementation decisions after explicit user approval**. Do **not** record assistant proposals, investigations, suspected diagnoses, or unapproved technical details here, even labelled "unapproved". Preserve the user's actual runtime reports separately below.
 - **Review order:** begin with **Anubisath Sentinels** (first module in raid progression). Review one module at a time against pinned Elesion BigWigs and the existing SCB implementation. No addon code changes until explicitly authorised.
-- **Anubisath Sentinels:** repair approach **not yet agreed**; no fixes approved or implemented. Use the separate user runtime record below when discussing it. Original/inherited ability attribution remains user-deferred.
+- **Anubisath Sentinels:** the proposed scanner/marker-based redesign is documented above, including inferred ability inheritance. No code changes approved or implemented; in-game reliability remains unverified. The prior deferral of an approach to inherited abilities is superseded by this discussion draft.
 - **Raid-wide target polling retirement (explicit user requirement):** the current raid-wide 0.4-second target scan is marked for retirement **ONLY AFTER it has been fully replaced**, not merely when a replacement design is agreed or partly implemented. Preserve the existing scan and its functionality until the replacement actually covers all its uses. The user considers unconditional scanning throughout a raid wasteful. The user has selected a central scanner as the high-level replacement direction; module/submodule activation and scanner details remain to be worked out.
 
 ## AQ40 user runtime findings and explicit change requests — 2026-10-25 (0.9.89-dev)
