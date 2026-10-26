@@ -23,15 +23,18 @@ class AQ40MigrationContract(unittest.TestCase):
                 for mark in ("requiredZone = \"Ahn'Qiraj\"", "moduleWaker =",
                              "passiveModules = {}", "combatModules =",
                              'id = "combat"', "scan = { observations = {",
-                             "dispatchDeclaredHP = true"):
+                             "dispatchDeclaredHP ="):
                     self.assertIn(mark, part)
 
-    def test_group_sleepers_and_sentinel_deferred_scope(self):
+    def test_group_sleepers_and_sentinel_full_scope(self):
         for key in ("bugtrio", "twins"):
             part = section(key)
             self.assertIn("moduleSleeper = { npcdead =", part)
             self.assertGreaterEqual(part.count("count = 1"), 2)
         self.assertIn('name = "Anubisath Sentinel", count = 4', section("sentinels"))
+        self.assertIn('dispatchDeclaredHP = false', section("sentinels"))
+        self.assertIn('marker = true', section("sentinels"))
+        self.assertIn('buffs = true', section("sentinels"))
         self.assertIn("endOnBossDeath = false", section("skeram"))
         self.assertIn("endOnBossDeath = false", section("sentinels"))
         self.assertIn('name = "C\'Thun", count = 1', section("cthun"))
