@@ -4647,6 +4647,277 @@ local bossModsEvents = {}
 local bossModsGroupCombatGeneration = nil
 local bossModsCalmSamples = 0
 
+-- Chunk 3: one demand-driven observer, serviced by the existing Boss Mods
+-- OnUpdate. The older broad 0.4-second path deliberately remains until Chunk 5.
+-- A request belongs to the active zone, and optionally to one encounter attempt.
+local raidTargetScanner = {
+    requests = {}, index = 0, elapsed = 0, sideElapsed = 0,
+    inCombat = false, calm = 0,
+}
+
+-- Request format:
+-- { observations={identity=true, marker=true, hp=true, buffs=true},
+--   duration="fixed", seconds=5, names={"NPC"}, encounter="raid.boss",
+--   submodule="tracker", onObservation=function(snapshot) ... end,
+--   dispatchDeclaredHP=true }
+-- duration="combat" instead expires on group disengagement / attempt end.
+-- A callback receives a positive, immediately usable token snapshot. It must
+-- not retain a token as a stable NPC identity or mutate the shared snapshot.
+function mechanics.RequestRaidTargetObservations(key, options)
+    if type(key) ~= "string" or key == "" or type(options) ~= "table"
+        or not bossModsZoneActive or not moduleLifecycle.current then
+        return false, "scanner unavailable"
+    end
+    local flags, count = {}, 0
+    if type(options.observations) ~= "table" then
+        return false, "missing observations"
+    end
+    for kind, enabled in pairs(options.observations) do
+        if kind ~= "identity" and kind ~= "marker"
+            and kind ~= "hp" and kind ~= "buffs" then
+            return false, "invalid observation"
+        end
+        if type(enabled) ~= "boolean" then
+            return false, "invalid observation flag"
+        end
+        if enabled then flags[kind] = true; count = count + 1 end
+    end
+    if count == 0 then return false, "empty observations" end
+    if options.duration ~= "fixed" and options.duration ~= "combat" then
+        return false, "invalid scan duration"
+    end
+    if options.duration == "fixed"
+        and (type(options.seconds) ~= "number" or options.seconds <= 0
+            or options.seconds ~= options.seconds or options.seconds == math.huge) then
+        return false, "invalid scan window"
+    end
+    if options.duration == "combat" and not raidTargetScanner.inCombat
+        and not (active and active.engaged) then
+        return false, "combat not active"
+    end
+    if options.onObservation ~= nil and type(options.onObservation) ~= "function" then
+        return false, "invalid scan consumer"
+    end
+    if options.dispatchDeclaredHP ~= nil
+        and type(options.dispatchDeclaredHP) ~= "boolean" then
+        return false, "invalid hp dispatch"
+    end
+    if options.dispatchDeclaredHP and not flags.hp then
+        return false, "hp observation required"
+    end
+    local names = nil
+    if options.names ~= nil then
+        if type(options.names) ~= "table" or table.getn(options.names) == 0 then
+            return false, "invalid scan names"
+        end
+        names = {}
+        for _, name in ipairs(options.names) do
+            if type(name) ~= "string" or name == "" then
+                return false, "invalid scan name"
+            end
+            names[name] = true
+        end
+    end
+    local owner, attempt, token
+    if options.encounter ~= nil then
+        if type(options.encounter) ~= "string" or not active
+            or active.id ~= options.encounter then
+            return false, "encounter not loaded"
+        end
+        if options.submodule ~= nil
+            and (type(options.submodule) ~= "string"
+                or not mechanics.IsSubmoduleActive(options.submodule)) then
+            return false, "submodule inactive"
+        end
+        owner = active.generation
+        attempt = active.moduleState and active.moduleState.attempt or 0
+        token = options.encounter
+    elseif options.submodule ~= nil then
+        return false, "submodule needs encounter"
+    end
+    raidTargetScanner.requests[key] = {
+        zone = bossModsZone, observations = flags, names = names,
+        duration = options.duration,
+        expiresAt = options.duration == "fixed" and (Now() + options.seconds) or nil,
+        encounter = token, generation = owner, attempt = attempt,
+        submodule = options.submodule, onObservation = options.onObservation,
+        dispatchDeclaredHP = options.dispatchDeclaredHP == true,
+    }
+    return true
+end
+
+function mechanics.CancelRaidTargetObservations(key)
+    if raidTargetScanner.requests[key] then
+        raidTargetScanner.requests[key] = nil
+        return true
+    end
+    return false
+end
+
+function mechanics.ClearRaidTargetObservations()
+    raidTargetScanner.requests = {}
+    raidTargetScanner.index = 0
+    raidTargetScanner.elapsed = 0
+    raidTargetScanner.sideElapsed = 0
+    raidTargetScanner.inCombat = false
+    raidTargetScanner.calm = 0
+end
+
+function mechanics.GetRaidTargetScannerState()
+    local requests = {}
+    for key in pairs(raidTargetScanner.requests) do
+        table.insert(requests, key)
+    end
+    table.sort(requests)
+    return { running = table.getn(requests) > 0,
+        inCombat = raidTargetScanner.inCombat, requests = requests }
+end
+
+-- Expire individual requests without affecting other subscribers. A combat
+-- request is bound to its encounter attempt, not simply a timer since wake.
+local function SCB_BossModsPruneScanRequests()
+    local now = Now()
+    for key, request in pairs(raidTargetScanner.requests) do
+        local stale = request.zone ~= bossModsZone
+            or (request.expiresAt and now >= request.expiresAt)
+            or (request.duration == "combat" and not raidTargetScanner.inCombat
+                and not (active and active.engaged))
+        if request.encounter then
+            stale = stale or not active or active.id ~= request.encounter
+                or active.generation ~= request.generation
+                or (active.moduleState and
+                    active.moduleState.attempt ~= request.attempt)
+                or (request.submodule
+                    and not mechanics.IsSubmoduleActive(request.submodule,
+                        request.generation))
+            if request.duration == "combat" and not active.engaged then
+                stale = true
+            end
+        end
+        if stale then raidTargetScanner.requests[key] = nil end
+    end
+end
+
+-- One token is inspected once per visit regardless of consumer count.
+-- Build each requested field once, then fan out the same observation.
+local function SCB_BossModsVisitScanToken(unit)
+    if not UnitExists or not UnitName or not UnitExists(unit) then return end
+    local name = UnitName(unit)
+    if type(name) ~= "string" or name == "" then return end
+    local raid = moduleLifecycle.current
+    if raid and raid.wakers[name] then
+        mechanics.WakeEncounter(bossModsZone, name,
+            raidTargetScanner.inCombat or
+                (UnitAffectingCombat and UnitAffectingCombat(unit)) and true or false)
+    end
+    local marker, hp, buffs, hpDispatch = false, false, false, false
+    local selected = {}
+    for key, request in pairs(raidTargetScanner.requests) do
+        if not request.names or request.names[name] then
+            table.insert(selected, { key = key, request = request })
+            if request.observations.marker then marker = true end
+            if request.observations.hp then hp = true end
+            if request.observations.buffs then buffs = true end
+            if request.dispatchDeclaredHP then hpDispatch = true end
+        end
+    end
+    if table.getn(selected) == 0 then return end
+    local snapshot = { unit = unit, name = name,
+        dead = (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit))
+            or (UnitIsDead and UnitIsDead(unit)) or false,
+        combat = UnitAffectingCombat and UnitAffectingCombat(unit) and true or false,
+    }
+    if marker and GetRaidTargetIndex then
+        snapshot.marker = GetRaidTargetIndex(unit)
+    end
+    if hp and UnitHealth and UnitHealthMax then
+        snapshot.hp = UnitHealth(unit)
+        snapshot.hpMax = UnitHealthMax(unit)
+    end
+    -- Native 1.12 UnitBuff exposes buff textures. Enhanced clients may expose
+    -- more, but no spell-name/ID inference is fabricated from a texture.
+    if buffs and UnitBuff then
+        snapshot.buffs = {}
+        for i = 1, 32 do
+            local texture = UnitBuff(unit, i)
+            if not texture then break end
+            table.insert(snapshot.buffs, texture)
+        end
+    end
+    if hpDispatch and active and active.engaged then
+        mechanics.ObserveDeclaredUnits({ unit }, active.generation)
+    end
+    for _, subscriber in ipairs(selected) do
+        if raidTargetScanner.requests[subscriber.key] == subscriber.request
+            and subscriber.request.onObservation then
+            subscriber.request.onObservation(snapshot)
+        end
+    end
+end
+
+function mechanics.TickRaidTargetScanner(elapsed)
+    SCB_BossModsPruneScanRequests()
+    if not bossModsZoneActive or not next(raidTargetScanner.requests) then
+        raidTargetScanner.elapsed = 0
+        raidTargetScanner.sideElapsed = 0
+        return
+    end
+    -- Approximately one raid-member target every 25ms, subject to client
+    -- frame rate. No second frame, ticker or per-request unit traversal.
+    raidTargetScanner.elapsed = raidTargetScanner.elapsed + elapsed
+    local n = GetNumRaidMembers and GetNumRaidMembers() or 0
+    local party = 0
+    if n == 0 then
+        party = GetNumPartyMembers and GetNumPartyMembers() or 0
+    end
+    while raidTargetScanner.elapsed >= 0.025 do
+        raidTargetScanner.elapsed = raidTargetScanner.elapsed - 0.025
+        if n > 0 or party > 0 then
+            local total = n > 0 and n or party
+            raidTargetScanner.index = math.mod(raidTargetScanner.index, total) + 1
+            local base = (n > 0 and "raid" or "party")
+                .. raidTargetScanner.index
+            SCB_BossModsVisitScanToken(base .. "target")
+            SCB_BossModsVisitScanToken(base .. "targettarget")
+        end
+    end
+    -- Preserve the non-raid target/mouseover/target-of-target paths for new
+    -- consumers too. The legacy poll retains its full set until Chunk 5.
+    raidTargetScanner.sideElapsed = raidTargetScanner.sideElapsed + elapsed
+    if raidTargetScanner.sideElapsed >= 0.20 then
+        raidTargetScanner.sideElapsed = math.mod(raidTargetScanner.sideElapsed, 0.20)
+        SCB_BossModsVisitScanToken("target")
+        SCB_BossModsVisitScanToken("mouseover")
+        SCB_BossModsVisitScanToken("targettarget")
+    end
+end
+
+-- Combat onset must be recognised even when the player never targets the
+-- boss. Group combat edges come from the existing group observation path;
+-- PLAYER_REGEN_DISABLED can start the same discovery immediately.
+local function SCB_BossModsTrackCombatState(inCombat)
+    if inCombat == true then
+        raidTargetScanner.calm = 0
+        if not raidTargetScanner.inCombat and bossModsZoneActive then
+            raidTargetScanner.inCombat = true
+            mechanics.RequestRaidTargetObservations("__combat_discovery", {
+                observations = { identity = true },
+                duration = "fixed", seconds = 5,
+            })
+        end
+    elseif inCombat == false then
+        raidTargetScanner.calm = raidTargetScanner.calm + 1
+        if raidTargetScanner.calm >= 2 then
+            raidTargetScanner.inCombat = false
+            for key, request in pairs(raidTargetScanner.requests) do
+                if request.duration == "combat" then
+                    raidTargetScanner.requests[key] = nil
+                end
+            end
+        end
+    end
+end
+
 local function SCB_BossModsInitialize()
     local engine = SCB.mechanics
     local ok, why, eventNames, i, zoneName
@@ -4687,6 +4958,7 @@ local function SCB_BossModsRefreshZone()
         end
         engine.Reset("zone exit")
     end
+    engine.ClearRaidTargetObservations()
     bossModsZone = enabled and zone or nil
     bossModsZoneActive = enabled
     if enabled then
@@ -4742,8 +5014,10 @@ end
 -- player's target. A missing observation is never a death confirmation.
 local function SCB_BossModsObserveTargets()
     local engine, names, lookup, state, selected, observed, dead
-    local tokens, name, token, i
+    local tokens, name, token, i, groupCombat
     if not bossModsZoneActive or not SCB.mechanics then return end
+    groupCombat = SCB_BossModsGroupCombat()
+    SCB_BossModsTrackCombatState(groupCombat)
     engine = SCB.mechanics
     names = engine.GetDetectableBosses(bossModsZone)
     lookup = {}
@@ -4788,7 +5062,6 @@ local function SCB_BossModsObserveTargets()
     -- from missing targets, death of one player or another boss's presence.
     -- Positive boss-in-combat evidence also vetoes the reset.
     if state and state.engaged and not state.postBossCleanup then
-        local groupCombat = SCB_BossModsGroupCombat()
         local bossObserved = observed[state.boss]
         if groupCombat then
             bossModsGroupCombatGeneration = state.generation
@@ -4892,6 +5165,7 @@ local function SCB_BossModsOnUpdate(elapsed)
         if bossModsZoneActive then SCB_BossModsObserveTargets() end
     end
     if not bossModsZoneActive then return end
+    engine.TickRaidTargetScanner(elapsed)
     if not engine.GetEncounterState() then return end
     -- Existing SCB owner: 10 Hz state/timer tick and 30 Hz presentation tick.
     bossModsElapsed = bossModsElapsed + elapsed
@@ -4914,6 +5188,7 @@ bossModsFrame:RegisterEvent("ADDON_LOADED")
 bossModsFrame:RegisterEvent("PLAYER_LOGIN")
 bossModsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bossModsFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+bossModsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 bossModsFrame:RegisterEvent("ZONE_CHANGED")
 bossModsFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 bossModsFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -4930,6 +5205,8 @@ bossModsFrame:SetScript("OnEvent", function()
         SCB_BossModsRefreshZone()
     elseif event == "PLAYER_TARGET_CHANGED" then
         SCB_BossModsPlayerTargetChanged()
+    elseif event == "PLAYER_REGEN_DISABLED" and bossModsZoneActive then
+        SCB_BossModsTrackCombatState(true)
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED"
         or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         SCB_BossModsRefreshZone()
