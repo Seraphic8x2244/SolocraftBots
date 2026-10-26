@@ -806,6 +806,28 @@ local function CreatePresentationFrame(kind, group)
                 and UnitIsDeadOrGhost and not UnitIsDeadOrGhost(unit)
                 and TargetUnit then TargetUnit(unit) end
         end)
+        -- Long inherited-ability lists remain legible on hover even if the
+        -- tracker row is too narrow. This is presentation, not a new scanner.
+        frame:SetScript("OnEnter", function()
+            local slot = frame.scbSlot
+            local abilities = slot and slot.sentinelAbilities
+            if not abilities or not GameTooltip then return end
+            GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(slot.label or "Anubisath Sentinel")
+            GameTooltip:AddLine("Original: " .. (abilities.original or "unidentified"), 1, 1, 1)
+            local inherited = {}
+            for spell in pairs(abilities.inherited) do
+                table.insert(inherited, spell)
+            end
+            table.sort(inherited)
+            GameTooltip:AddLine("Inherited: " ..
+                (table.getn(inherited) > 0 and table.concat(inherited, ", ") or "none observed"),
+                0.75, 0.9, 1, true)
+            GameTooltip:Show()
+        end)
+        frame:SetScript("OnLeave", function()
+            if GameTooltip then GameTooltip:Hide() end
+        end)
     end
     if kind == "action" then
         local overlay = frame:CreateTexture(nil, "OVERLAY")
@@ -1065,6 +1087,7 @@ local function AcquirePresentation(kind, key)
     slot.frame.label:Show()
     slot.frame.detail:Show()
     slot.frame.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    slot.frame.icon:SetTexCoord(0, 1, 0, 1)
     slot.frame.icon:Show()
     if slot.frame.scbUseButton then slot.frame.scbUseButton:Hide() end
     if slot.frame.scbAttackAllButton then slot.frame.scbAttackAllButton:Hide() end
@@ -1563,6 +1586,9 @@ end
 local function SentinelRecomputeInheritance(state)
     for _, entry in ipairs(state.entries) do
         entry.abilities.inherited = {}
+        for ability in pairs(entry.abilities.inheritedObserved) do
+            entry.abilities.inherited[ability] = true
+        end
         if not entry.dead then
             for _, fallen in ipairs(state.entries) do
                 if fallen.dead and fallen.abilities.original then
@@ -1592,7 +1618,12 @@ local function SentinelMarkDead(state, entry, corpse)
     if not entry then return end
     if entry.dead and not corpse then return end
     entry.dead = true
-    if corpse then entry.corpse = true end
+    if corpse then
+        entry.corpse = true
+        entry.deathEvidence = "marked corpse"
+    else
+        entry.deathEvidence = "near-death + chat message"
+    end
     entry.slot.dead, entry.slot.unit = true, nil
     SentinelRecomputeInheritance(state)
 end
@@ -1603,11 +1634,12 @@ function mechanics.BeginSentinelAttempt(expectedGeneration)
         then return false end
     local state = { generation = active.generation,
         attempt = active.moduleState.attempt,
+        identifyUntil = Now() + 5,
         entries = {}, byMark = {}, byGuid = {}, messages = 0 }
     active.sentinelState = state
     for i = 1, 4 do
         local entry = { index = i, abilities = {
-            observed = {}, inherited = {} } }
+            observed = {}, inherited = {}, inheritedObserved = {} } }
         local slot = AcquirePresentation("hp", "sentinel:slot:" .. i)
         if not slot then return false end
         entry.slot = slot
@@ -1700,6 +1732,7 @@ local function SentinelRecordBuffs(state, entry, snapshot)
                 and not entry.abilities.original then
                 entry.abilities.original = ability
                 entry.abilities.priority = SentinelPriority(ability)
+                entry.abilities.initialWindow = Now() <= state.identifyUntil
             end
         end
     end
@@ -1727,6 +1760,13 @@ function mechanics.ObserveSentinelSnapshot(snapshot, expectedGeneration)
     slot.sentinelUnseen = false
     slot.label = "Sentinel " .. entry.index
         .. (entry.mark and " [mark " .. entry.mark .. "]" or " [GUID]")
+    if entry.mark then
+        local col = math.mod(entry.mark - 1, 4)
+        local row = math.floor((entry.mark - 1) / 4)
+        slot.frame.icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+        slot.frame.icon:SetTexCoord(col / 4, (col + 1) / 4,
+            row / 2, (row + 1) / 2)
+    end
     if type(snapshot.hp) == "number" and type(snapshot.hpMax) == "number"
         and snapshot.hpMax > 0 then
         slot.health, slot.maximum = snapshot.hp, snapshot.hpMax
@@ -1779,7 +1819,10 @@ function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGen
     end
     entry.abilities.observed[ability] = true
     SentinelRecomputeInheritance(state)
-    if provenance == "inherited" then entry.abilities.inherited[ability] = true end
+    if provenance == "inherited" then
+        entry.abilities.inheritedObserved[ability] = true
+        entry.abilities.inherited[ability] = true
+    end
     LayoutPresentation("tracker")
     return true
 end
@@ -1800,7 +1843,9 @@ function mechanics.GetSentinelAbilities(unit, expectedGeneration)
     table.sort(inherited)
     return { marker = entry.mark, guid = entry.guid,
         original = entry.abilities.original, priority = entry.abilities.priority,
-        observed = observed, inherited = inherited, dead = entry.dead == true }
+        observed = observed, inherited = inherited, dead = entry.dead == true,
+        initialWindow = entry.abilities.initialWindow == true,
+        deathEvidence = entry.deathEvidence }
 end
 
 -- Vanilla tooltip names supplement optional enhanced UnitBuff spell IDs.
@@ -1814,9 +1859,14 @@ function mechanics.ReadSentinelBuffName(unit, index)
     local tip = mechanics.sentinelBuffTooltip
     if not tip.SetUnitBuff then return nil end
     tip:ClearLines()
-    if not pcall(tip.SetUnitBuff, tip, unit, index) then return nil end
+    if not pcall(tip.SetUnitBuff, tip, unit, index) then
+        tip:Hide()
+        return nil
+    end
     local line = getglobal and getglobal("SCB_SentinelBuffTooltipTextLeft1")
-    return line and line.GetText and line:GetText() or nil
+    local name = line and line.GetText and line:GetText() or nil
+    tip:Hide()
+    return name
 end
 
 -- Defender pair selection is recorded only against an observed individual
