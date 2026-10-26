@@ -1539,78 +1539,268 @@ function mechanics.ObserveDeclaredUnits(tokens, expectedGeneration)
     return true
 end
 
--- Positive GUID-bound Sentinel observations. Source callers must identify a
--- specific live unit token; text-only combat events are NOT adequate evidence.
--- Original identity cannot be inferred from abilities inherited later.
+-- Four Sentinel entries are encounter-ATTEMPT state; marker identity has a
+-- native 1.12 path. Optional GUIDs help corroborate, never gate marker rows.
+local function SentinelRules()
+    local d = SoloCraftBots.bossModDefinitions
+    return d and d.aq40 and d.aq40.sentinels
+end
+
 local function SentinelPriority(name)
-    local declaration = SoloCraftBots.bossModDefinitions
-    local group = declaration and declaration.aq40 and declaration.aq40.sentinels
-    for _, tier in ipairs(group and group.initialAbilityPriority or {}) do
+    local rules = SentinelRules()
+    for _, tier in ipairs(rules and rules.initialAbilityPriority or {}) do
         for _, candidate in ipairs(tier.names or {}) do
             if candidate == name then return tier.rank end
         end
     end
-    return nil
 end
 
-function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGeneration)
+local function SentinelState()
+    if active and active.id == "aq40.sentinels" and active.engaged
+        and not active.postBossCleanup then return active.sentinelState end
+end
+
+local function SentinelRecomputeInheritance(state)
+    for _, entry in ipairs(state.entries) do
+        entry.abilities.inherited = {}
+        if not entry.dead then
+            for _, fallen in ipairs(state.entries) do
+                if fallen.dead and fallen.abilities.original then
+                    entry.abilities.inherited[fallen.abilities.original] = true
+                end
+            end
+        end
+    end
+end
+
+local function SentinelTotalDeaths(state)
+    local corpses = 0
+    for _, entry in ipairs(state.entries) do
+        if entry.corpse then corpses = corpses + 1 end
+    end
+    -- A corpse and an anonymous death message can be the same kill.
+    return math.min(4, math.max(corpses, state.messages))
+end
+
+local function SentinelSyncDeaths(state)
+    if not active or active.sentinelState ~= state then return end
+    active.moduleState.deaths["Anubisath Sentinel"] = SentinelTotalDeaths(state)
+    mechanics.CheckModuleSleeper(active.generation)
+end
+
+local function SentinelMarkDead(state, entry, corpse)
+    if not entry then return end
+    if entry.dead and not corpse then return end
+    entry.dead = true
+    if corpse then entry.corpse = true end
+    entry.slot.dead, entry.slot.unit = true, nil
+    SentinelRecomputeInheritance(state)
+end
+
+function mechanics.BeginSentinelAttempt(expectedGeneration)
     if not active or active.id ~= "aq40.sentinels" or not active.engaged
-        or active.postBossCleanup
         or (expectedGeneration and active.generation ~= expectedGeneration)
-        or (provenance ~= "original" and provenance ~= "inherited")
+        then return false end
+    local state = { generation = active.generation,
+        attempt = active.moduleState.attempt,
+        entries = {}, byMark = {}, byGuid = {}, messages = 0 }
+    active.sentinelState = state
+    for i = 1, 4 do
+        local entry = { index = i, abilities = {
+            observed = {}, inherited = {} } }
+        local slot = AcquirePresentation("hp", "sentinel:slot:" .. i)
+        if not slot then return false end
+        entry.slot = slot
+        slot.label = "Sentinel " .. i .. " (unmarked)"
+        slot.health, slot.maximum = nil, nil
+        slot.sentinelUnseen = true
+        slot.sentinelAbilities = entry.abilities
+        slot.clickTarget, slot.hideOnDeath = true, false
+        table.insert(state.entries, entry)
+    end
+    LayoutPresentation("tracker")
+    return true
+end
+
+-- Assign free raid marks when permitted; otherwise observe existing marks or
+-- optional individual GUIDs. A changing raidNtarget token is NEVER an identity.
+local function SentinelEntryFor(state, snapshot)
+    local mark = snapshot.marker
+    local guid = mechanics.NPCInstanceID(snapshot.unit)
+    local entry = mark and state.byMark[mark] or nil
+    if entry and guid and entry.guid and entry.guid ~= guid then return nil end
+    if not entry and guid then entry = state.byGuid[guid] end
+    if entry and entry.dead and not snapshot.dead then return nil end
+    if not entry and not mark and not snapshot.dead
+        and GetRaidTargetIndex and SetRaidTarget
+        and (not GetNumRaidMembers or GetNumRaidMembers() == 0
+            or (IsRaidLeader and IsRaidLeader())
+            or (IsRaidOfficer and IsRaidOfficer())) then
+        local rules = SentinelRules()
+        local preferred = rules and rules.sentinelTracking
+            and rules.sentinelTracking.preferredMarkers or { 8, 7, 6, 5 }
+        for _, candidate in ipairs(preferred) do
+            if not state.byMark[candidate] then
+                SetRaidTarget(snapshot.unit, candidate)
+                if GetRaidTargetIndex(snapshot.unit) == candidate then
+                    mark = candidate
+                    break
+                end
+            end
+        end
+    end
+    if not entry and not mark and not guid then return nil end
+    if not entry then
+        for _, candidate in ipairs(state.entries) do
+            if not candidate.mark and not candidate.guid and not candidate.dead then
+                entry = candidate
+                break
+            end
+        end
+    end
+    if not entry then return nil end
+    if mark and state.byMark[mark] and state.byMark[mark] ~= entry then return nil end
+    if guid and state.byGuid[guid] and state.byGuid[guid] ~= entry then return nil end
+    if entry.mark and mark and entry.mark ~= mark then
+        -- Only a corroborated GUID permits marker reassignment.
+        if not guid or entry.guid ~= guid then return nil end
+        state.byMark[entry.mark] = nil
+    end
+    if mark then entry.mark = mark; state.byMark[mark] = entry end
+    if guid then entry.guid = guid; state.byGuid[guid] = entry end
+    return entry
+end
+
+local function SentinelAbilityFromBuff(buff)
+    if type(buff) ~= "table" then return nil end
+    local rules = SentinelRules()
+    local map = rules and rules.sentinelTracking
+        and rules.sentinelTracking.buffIdentification
+    if not map then return nil end
+    if buff.spellId and map.spellIds[buff.spellId] then
+        return map.spellIds[buff.spellId]
+    end
+    if buff.name and map.names[buff.name] then
+        return map.names[buff.name]
+    end
+    if buff.texture and map.textures[buff.texture] then
+        return map.textures[buff.texture]
+    end
+end
+
+local function SentinelRecordBuffs(state, entry, snapshot)
+    for _, buff in ipairs(snapshot.buffs or {}) do
+        local ability = SentinelAbilityFromBuff(buff)
+        if ability then
+            entry.abilities.observed[ability] = true
+            -- Originals may be found after the initial five-second window
+            -- only if no packmate has died. Never make inherited buffs
+            -- retroactively change an original or its kill priority.
+            if state.messages == 0 and SentinelTotalDeaths(state) == 0
+                and not entry.abilities.original then
+                entry.abilities.original = ability
+                entry.abilities.priority = SentinelPriority(ability)
+            end
+        end
+    end
+    SentinelRecomputeInheritance(state)
+end
+
+function mechanics.ObserveSentinelSnapshot(snapshot, expectedGeneration)
+    local state = SentinelState()
+    if not state or (expectedGeneration and state.generation ~= expectedGeneration)
+        or active.moduleState.attempt ~= state.attempt
+        or type(snapshot) ~= "table"
+        or snapshot.name ~= "Anubisath Sentinel" then return false end
+    local entry = SentinelEntryFor(state, snapshot)
+    if not entry then return false end
+    if snapshot.dead then
+        SentinelMarkDead(state, entry, true)
+        SentinelSyncDeaths(state)
+        return true
+    end
+    if entry.dead then return false end
+    local slot = entry.slot
+    entry.unit, slot.unit = snapshot.unit, snapshot.unit
+    slot.instanceID = entry.guid
+    slot.sentinelMark = entry.mark
+    slot.sentinelUnseen = false
+    slot.label = "Sentinel " .. entry.index
+        .. (entry.mark and " [mark " .. entry.mark .. "]" or " [GUID]")
+    if type(snapshot.hp) == "number" and type(snapshot.hpMax) == "number"
+        and snapshot.hpMax > 0 then
+        slot.health, slot.maximum = snapshot.hp, snapshot.hpMax
+        entry.lastPct = snapshot.hp / snapshot.hpMax
+        entry.nearDeath = entry.lastPct <= 0.01
+    end
+    SentinelRecordBuffs(state, entry, snapshot)
+    LayoutPresentation("tracker")
+    return true
+end
+
+function mechanics.ObserveSentinelDeathMessage(expectedGeneration)
+    local state = SentinelState()
+    if not state or (expectedGeneration and state.generation ~= expectedGeneration)
+        or state.messages >= 4 then return false end
+    state.messages = state.messages + 1
+    -- One near-1%-HP candidate attributes the message. Ambiguous combat
+    -- text still counts a death, but never invents a dead raid marker.
+    local match, ambiguous = nil, false
+    for _, entry in ipairs(state.entries) do
+        if not entry.dead and entry.mark and entry.nearDeath then
+            if match then ambiguous = true; break end
+            match = entry
+        end
+    end
+    if match and not ambiguous then SentinelMarkDead(state, match, false) end
+    SentinelSyncDeaths(state)
+    return true
+end
+
+-- Explicit positive-unit ability evidence is also exposed for extensions.
+function mechanics.ObserveSentinelAbility(unit, ability, provenance, expectedGeneration)
+    local state = SentinelState()
+    if not state or (expectedGeneration and expectedGeneration ~= state.generation)
+        or not UnitName or UnitName(unit) ~= "Anubisath Sentinel"
         or type(ability) ~= "string" or not SentinelPriority(ability)
-        or not UnitName or UnitName(unit) ~= "Anubisath Sentinel" then
-        return false, "unverified sentinel observation"
-    end
+        or (provenance ~= "original" and provenance ~= "inherited") then
+        return false, "unverified sentinel observation" end
+    local mark = GetRaidTargetIndex and GetRaidTargetIndex(unit)
     local guid = mechanics.NPCInstanceID(unit)
-    if not guid then return false, "unidentified sentinel" end
-    local row
-    for _, slot in ipairs(presentation.hp.pool) do
-        if slot.used and not slot.dead and slot.instanceID == guid
-            and slot.key == "sentinel:" .. guid then row = slot; break end
-    end
-    if not row then return false, "sentinel hp not tracked" end
-    local state = row.sentinelAbilities
-    if not state then state = { observed = {} }; row.sentinelAbilities = state end
+    local entry = (mark and state.byMark[mark])
+        or (guid and state.byGuid[guid])
+    if not entry or entry.dead then return false, "sentinel not tracked" end
     if provenance == "original" then
-        if state.original and state.original ~= ability then
+        if entry.abilities.original and entry.abilities.original ~= ability then
             return false, "conflicting original ability"
         end
-        state.original = ability
+        entry.abilities.original = ability
+        entry.abilities.priority = SentinelPriority(ability)
     end
-    state.observed[ability] = true
-    state.priority = state.original and SentinelPriority(state.original) or nil
+    entry.abilities.observed[ability] = true
+    SentinelRecomputeInheritance(state)
+    if provenance == "inherited" then entry.abilities.inherited[ability] = true end
     LayoutPresentation("tracker")
     return true
 end
 
 function mechanics.GetSentinelAbilities(unit, expectedGeneration)
-    if not active or active.id ~= "aq40.sentinels" or not active.engaged
-        or (expectedGeneration and active.generation ~= expectedGeneration) then
-        return nil
-    end
+    local state = SentinelState()
+    if not state or (expectedGeneration and expectedGeneration ~= state.generation)
+        or not UnitName or UnitName(unit) ~= "Anubisath Sentinel" then return nil end
+    local mark = GetRaidTargetIndex and GetRaidTargetIndex(unit)
     local guid = mechanics.NPCInstanceID(unit)
-    if not guid or not UnitName or UnitName(unit) ~= "Anubisath Sentinel" then
-        return nil
-    end
-    for _, row in ipairs(presentation.hp.pool) do
-        if row.used and not row.dead and row.instanceID == guid
-            and row.key == "sentinel:" .. guid then
-            local state = row.sentinelAbilities
-            local observed = {}
-            if state then
-                for ability in pairs(state.observed) do
-                    table.insert(observed, ability)
-                end
-                table.sort(observed)
-            end
-            return { guid = guid, original = state and state.original,
-                priority = state and state.original
-                    and SentinelPriority(state.original) or nil,
-                observed = observed }
-        end
-    end
-    return nil
+    local entry = (mark and state.byMark[mark])
+        or (guid and state.byGuid[guid])
+    if not entry then return nil end
+    local observed, inherited = {}, {}
+    for ability in pairs(entry.abilities.observed) do table.insert(observed, ability) end
+    for ability in pairs(entry.abilities.inherited) do table.insert(inherited, ability) end
+    table.sort(observed)
+    table.sort(inherited)
+    return { marker = entry.mark, guid = entry.guid,
+        original = entry.abilities.original, priority = entry.abilities.priority,
+        observed = observed, inherited = inherited, dead = entry.dead == true }
 end
 
 -- Vanilla tooltip names supplement optional enhanced UnitBuff spell IDs.
