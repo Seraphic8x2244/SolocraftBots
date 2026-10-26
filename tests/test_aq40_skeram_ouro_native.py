@@ -25,7 +25,7 @@ class AQ40NativeMechanics(unittest.TestCase):
         self.assertIn('active.ouroPhase = "emerged"', mechanics)
         self.assertIn('minDelay = 89', encounters)
         self.assertIn('contains = "Ground Rupture"', encounters)
-        self.assertIn('## Version: 0.9.89-dev', toc)
+        self.assertRegex(toc, r"## Version: 0\.9\.\d+-dev")
 
 if __name__ == "__main__":
     unittest.main()

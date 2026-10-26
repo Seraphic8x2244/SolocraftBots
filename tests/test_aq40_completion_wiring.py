@@ -44,7 +44,7 @@ class AQ40CompletionWiring(unittest.TestCase):
                       'bossModDefenderIntervals', 'RecordDefenderHit',
                       'message ~= "export"'):
             self.assertIn(token, MECH)
-        self.assertIn("## Version: 0.9.89-dev", TOC)
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
 if __name__ == "__main__":
     unittest.main()

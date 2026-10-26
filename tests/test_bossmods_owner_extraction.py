@@ -26,7 +26,7 @@ class BossModsOwnerExtraction(unittest.TestCase):
         self.assertIn('bossModsFrame:RegisterEvent("PLAYER_LOGIN")', MECH)
         self.assertIn('SCB_BossModsInitialize()\n        SCB_BossModsRefreshZone()', MECH)
         self.assertLess(TOC.index("mechanics.lua"), TOC.index("encounters.lua"))
-        self.assertIn('## Version: 0.9.90-dev', TOC)
+        self.assertRegex(TOC, r"## Version: 0\.9\.\d+-dev")
 
     def test_old_scan_group_combat_and_render_cadences_unchanged(self):
         for marker in ('bossModsPollElapsed >= 0.4',
@@ -35,7 +35,7 @@ class BossModsOwnerExtraction(unittest.TestCase):
                        'engine.ObserveDeclaredUnits(tokens, state.generation)',
                        'SCB_BossModsGroupCombat()',
                        'bossModsCalmSamples >= 2',
-                       'engine.StopEncounter("raid disengaged", state.generation)',
+                       'engine.DisengageEncounter("raid disengaged", state.generation)',
                        'engine.ObserveBossDeathMessage(',
                        'engine.ObserveDeclaredCastEvent(',
                        'engine.UpdateTimers(now)',

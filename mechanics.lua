@@ -24,6 +24,7 @@ local bindings = {} -- encounter-local names only; never cache roster objects
 local prepSuppressed = {} -- boss death within this BWL zone session
 local BeginPostBossCleanup
 local FinishPostBossCleanup
+local moduleLifecycle = { raids = {}, current = nil }
 
 local function Now()
     return (GetTime and GetTime()) or 0
@@ -84,6 +85,12 @@ function mechanics.MarkEncounterEngaged(expectedGeneration)
     if active.postBossCleanup then return false, "boss already dead" end
     if active.engaged then return true end
     active.engaged = true
+    if active.moduleState then
+        active.moduleState.attempt = active.moduleState.attempt + 1
+        for _, sub in pairs(active.moduleState.combatModules) do
+            sub.active, sub.retained = true, false
+        end
+    end
     if not active.definition.declarative then return true end
     local ok, why = mechanics.InitializeAbilities(active.generation)
     if not ok then return false, why end
@@ -96,7 +103,9 @@ function mechanics.GetEncounterState()
         boss = active.definition.declarative and active.definition.declarative.detect.boss,
         bossVisible = active.bossVisible == true, engaged = active.engaged == true,
         prepared = active.prepared == true,
-        postBossCleanup = active.postBossCleanup == true }
+        postBossCleanup = active.postBossCleanup == true,
+        retainingEffects = active.retainingEffects == true,
+        attempt = active.moduleState and active.moduleState.attempt or 0 }
 end
 
 -- Return an immutable-by-copy view of genuinely observed abilities in a named
@@ -156,6 +165,17 @@ function mechanics.StartEncounter(id)
     bindings = {}
     mechanics.ClearPresentation()
     active = { id = id, generation = generation, definition = definition }
+    if definition.moduleSpec then
+        local runtime = { spec = definition.moduleSpec, attempt = 0,
+            deaths = {}, passiveModules = {}, combatModules = {} }
+        for _, sub in ipairs(definition.moduleSpec.passiveModules) do
+            runtime.passiveModules[sub.id] = { spec = sub, active = true }
+        end
+        for _, sub in ipairs(definition.moduleSpec.combatModules) do
+            runtime.combatModules[sub.id] = { spec = sub, active = false, retained = false }
+        end
+        active.moduleState = runtime
+    end
     if definition.onStart then definition.onStart(generation) end
     if not active or active.generation ~= generation then
         return false, "encounter changed during start"
@@ -173,7 +193,7 @@ function mechanics.DispatchEvent(eventName, message, details, expectedGeneration
         return 0
     end
     if type(eventName) ~= "string" then return 0 end
-    if session.postBossCleanup then
+    if session.postBossCleanup or (session.retainingEffects and not session.engaged) then
         return mechanics.DispatchAbilityEvent(session, eventName, message, details)
     end
     rules = session.definition.events or {}
@@ -207,8 +227,12 @@ end
 
 -- A name is unique within the current encounter. Re-scheduling replaces it.
 -- kind preserves fixed / predicted / observed provenance for later templates.
-function mechanics.ScheduleTimer(name, delay, callback, kind)
-    if not active or active.postBossCleanup then return false, "no active encounter" end
+function mechanics.ScheduleTimer(name, delay, callback, kind, retainedActionKey)
+    if not active or (active.postBossCleanup and
+        not (retainedActionKey and active.retainedActions
+            and active.retainedActions[retainedActionKey])) then
+        return false, "no active encounter"
+    end
     if type(name) ~= "string" or name == "" or type(delay) ~= "number"
         or delay < 0 or delay ~= delay or delay == math.huge then
         return false, "invalid timer"
@@ -1117,6 +1141,7 @@ function mechanics.InitializeCounters(expectedGeneration)
     if active.counters then return true end
     active.counters = {}
     for _, spec in ipairs(active.definition.declarative.counters or {}) do
+        if not spec.submodule or mechanics.IsSubmoduleActive(spec.submodule) then
         local state = { count = 0, seen = {}, spec = spec, generation = active.generation }
         active.counters[spec.id] = state
         local slot, err = AcquirePresentation("timer", "counter:" .. spec.id)
@@ -1124,6 +1149,7 @@ function mechanics.InitializeCounters(expectedGeneration)
         slot.progressKind, slot.progressState = "counter", state
         slot.label, slot.group = spec.label, spec.group
         if spec.icon then slot.frame.icon:SetTexture(spec.icon) end
+        end
     end
     for _, spec in ipairs(active.definition.declarative.initialStages or {}) do
         local ok, err = mechanics.SetTimerStage(spec.id, spec, active.generation)
@@ -1864,24 +1890,28 @@ local function AssignedBotStillTargeted(name)
         and SCB_IsFriendlyBotTarget and SCB_IsFriendlyBotTarget()
 end
 
-function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
+function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration, actionKey)
     local name, member, i, step, info, route, capturedGeneration, timerName, settle
     if not active or (expectedGeneration and expectedGeneration ~= active.generation) then
         return false, "stale encounter"
     end
     if type(action) ~= "table" then return false, "invalid action" end
     if active.postBossCleanup then
-        if action.type ~= "kick" then return false, "boss already dead" end
+        if not actionKey or not active.retainedActions
+            or not active.retainedActions[actionKey] then
+            return false, "post-boss action unavailable"
+        end
         local valid = false
-        for _, auraSlot in ipairs(presentation.aura.pool) do
-            if auraSlot.used and auraSlot.retainAfterBossDeath
-                and auraSlot.generation == active.generation
-                and auraSlot.memberBinding == bindingKey then
+        for _, slot in ipairs(presentation.action.pool) do
+            if slot.used and slot.key == actionKey
+                and slot.generation == active.generation
+                and slot.boundDefinition
+                and slot.boundDefinition.binding == bindingKey then
                 valid = true
                 break
             end
         end
-        if not valid then return false, "recipient no longer tracked" end
+        if not valid then return false, "retained action no longer tracked" end
     end
     name, member = mechanics.GetBoundMember(bindingKey, expectedGeneration, true)
     if not name or not member or not member.isBot or not SCB_IsBotName
@@ -1943,7 +1973,7 @@ function mechanics.RunBoundBotAction(bindingKey, action, expectedGeneration)
                 return
             end
         end
-    end, "fixed")
+    end, "fixed", actionKey)
 end
 
 -- Conditions are evaluated against SCB's current observed roster, never a
@@ -2147,9 +2177,8 @@ function mechanics.HandleActionClick(key, mouseButton)
                 return false, "action expired"
             end
             cfg = slot.boundDefinition
-            if active.postBossCleanup and (not cfg or not cfg.action
-                or cfg.action.type ~= "kick"
-                or string.sub(slot.key, 1, 5) ~= "kick:") then
+            if active.postBossCleanup and not
+                (active.retainedActions and active.retainedActions[slot.key]) then
                 return false, "post-boss action unavailable"
             end
             if not cfg then
@@ -2179,7 +2208,8 @@ function mechanics.HandleActionClick(key, mouseButton)
             if not cfg.action then return false, "no action configured" end
             local action = ActionForMember(cfg, member)
             if not action then return false, "no action for recipient role" end
-            ok, err = mechanics.RunBoundBotAction(cfg.binding, action, active.generation)
+            ok, err = mechanics.RunBoundBotAction(cfg.binding, action,
+                active.generation, slot.key)
             RefreshBoundAction(slot)
             return ok, err
         end
@@ -2261,62 +2291,135 @@ local function RetireTrackedMemberAura(slot)
     ReleasePresentation("aura", key)
 end
 
--- After a confirmed boss death, keep only previously observed recipient
--- auras explicitly declared as retained. The existing SCB event/tick owner
--- continues to process their fades and safe individual filtered Kick actions.
-BeginPostBossCleanup = function()
+-- Retention belongs to combat SUBMODULES. Until BWL is migrated, the
+-- existing aura flag continues to opt in using the same UI/action owner.
+function moduleLifecycle.RetainsSlot(session, kind, slot)
+    if kind == "aura" and slot.retainAfterBossDeath then return true end
+    if not session.moduleState then return false end
+    for _, sub in pairs(session.moduleState.combatModules) do
+        local spec, tracker = sub.spec, sub.spec.tracker
+        if spec.retainUntilResolved and tracker and tracker.kind == kind
+            and string.sub(slot.key or "", 1, string.len(tracker.keyPrefix))
+                == tracker.keyPrefix then return true end
+    end
+    return false
+end
+
+function moduleLifecycle.TrackerCount(session, trackerId)
+    local state = session and session.moduleState
+    if not state then return 0 end
+    for _, sub in pairs(state.combatModules) do
+        local tracker = sub.spec.tracker
+        if tracker and tracker.id == trackerId then
+            local count, now = 0, Now()
+            for _, slot in ipairs(presentation[tracker.kind].pool) do
+                if slot.used and slot.generation == session.generation
+                    and string.sub(slot.key or "", 1, string.len(tracker.keyPrefix))
+                        == tracker.keyPrefix
+                    and (not slot.expiresAt or now < slot.expiresAt) then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+    end
+    return 0
+end
+
+-- Shared disengage/death transition: cease normal timers and attempt UI,
+-- preserve unresolved aura rows AND their existing Kick action bindings.
+-- Passive presence controls remain while the encounter is merely disengaged.
+BeginPostBossCleanup = function(afterDeath)
     local session, now = active, Now()
-    local retained, survivingBindings, key = {}, {}, nil
+    local retained = { aura = {}, hp = {}, action = {} }
+    local keepBindings, hasRetained = {}, false
     if not session or session.postBossCleanup then return false end
-    for _, slot in ipairs(presentation.aura.pool) do
-        if slot.used and slot.generation == session.generation
-            and slot.retainAfterBossDeath and slot.expiresAt
-            and slot.expiresAt > now and not TrackedMemberGone(slot.target) then
-            retained[slot.key] = true
-            if slot.memberBinding and bindings[slot.memberBinding] then
-                survivingBindings[slot.memberBinding] = bindings[slot.memberBinding]
+    for _, kind in ipairs({ "aura", "hp", "action" }) do
+        for _, slot in ipairs(presentation[kind].pool) do
+            if slot.used and slot.generation == session.generation
+                and moduleLifecycle.RetainsSlot(session, kind, slot)
+                and (not slot.expiresAt or now < slot.expiresAt)
+                and (not slot.memberBinding or not TrackedMemberGone(slot.target)) then
+                retained[kind][slot.key] = true
+                hasRetained = true
             end
         end
     end
-    if not next(retained) then return false end
-    session.postBossCleanup = true
+    -- Link retained trackers to associated action keys by recipient suffix.
+    -- VAEL uses kick:<aura-key>; generic submodules may name actionKeyPrefix.
+    for _, slot in ipairs(presentation.aura.pool) do
+        if slot.used and retained.aura[slot.key] then
+            retained.action["kick:" .. slot.key] = true
+        end
+    end
+    if session.moduleState then
+        for _, sub in pairs(session.moduleState.combatModules) do
+            local cfg = sub.spec.tracker
+            if cfg and sub.spec.retainUntilResolved and cfg.actionKeyPrefix then
+                for _, slot in ipairs(presentation[cfg.kind].pool) do
+                    if slot.used and retained[cfg.kind][slot.key] then
+                        local suffix = string.sub(slot.key, string.len(cfg.keyPrefix) + 1)
+                        retained.action[cfg.actionKeyPrefix .. suffix] = true
+                    end
+                end
+            end
+            sub.retained = sub.spec.retainUntilResolved and cfg
+                and moduleLifecycle.TrackerCount(session, cfg.id) > 0 or false
+            sub.active = sub.retained
+        end
+    end
+    session.retainingEffects = hasRetained
+    session.postBossCleanup = afterDeath == true and hasRetained
+    session.retainedActions = retained.action
     session.bossVisible = false
-    -- All cooldowns and delayed command sequences stop immediately.
-    -- Retained aura expiry now runs on the existing 10 Hz owner.
     ClearTimers()
-    for _, slot in ipairs(presentation.timer.pool) do
-        if slot.used then ReleasePresentation("timer", slot.key) end
-    end
-    for _, slot in ipairs(presentation.action.pool) do
-        if slot.used then
-            key = slot.key
-            if string.sub(key, 1, 5) ~= "kick:"
-                or not retained[string.sub(key, 6)]
-                or not slot.boundDefinition
-                or not slot.boundDefinition.action
-                or slot.boundDefinition.action.type ~= "kick" then
-                ReleasePresentation("action", key)
+    for _, kind in ipairs({ "timer", "hp", "aura", "action" }) do
+        for _, slot in ipairs(presentation[kind].pool) do
+            if slot.used then
+                local passive = kind == "action" and not afterDeath
+                    and string.sub(slot.key, 1, 9) == "presence:"
+                local keep = retained[kind] and retained[kind][slot.key]
+                if not keep and not passive then
+                    ReleasePresentation(kind, slot.key)
+                elseif kind == "action" and slot.boundDefinition
+                    and slot.boundDefinition.binding
+                    and bindings[slot.boundDefinition.binding] then
+                    keepBindings[slot.boundDefinition.binding] =
+                        bindings[slot.boundDefinition.binding]
+                elseif kind == "aura" and slot.memberBinding
+                    and bindings[slot.memberBinding] then
+                    keepBindings[slot.memberBinding] = bindings[slot.memberBinding]
+                end
             end
         end
     end
-    for _, slot in ipairs(presentation.aura.pool) do
-        if slot.used and not retained[slot.key] then
-            ReleasePresentation("aura", slot.key)
-        end
-    end
-    bindings = survivingBindings
+    bindings = keepBindings
     LayoutPresentation("timer")
     LayoutPresentation("tracker")
-    return true
+    return hasRetained
 end
 
 FinishPostBossCleanup = function()
-    if not active or not active.postBossCleanup then return end
-    for _, slot in ipairs(presentation.aura.pool) do
-        if slot.used and slot.generation == active.generation
-            and slot.retainAfterBossDeath then return end
+    local session = active
+    if not session or not session.retainingEffects then return end
+    for _, kind in ipairs({ "aura", "hp", "action" }) do
+        for _, slot in ipairs(presentation[kind].pool) do
+            if slot.used and slot.generation == session.generation
+                and moduleLifecycle.RetainsSlot(session, kind, slot)
+                and (not slot.expiresAt or Now() < slot.expiresAt) then return end
+        end
     end
-    mechanics.StopEncounter("post-boss auras resolved", active.generation)
+    session.retainingEffects = false
+    session.retainedActions = nil
+    if session.moduleState then
+        for _, sub in pairs(session.moduleState.combatModules) do
+            sub.retained = false
+            if not session.engaged then sub.active = false end
+        end
+    end
+    if session.postBossCleanup then
+        mechanics.CheckModuleSleeper(session.generation)
+    end
 end
 
 -- The existing SCB owner supplies the tick; do not attach frame OnUpdate.
@@ -2462,7 +2565,7 @@ function mechanics.UpdatePresentationState(now)
         if slot.used and slot.generation == session.generation
             and slot.memberBinding
             and (TrackedMemberGone(slot.target)
-                or (session.postBossCleanup and slot.expiresAt
+                or (session.retainingEffects and slot.expiresAt
                     and now >= slot.expiresAt)) then
             RetireTrackedMemberAura(slot)
         end
@@ -2470,6 +2573,9 @@ function mechanics.UpdatePresentationState(now)
     mechanics.PruneAbilityAuras(now)
     if actionVisibilityChanged then LayoutPresentation("tracker") end
     FinishPostBossCleanup()
+    if active == session and session.postBossCleanup then
+        mechanics.CheckModuleSleeper(session.generation)
+    end
 end
 
 function mechanics.UpdatePresentation(now)
@@ -2711,12 +2817,15 @@ function mechanics.InitializeAbilities(expectedGeneration)
     session.abilities, session.abilityOrder = {}, {}
     session.casterCasts, session.castSerial, session.firstSlotHints = {}, 0, {}
     for i, spec in ipairs(session.definition.declarative.abilities or {}) do
-        AddAbilityState(session, spec, nil, false)
+        if not spec.submodule or mechanics.IsSubmoduleActive(spec.submodule) then
+            AddAbilityState(session, spec, nil, false)
+        end
     end
     -- Unconfirmed first slots are visual predictions, never named breaths.
     for i, group in ipairs(session.definition.declarative.abilityGroups or {}) do
         session.firstSlotHints[group.id] = {}
         for j, duration in ipairs(group.firstSlots or {}) do
+            if not group.submodule or mechanics.IsSubmoduleActive(group.submodule) then
             session.firstSlotHints[group.id][j] = {
                 id = "first:" .. group.id .. ":" .. j,
                 label = group.label .. " " .. j, startedAt = AbilityClock(),
@@ -2724,6 +2833,7 @@ function mechanics.InitializeAbilities(expectedGeneration)
                 group = group.group,
                 provenance = "predicted",
             }
+            end
         end
     end
     if mechanics.ShowAbilityBars then mechanics.ShowAbilityBars() end
@@ -3531,11 +3641,288 @@ local function CheckDeclaration(d)
     return true
 end
 
+
+-- RAIDMODULE -> ENCOUNTERMODULE -> SUBMODULE. These declarations share the
+-- existing engine/event frame/timers/actions; no second scheduler or scanner.
+local function CheckModuleWaker(w, detect)
+    if w == nil then
+        local result = { detect.boss }
+        for _, alias in ipairs(detect.aliases or {}) do
+            table.insert(result, alias)
+        end
+        return result
+    end
+    if type(w) == "string" and w ~= "" then return { w } end
+    if type(w) ~= "table" then return nil end
+    local result, seen = {}, {}
+    if w.name then
+        if type(w.name) ~= "string" or w.name == "" then return nil end
+        table.insert(result, w.name)
+        seen[w.name] = true
+        if w.aliases ~= nil and type(w.aliases) ~= "table" then return nil end
+        for _, name in ipairs(w.aliases or {}) do
+            if type(name) ~= "string" or name == "" or seen[name] then return nil end
+            table.insert(result, name)
+            seen[name] = true
+        end
+    else
+        for _, name in ipairs(w) do
+            if type(name) ~= "string" or name == "" or seen[name] then return nil end
+            table.insert(result, name)
+            seen[name] = true
+        end
+    end
+    if table.getn(result) == 0 then return nil end
+    return result
+end
+
+local function ValidateModuleSpec(id, def)
+    local wakers = CheckModuleWaker(def.moduleWaker, def.detect)
+    local seen, trackers = {}, {}
+    if not wakers then return nil, "invalid moduleWaker" end
+    local spec = { id = id, requiredZone = def.requiredZone or def.detect.zone,
+        moduleWaker = wakers, passiveModules = {}, combatModules = {} }
+    if type(spec.requiredZone) ~= "string" or spec.requiredZone == ""
+        or spec.requiredZone ~= def.detect.zone then
+        return nil, "required zone mismatch"
+    end
+    for _, group in ipairs({ "passiveModules", "combatModules" }) do
+        if def[group] ~= nil and type(def[group]) ~= "table" then
+            return nil, "invalid " .. group
+        end
+        for _, sub in ipairs(def[group] or {}) do
+            if type(sub) ~= "table" or not IsId(sub.id) or seen[sub.id]
+                or (sub.retainUntilResolved ~= nil
+                    and type(sub.retainUntilResolved) ~= "boolean")
+                or (group == "passiveModules" and sub.retainUntilResolved) then
+                return nil, "invalid submodule"
+            end
+            seen[sub.id] = true
+            local part = { id = sub.id,
+                retainUntilResolved = sub.retainUntilResolved == true,
+                tracker = sub.tracker }
+            if sub.tracker then
+                local t = sub.tracker
+                if group ~= "combatModules" or type(t) ~= "table"
+                    or not IsId(t.id) or trackers[t.id]
+                    or (t.kind ~= "aura" and t.kind ~= "hp"
+                        and t.kind ~= "action")
+                    or type(t.keyPrefix) ~= "string" or t.keyPrefix == ""
+                    or (t.actionKeyPrefix ~= nil
+                        and (type(t.actionKeyPrefix) ~= "string"
+                            or t.actionKeyPrefix == "")) then
+                    return nil, "invalid submodule tracker"
+                end
+                trackers[t.id] = true
+            end
+            if part.retainUntilResolved and not part.tracker then
+                return nil, "retained submodule requires tracker"
+            end
+            table.insert(spec[group], part)
+        end
+    end
+    -- Existing declaration consumers stay with this engine. A submodule
+    -- annotation routes a feature through its actual active lifecycle.
+    for _, group in ipairs({ "mechanics", "triggers", "abilities",
+        "abilityGroups", "counters", "hpUnits", "thresholds" }) do
+        for _, feature in ipairs(def[group] or {}) do
+            if feature.submodule ~= nil and not seen[feature.submodule] then
+                return nil, "unknown submodule for " .. group
+            end
+        end
+    end
+    local sleeper = def.moduleSleeper
+    if sleeper == nil and def.detect.endOnBossDeath ~= false then
+        sleeper = { npcdead = { name = def.detect.boss, count = 1 } }
+    end
+    if sleeper ~= nil then
+        if type(sleeper) ~= "table" then return nil, "invalid moduleSleeper" end
+        local conditions = {}
+        if sleeper.npcdead ~= nil then
+            local deaths = sleeper.npcdead
+            if type(deaths) ~= "table" then return nil, "invalid npcdead" end
+            if deaths.name then deaths = { deaths } end
+            if table.getn(deaths) == 0 then return nil, "invalid npcdead" end
+            conditions.npcdead = {}
+            for _, death in ipairs(deaths) do
+                if type(death) ~= "table" or type(death.name) ~= "string"
+                    or death.name == "" or type(death.count) ~= "number"
+                    or death.count < 1 or death.count ~= math.floor(death.count)
+                    or conditions.npcdead[death.name] then
+                    return nil, "invalid npcdead"
+                end
+                conditions.npcdead[death.name] = death.count
+            end
+        end
+        if sleeper.trackerEmpty ~= nil then
+            local ids = sleeper.trackerEmpty
+            if type(ids) == "string" then ids = { ids } end
+            if type(ids) ~= "table" or table.getn(ids) == 0 then
+                return nil, "invalid trackerEmpty"
+            end
+            conditions.trackerEmpty = {}
+            for _, trackerId in ipairs(ids) do
+                if not trackers[trackerId] then return nil, "unknown trackerEmpty" end
+                table.insert(conditions.trackerEmpty, trackerId)
+            end
+        end
+        if not conditions.npcdead and not conditions.trackerEmpty then
+            return nil, "empty moduleSleeper"
+        end
+        spec.moduleSleeper = conditions
+    end
+    return spec
+end
+
+function mechanics.GetRequiredZones()
+    local result = {}
+    for zone in pairs(moduleLifecycle.raids) do table.insert(result, zone) end
+    table.sort(result)
+    return result
+end
+
+function mechanics.EnterRaidZone(zone)
+    if not zone or not moduleLifecycle.raids[zone] then
+        moduleLifecycle.current = nil
+        return false
+    end
+    moduleLifecycle.current = moduleLifecycle.raids[zone]
+    return true
+end
+
+function mechanics.GetRaidModuleState()
+    local raid = moduleLifecycle.current
+    if not raid then return nil end
+    return { requiredZone = raid.requiredZone, active = true }
+end
+
+function mechanics.IsSubmoduleActive(id, expectedGeneration)
+    if not active or not active.moduleState
+        or (expectedGeneration and expectedGeneration ~= active.generation) then
+        return false
+    end
+    local state = active.moduleState
+    local sub = state.passiveModules[id] or state.combatModules[id]
+    return sub and sub.active == true or false
+end
+
+function mechanics.GetEncounterModuleState()
+    if not active or not active.moduleState then return nil end
+    local state, result = active.moduleState, {
+        id = active.id, requiredZone = active.moduleState.spec.requiredZone,
+        awake = true, inCombat = active.engaged == true,
+        attempt = active.moduleState.attempt, deaths = {},
+        passiveModules = {}, combatModules = {},
+    }
+    for name, count in pairs(state.deaths) do result.deaths[name] = count end
+    for id, sub in pairs(state.passiveModules) do
+        result.passiveModules[id] = sub.active == true
+    end
+    for id, sub in pairs(state.combatModules) do
+        result.combatModules[id] = {
+            active = sub.active == true, retained = sub.retained == true }
+    end
+    return result
+end
+
+-- All npcdead counts AND every trackerEmpty condition must be satisfied.
+function mechanics.CheckModuleSleeper(expectedGeneration)
+    local session = active
+    if not session or not session.moduleState
+        or (expectedGeneration and session.generation ~= expectedGeneration) then
+        return false
+    end
+    local sleeper = session.moduleState.spec.moduleSleeper
+    if not sleeper then return false end
+    for name, required in pairs(sleeper.npcdead or {}) do
+        if (session.moduleState.deaths[name] or 0) < required then return false end
+    end
+    for _, tracker in ipairs(sleeper.trackerEmpty or {}) do
+        if moduleLifecycle.TrackerCount(session, tracker) > 0 then return false end
+    end
+    return mechanics.StopEncounter("moduleSleeper resolved", session.generation)
+end
+
+-- Native corpse tokens without unique identity may satisfy one death only;
+-- multi-NPC packs count separately observed death messages until Chunk 6 adds
+-- individual marker/last-known-health attribution.
+function mechanics.ObserveModuleNPCDeath(zone, name, source)
+    local session = active
+    if not session or not session.moduleState
+        or session.moduleState.spec.requiredZone ~= zone then return false end
+    local state, sleeper = session.moduleState, session.moduleState.spec.moduleSleeper
+    local needed = sleeper and sleeper.npcdead and sleeper.npcdead[name]
+    if not needed then return false end
+    local old = state.deaths[name] or 0
+    if old >= needed then return true end
+    if needed > 1 and source ~= "message" then return false end
+    state.deaths[name] = old + 1
+    if mechanics.CheckModuleSleeper(session.generation) then return true end
+    local allDead = true
+    for mob, count in pairs(sleeper.npcdead or {}) do
+        if (state.deaths[mob] or 0) < count then allDead = false end
+    end
+    if allDead then
+        BeginPostBossCleanup(true)
+        mechanics.CheckModuleSleeper(session.generation)
+    end
+    return true
+end
+
+function mechanics.DisengageEncounter(reason, expectedGeneration)
+    local session = active
+    if not session or not session.engaged or session.postBossCleanup
+        or (expectedGeneration and session.generation ~= expectedGeneration) then
+        return false
+    end
+    -- A new pull reuses the loaded encounter, but never the old attempt.
+    BeginPostBossCleanup(false)
+    session.engaged = false
+    local state = session.moduleState
+    if state then
+        state.deaths = {}
+        for _, sub in pairs(state.combatModules) do
+            sub.retained = sub.spec.retainUntilResolved
+                and sub.spec.tracker
+                and moduleLifecycle.TrackerCount(session, sub.spec.tracker.id) > 0
+                or false
+            sub.active = sub.retained
+        end
+    end
+    session.abilities, session.abilityOrder = nil, nil
+    session.casterCasts, session.castSerial = nil, nil
+    session.firstSlotHints, session.counters = nil, nil
+    session.stageTimers, session.observedAbilities = nil, nil
+    session.defenderLastHits, session.toxinFirst = nil, nil
+    session.skeramMarked, session.ouroSeen, session.ouroPhase = nil, nil, nil
+    session.cthunPhase, session.viscPhase = nil, nil
+    session.prepared = false
+    return true
+end
+
+-- The deliberate target observer and (later) shared scanner call this entry.
+function mechanics.WakeEncounter(zone, name, inCombat)
+    local raid = moduleLifecycle.current
+    if not raid or raid.requiredZone ~= zone then return false end
+    local id = raid.wakers[name]
+    if not id or not raid.encounterModules[id] then return false end
+    local boss = raid.encounterModules[id].detectBoss
+    local ok, why = mechanics.ObserveBoss(zone, boss, "alive")
+    if not ok then return false, why end
+    if inCombat then
+        local state = mechanics.GetEncounterState()
+        if state and state.id == id then
+            return mechanics.MarkEncounterEngaged(state.generation)
+        end
+    end
+    return true
+end
+
 -- Pure Lua-table catalogue, e.g. { bwl = { razorgore = { ... } } }.
 -- Registration is all-or-nothing; the TOC loads encounters.lua.
 function mechanics.RegisterDeclarativeEncounters(catalogue)
-    local pending, raid, bosses, name, def, id, ok, why, count
-    local zonePrep = {}
+    local pending, raid, bosses, name, def, id, ok, why, count, spec
+    local zones, zonePrep = {}, {}
     if type(catalogue) ~= "table" then return false, "invalid catalogue" end
     for _, entry in pairs(encounters) do
         if entry.declarative and entry.declarative.detect.prepareInZone then
@@ -3559,18 +3946,42 @@ function mechanics.RegisterDeclarativeEncounters(catalogue)
                 end
                 zonePrep[def.detect.zone] = true
             end
-            pending[id] = { events = {}, declarative = def }
+            spec, why = ValidateModuleSpec(id, def)
+            if not spec then return false, id .. ": " .. why end
+            local zone = zones[spec.requiredZone]
+            if not zone then
+                zone = { requiredZone = spec.requiredZone,
+                    encounterModules = {}, wakers = {} }
+                zones[spec.requiredZone] = zone
+            end
+            spec.detectBoss = def.detect.boss
+            for _, waker in ipairs(spec.moduleWaker) do
+                if zone.wakers[waker] and zone.wakers[waker] ~= id then
+                    return false, "duplicate moduleWaker: " .. waker
+                end
+                zone.wakers[waker] = id
+            end
+            zone.encounterModules[id] = spec
+            pending[id] = { events = {}, declarative = def, moduleSpec = spec }
             count = count + 1
         end
     end
     if count == 0 then return false, "empty catalogue" end
     for id, def in pairs(pending) do encounters[id] = def end
+    for zone, raidState in pairs(zones) do
+        moduleLifecycle.raids[zone] = raidState
+    end
     return true, count
 end
 
 -- Source registry for the pre-existing SCB event frame. No extra frame
 -- listens to combat text: the owner asks for precisely the events in BWL.
 function mechanics.CanonicalBoss(zone, boss)
+    local raid = moduleLifecycle.raids[zone]
+    local id = raid and raid.wakers[boss]
+    if id and raid.encounterModules[id] then
+        return raid.encounterModules[id].detectBoss
+    end
     for _, entry in pairs(encounters) do
         local d = entry.declarative
         if d and d.detect.zone == zone then
@@ -3585,6 +3996,12 @@ end
 
 function mechanics.GetDetectableBosses(zone)
     local result, seen, entry, d = {}, {}, nil, nil
+    local raid = moduleLifecycle.raids[zone]
+    if raid then
+        for waker in pairs(raid.wakers) do table.insert(result, waker) end
+        table.sort(result)
+        return result
+    end
     for _, entry in pairs(encounters) do
         d = entry.declarative
         if d and d.detect.zone == zone then
@@ -3730,7 +4147,8 @@ function mechanics.PrepareZoneEncounter(zone)
             active.bossVisible = false
             for i = 1, table.getn(d.mechanics) do
                 w = d.mechanics[i]
-                if w.when == "zone" then
+                if w.when == "zone"
+                    and (not w.submodule or mechanics.IsSubmoduleActive(w.submodule)) then
                     mechanics.ShowBoundBotAction("presence:" .. w.id, w)
                 end
             end
@@ -3753,7 +4171,7 @@ function mechanics.ObserveBossDeathMessage(zone, eventName, message)
             if (message == boss .. " dies."
                 or message == "You have slain " .. boss .. "!")
                 and d.detect.endOnBossDeath ~= false then
-                return mechanics.ObserveBoss(zone, boss, "dead")
+                return mechanics.ObserveBoss(zone, boss, "dead", "message")
             end
         end
     end
@@ -3765,7 +4183,7 @@ end
 -- target visibility does NOT prove absence or death and must not hide the
 -- action while the player selects a bot. Confirmed death, a different boss,
 -- or the SCB-owned zone reset ends the encounter and clears its actions.
-function mechanics.ObserveBoss(zone, boss, state)
+function mechanics.ObserveBoss(zone, boss, state, deathSource)
     local id, entry, d, w, i, ok, why
     if type(zone) ~= "string" or type(boss) ~= "string"
         or (state ~= "alive" and state ~= "absent" and state ~= "dead") then
@@ -3799,7 +4217,11 @@ function mechanics.ObserveBoss(zone, boss, state)
                     active.bossVisible = false
                     return true
                 end
-                if BeginPostBossCleanup and BeginPostBossCleanup() then return true end
+                if active.moduleState then
+                    mechanics.ObserveModuleNPCDeath(zone, boss, deathSource or "unit")
+                    return true
+                end
+                if BeginPostBossCleanup and BeginPostBossCleanup(true) then return true end
                 mechanics.StopEncounter("confirmed boss death")
                 return true
             elseif state == "absent" then
@@ -3843,7 +4265,8 @@ function mechanics.ObserveBoss(zone, boss, state)
     end
     for i = 1, table.getn(d.mechanics) do
         w = d.mechanics[i]
-        if w.when == "present" or w.when == "zone" then
+        if (w.when == "present" or w.when == "zone")
+            and (not w.submodule or mechanics.IsSubmoduleActive(w.submodule)) then
             mechanics.ShowBoundBotAction("presence:" .. w.id, w)
         end
     end
@@ -4059,15 +4482,15 @@ end
 function mechanics.DispatchAbilityEvent(session, eventName, message, details)
     local spec, aura, rule, name, matched, captured, state, count, i, j
     local key, effect, recipient, now, token
-    if not session or active ~= session or not session.engaged then return 0 end
-    if not session.abilities and not session.postBossCleanup then
+    if not session or active ~= session
+        or (not session.engaged and not session.retainingEffects) then return 0 end
+    if session.engaged and not session.abilities and not session.postBossCleanup then
         mechanics.InitializeAbilities(session.generation)
     end
-    if not session.abilities then return 0 end
     count = 0
     local function Deliver(spec, isGroup)
         local observation, observedName
-        if not session.postBossCleanup then
+        if session.engaged and not session.postBossCleanup then
             matched, captured = MatchAbilityObservation(spec.startRule, eventName, message, details)
             if matched then
                 observedName = isGroup and captured or nil
@@ -4089,10 +4512,10 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
         end
         -- Per-recipient auras can arrive without any start event. An aura
         -- never implicitly resets the parent cooldown or asserts a cast.
-        state = session.abilities[spec.id]
+        state = session.abilities and session.abilities[spec.id]
         for j, aura in ipairs(spec.auras or {}) do
             matched, captured = MatchAbilityObservation(aura.gain, eventName, message, details)
-            if matched and not session.postBossCleanup then
+            if matched and session.engaged and not session.postBossCleanup then
                 recipient = Recipient(aura, captured)
                 if recipient then
                     effect = { type = "aura_apply", id = spec.id .. "_" .. aura.id,
@@ -4111,7 +4534,8 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
                 end
             end
             matched, captured = MatchAbilityObservation(aura.fade, eventName, message, details)
-            if matched and (not session.postBossCleanup or aura.retainAfterBossDeath) then
+            if matched and ((session.engaged and not session.postBossCleanup)
+                or (session.retainingEffects and aura.retainAfterBossDeath)) then
                 recipient = Recipient(aura, captured)
                 if recipient then
                     effect = { type = "aura_remove", id = spec.id .. "_" .. aura.id,
@@ -4125,13 +4549,17 @@ function mechanics.DispatchAbilityEvent(session, eventName, message, details)
     end
     for i, spec in ipairs(session.definition.declarative.abilities or {}) do
         if active ~= session then break end
-        Deliver(spec, false)
+        if not spec.submodule or mechanics.IsSubmoduleActive(spec.submodule) then
+            Deliver(spec, false)
+        end
     end
     for i, spec in ipairs(session.definition.declarative.abilityGroups or {}) do
         if active ~= session then break end
-        Deliver(spec, true)
+        if not spec.submodule or mechanics.IsSubmoduleActive(spec.submodule) then
+            Deliver(spec, true)
+        end
     end
-    if session.postBossCleanup and active == session then FinishPostBossCleanup() end
+    if session.retainingEffects and active == session then FinishPostBossCleanup() end
     return count
 end
 
@@ -4163,11 +4591,15 @@ function mechanics.DispatchDeclarativeEvent(session, eventName, message, details
     for i = 1, table.getn(d.triggers) do
         if active ~= session then break end
         rule = d.triggers[i]
-        local eventMatches = rule.event == eventName
+        local eventMatches = (not rule.submodule
+            or mechanics.IsSubmoduleActive(rule.submodule))
+            and rule.event == eventName
         if rule.events then
             eventMatches = false
-            for j = 1, table.getn(rule.events) do
-                if rule.events[j] == eventName then eventMatches = true; break end
+            if not rule.submodule or mechanics.IsSubmoduleActive(rule.submodule) then
+                for j = 1, table.getn(rule.events) do
+                    if rule.events[j] == eventName then eventMatches = true; break end
+                end
             end
         end
         if eventMatches then
@@ -4206,9 +4638,6 @@ end
 
 -- Boss Mods owns one dedicated event/update frame. Shared bot commands,
 -- roster services and general UI event handling remain unchanged.
-local SCB_BOSSMODS_ZONES = {
-    ["Blackwing Lair"] = true, ["Ahn'Qiraj"] = true,
-}
 local bossModsZone = nil
 local bossModsZoneActive = false
 local bossModsElapsed = 0
@@ -4230,7 +4659,7 @@ local function SCB_BossModsInitialize()
         return
     end
     SCB.bossModsInitialised = true
-    for zoneName in pairs(SCB_BOSSMODS_ZONES) do
+    for _, zoneName in ipairs(engine.GetRequiredZones()) do
         eventNames = engine.GetRequiredEvents(zoneName)
         bossModsEvents[zoneName] = {}
         for i = 1, table.getn(eventNames) do
@@ -4244,7 +4673,7 @@ local function SCB_BossModsRefreshZone()
     engine = SCB.mechanics
     if not SCB.bossModsInitialised or not engine then return end
     zone = GetRealZoneText and GetRealZoneText() or ""
-    enabled = SCB_BOSSMODS_ZONES[zone] == true
+    enabled = engine.EnterRaidZone(zone)
     if (enabled and bossModsZone == zone)
         or (not enabled and not bossModsZone) then return end
     if bossModsZone then
@@ -4277,6 +4706,16 @@ local function SCB_BossModsRefreshZone()
     bossModsVisualElapsed = 0
     bossModsGroupCombatGeneration = nil
     bossModsCalmSamples = 0
+end
+
+-- Immediate deliberate targeting uses existing unit evidence, not a scan.
+local function SCB_BossModsPlayerTargetChanged()
+    if not bossModsZoneActive or not UnitExists or not UnitName
+        or not UnitExists("target") then return end
+    local name = UnitName("target")
+    if not name then return end
+    SCB.mechanics.WakeEncounter(bossModsZone, name,
+        UnitAffectingCombat and UnitAffectingCombat("target") and true or false)
 end
 
 -- Read the current player's *group* combat states, not only the local
@@ -4359,7 +4798,7 @@ local function SCB_BossModsObserveTargets()
             and not (bossObserved and bossObserved.combat) then
             bossModsCalmSamples = bossModsCalmSamples + 1
             if bossModsCalmSamples >= 2 then
-                engine.StopEncounter("raid disengaged", state.generation)
+                engine.DisengageEncounter("raid disengaged", state.generation)
                 bossModsGroupCombatGeneration = nil
                 bossModsCalmSamples = 0
                 state = nil
@@ -4474,6 +4913,7 @@ end
 bossModsFrame:RegisterEvent("ADDON_LOADED")
 bossModsFrame:RegisterEvent("PLAYER_LOGIN")
 bossModsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+bossModsFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 bossModsFrame:RegisterEvent("ZONE_CHANGED")
 bossModsFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 bossModsFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -4488,9 +4928,12 @@ bossModsFrame:SetScript("OnEvent", function()
         SCB_BossModsEnsureOptions()
         SCB_BossModsInitialize()
         SCB_BossModsRefreshZone()
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        SCB_BossModsPlayerTargetChanged()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED"
         or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         SCB_BossModsRefreshZone()
+        SCB_BossModsPlayerTargetChanged()
     end
 end)
 bossModsFrame:SetScript("OnUpdate", function()

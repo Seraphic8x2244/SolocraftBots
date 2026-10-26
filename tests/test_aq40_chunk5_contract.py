@@ -18,8 +18,9 @@ AQ = ENCOUNTERS.split("    aq40 = {", 1)[1]
 class AQ40Chunk5Contract(unittest.TestCase):
     def test_bwl_and_zone_owner_survive(self):
         self.assertIn('bwl = {', ENCOUNTERS)
-        self.assertIn('"Blackwing Lair"', MECH)
-        self.assertIn('["Ahn\'Qiraj"] = true', MECH)
+        self.assertIn('zone = "Blackwing Lair"', ENCOUNTERS)
+        self.assertIn('moduleLifecycle.raids[zone]', MECH)
+        self.assertIn('zone = "Ahn\'Qiraj"', ENCOUNTERS)
         self.assertIn('engine.ObserveDeclaredUnits(tokens, state.generation)', MECH)
         self.assertIn('bossModsEvents[bossModsZone][event]', MECH)
         self.assertIn('SetScript("OnUpdate"', MECH)

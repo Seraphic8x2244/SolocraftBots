@@ -46,6 +46,19 @@ SoloCraftBots.bossModDefinitions = {
         },
         vaelastrasz = {
             detect = { zone = "Blackwing Lair", boss = "Vaelastrasz the Corrupt" },
+            requiredZone = "Blackwing Lair",
+            moduleWaker = "Vaelastrasz the Corrupt",
+            passiveModules = { { id = "engagetimer" } },
+            combatModules = { {
+                id = "burningadrenaline", retainUntilResolved = true,
+                tracker = { id = "BurningAdrenalineTracker", kind = "aura",
+                    keyPrefix = "decl:burningadrenaline_burning:",
+                    actionKeyPrefix = "kick:decl:burningadrenaline_burning:" },
+            } },
+            moduleSleeper = {
+                npcdead = { name = "Vaelastrasz the Corrupt", count = 1 },
+                trackerEmpty = "BurningAdrenalineTracker",
+            },
             mechanics = {},
             abilities = {
                 {

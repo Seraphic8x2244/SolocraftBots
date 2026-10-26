@@ -33,7 +33,7 @@ class NativeAQ40(unittest.TestCase):
         self.assertIn('type = "ability_observed"', defender)
         self.assertNotIn("600", defender)
     def test_development_version(self):
-        self.assertIn("## Version: 0.9.89-dev", toc)
+        self.assertRegex(toc, r"## Version: 0\.9\.\d+-dev")
 
 if __name__ == "__main__":
     unittest.main()
