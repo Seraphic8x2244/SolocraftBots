@@ -18,11 +18,12 @@ AQ = ENCOUNTERS.split("    aq40 = {", 1)[1]
 class AQ40Chunk5Contract(unittest.TestCase):
     def test_bwl_and_zone_owner_survive(self):
         self.assertIn('bwl = {', ENCOUNTERS)
-        self.assertIn('"Blackwing Lair"', OWNER)
-        self.assertIn('["Ahn\'Qiraj"] = true', OWNER)
-        self.assertIn('engine.ObserveDeclaredUnits(tokens, state.generation)', OWNER)
-        self.assertIn('bossModsEvents[bossModsZone][event]', OWNER)
-        self.assertNotIn('SetScript("OnUpdate"', MECH)
+        self.assertIn('"Blackwing Lair"', MECH)
+        self.assertIn('["Ahn\'Qiraj"] = true', MECH)
+        self.assertIn('engine.ObserveDeclaredUnits(tokens, state.generation)', MECH)
+        self.assertIn('bossModsEvents[bossModsZone][event]', MECH)
+        self.assertIn('SetScript("OnUpdate"', MECH)
+        self.assertNotIn('SCB_BossMods', OWNER)
 
     def test_declaration_and_alias_guards(self):
         self.assertIn('local function CheckObservedUnits(d)', MECH)
