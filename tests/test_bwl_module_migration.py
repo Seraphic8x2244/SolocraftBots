@@ -30,7 +30,7 @@ def section(key):
 
 class BWLModuleMigration(unittest.TestCase):
     def test_all_eight_encounters_have_active_lifecycle_and_scan(self):
-        self.assertEqual(len(re.findall(r"^        [a-z]+ = \\{", BWL, re.M)), 8)
+        self.assertEqual(len(re.findall(r"^        [a-z]+ = \{", BWL, re.M)), 8)
         for key, (boss, submodule) in BOSSES.items():
             with self.subTest(boss=key):
                 entry = section(key)
