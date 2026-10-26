@@ -65,7 +65,7 @@ class RaidTargetScannerContract(unittest.TestCase):
                        "UnitHealth(unit)", "UnitHealthMax(unit)", "UnitBuff(unit, i)",
                        "mechanics.ObserveDeclaredUnits({ unit }, active.generation)",
                        "for _, subscriber in ipairs(selected)",
-                       "subscriber.request.onObservation(snapshot)"):
+                       "request.onObservation(snapshot)"):
             self.assertIn(marker, visit)
         self.assertEqual(visit.count("UnitBuff(unit, i)"), 1)
         self.assertEqual(visit.count("UnitHealth(unit)"), 1)
